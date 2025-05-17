@@ -1,9 +1,10 @@
 package game
 
 // Tile represents a single cell on the map.
-// TODO: add owner, army size, city/fort flags, etc.
+// Owner: -1 means neutral; 0..N-1 are player IDs.
+// Army: number of units on that tile.
 type Tile struct {
-    Owner int  // -1 means neutral
+    Owner int
     Army  int
 }
 
@@ -14,6 +15,11 @@ type Board struct {
 
 func NewBoard(w, h int) *Board {
     b := &Board{W: w, H: h, T: make([]Tile, w*h)}
+    // initialise all tiles as neutral
+    for i := range b.T {
+        b.T[i].Owner = -1
+        b.T[i].Army = 0
+    }
     return b
 }
 
