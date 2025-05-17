@@ -3,9 +3,11 @@ package game
 // Tile represents a single cell on the map.
 // Owner: -1 means neutral; 0..N-1 are player IDs.
 // Army: number of units on that tile.
+// Type - 0 = normal, 1 = general, 2 = city.
 type Tile struct {
     Owner int
     Army  int
+    Type  int 
 }
 
 type Board struct {
