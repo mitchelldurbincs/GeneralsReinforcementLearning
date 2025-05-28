@@ -23,7 +23,7 @@ func NewEngine(w, h, players int, rng *rand.Rand) *Engine {
 	}
 	e := &Engine{
 		gs: &GameState{
-			Board:   NewBoard(w, h),
+			Board:   core.NewBoard(w, h),
 			Players: make([]Player, players),
 		},
 		rng: rng,
@@ -45,8 +45,8 @@ func (e *Engine) placeCities() {
 		x, y := e.rng.Intn(b.W), e.rng.Intn(b.H)
 		idx := b.Idx(x, y)
 		t := &b.T[idx]
-		if t.IsNeutral() && t.Type == TileNormal {
-			t.Type = TileCity
+		if t.IsNeutral() && t.Type == core.TileNormal {
+			t.Type = core.TileCity
 			t.Army = CityStartArmy
 			placed++
 		}
@@ -76,7 +76,7 @@ func (e *Engine) placeGenerals() {
 				}
 			}
 			t := &b.T[idx]
-			t.Owner, t.Army, t.Type = pid, 1, TileGeneral
+			t.Owner, t.Army, t.Type = pid, 1, core.TileGeneral
 			e.gs.Players[pid].GeneralIdx = idx
 			break
 		}
@@ -103,11 +103,11 @@ func (e *Engine) processTurnProduction() {
 			continue
 		}
 		switch t.Type {
-		case TileGeneral:
+		case core.TileGeneral:
 			t.Army += GeneralProduction
-		case TileCity:
+		case core.TileCity:
 			t.Army += CityProduction
-		case TileNormal:
+		case core.TileNormal:
 			if growNormal {
 				t.Army += NormalProduction
 			}
