@@ -1,0 +1,1 @@
+# tells Terraform how to connect to AWS

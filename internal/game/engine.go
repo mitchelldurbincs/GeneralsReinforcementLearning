@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"strings"
     "time"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 )
 
 type Engine struct {

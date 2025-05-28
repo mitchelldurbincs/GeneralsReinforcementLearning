@@ -1,5 +1,9 @@
 package game
 
+import (
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
+)
+
 type Player struct {
 	ID         int
 	Alive      bool
@@ -9,6 +13,6 @@ type Player struct {
 
 type GameState struct {
 	Turn    int
-	Board   *Board
+	Board   *core.Board
 	Players []Player
 }

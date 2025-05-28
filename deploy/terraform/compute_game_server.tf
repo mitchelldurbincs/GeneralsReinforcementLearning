@@ -1,0 +1,1 @@
+# defines the compute resources that will run my Go game server

@@ -1,0 +1,1 @@
+# defines AWS Elastic Container Registry stuff - Docker stuff

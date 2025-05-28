@@ -1,4 +1,4 @@
-package game
+package core 
 
 // Tile represents a single cell on the map.
 // Owner: -1 means neutral; 0..N-1 are player IDs.

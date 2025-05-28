@@ -8,10 +8,8 @@ import (
 )
 
 func main() {
-	// ① seed once
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	// ② pass rng into NewEngine
 	g := game.NewEngine(5, 5, 2, rng)
 
 	for turn := 0; turn < 10; turn++ {

@@ -1,0 +1,1 @@
+# defines the compute resources for my Python RL training jobs (prob will need GPUs)
