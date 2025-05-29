@@ -1,18 +1,15 @@
 package game
 
+// Game balance constants
 const (
-    CityStartingArmy    = 40
-    MinGeneralDistance  = 5
-    ProductionInterval  = 25
-    ArmyPerTurn         = 1
-)
+	// Map generation
+	CityRatio         = 20 // 1 city per 20 tiles (≈5%)
+	CityStartArmy     = 40
+	MinGeneralSpacing = 5 // Manhattan distance between generals
 
-const (
-	CityRatio          = 20  // 1 city per 20 tiles   (≈5 %)
-	CityStartArmy      = 40
-	GeneralProduction  = 1   // /turn
-	CityProduction     = 1   // /turn (owned)
-	NormalProduction   = 1   // /interval
-	NormalGrowInterval = 25  // turns
-	MinGeneralSpacing  = 5   // Manhattan distance
+	// Production rates
+	GeneralProduction  = 1  // armies per turn
+	CityProduction     = 1  // armies per turn (when owned)
+	NormalProduction   = 1  // armies per interval
+	NormalGrowInterval = 25 // turns between normal tile growth
 )
