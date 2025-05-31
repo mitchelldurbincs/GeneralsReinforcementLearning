@@ -22,7 +22,7 @@ type MoveAction struct {
 	FromY    int
 	ToX      int
 	ToY      int
-	// If true, move all but 1 army. If false, move half (rounded up)
+	// If true, move all but 1 army. If false, move half (integer division, minimum 1 if source army > 1)
 	MoveAll  bool
 }
 
@@ -30,32 +30,51 @@ func (m *MoveAction) GetPlayerID() int    { return m.PlayerID }
 func (m *MoveAction) GetType() ActionType { return ActionMove }
 
 func (m *MoveAction) Validate(b *Board, playerID int) error {
-	// Check bounds
+	// Check bounds for From coordinates
 	if m.FromX < 0 || m.FromX >= b.W || m.FromY < 0 || m.FromY >= b.H {
 		return ErrInvalidCoordinates
 	}
+	// Check bounds for To coordinates
 	if m.ToX < 0 || m.ToX >= b.W || m.ToY < 0 || m.ToY >= b.H {
 		return ErrInvalidCoordinates
 	}
-	
+
+	// Check if From and To are the same tile
+	if m.FromX == m.ToX && m.FromY == m.ToY {
+		return ErrMoveToSelf
+	}
+
 	// Check adjacency (only orthogonal moves allowed)
 	if !IsAdjacent(m.FromX, m.FromY, m.ToX, m.ToY) {
 		return ErrNotAdjacent
 	}
-	
+
 	fromIdx := b.Idx(m.FromX, m.FromY)
 	fromTile := &b.T[fromIdx]
-	
-	// Check ownership
+
+	// Check ownership of the FromTile
 	if fromTile.Owner != playerID {
 		return ErrNotOwned
 	}
-	
-	// Check has armies to move
+
+	// Check if FromTile has armies to move
 	if fromTile.Army <= 1 {
 		return ErrInsufficientArmy
 	}
-	
+
+	// Check properties of the ToTile
+	toIdx := b.Idx(m.ToX, m.ToY)
+	toTile := &b.T[toIdx]
+
+	// Check if ToTile is a mountain
+	if toTile.IsMountain() { // Assumes Tile struct has IsMountain() method
+		return ErrTargetIsMountain
+	}
+
+	// Add any other ToTile validations here if needed in the future
+	// For example, if certain tile types cannot be attacked/entered.
+	// For now, only mountains are explicitly restricted as per your request.
+
 	return nil
 }
 

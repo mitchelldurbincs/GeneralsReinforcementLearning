@@ -81,37 +81,63 @@ func (e *Engine) processActions(actions []core.Action) error {
 		return actions[i].GetPlayerID() < actions[j].GetPlayerID()
 	})
 
-	var captures []core.CaptureInfo
+	var allCaptureDetailsThisTurn []core.CaptureDetails
 
 	for _, action := range actions {
-		// Validate player is alive
-		if !e.gs.Players[action.GetPlayerID()].Alive {
-			continue // Skip actions from dead players
+		playerID := action.GetPlayerID()
+		// Validate player is alive (using the Players slice from GameState)
+		if playerID < 0 || playerID >= len(e.gs.Players) || !e.gs.Players[playerID].Alive {
+			continue // Skip actions from dead or invalid players
 		}
 
 		switch act := action.(type) {
 		case *core.MoveAction:
-			captured, err := core.ApplyMoveAction(e.gs.Board, act)
+			// ApplyMoveAction now returns (*CaptureDetails, error)
+			captureDetail, err := core.ApplyMoveAction(e.gs.Board, act)
 			if err != nil {
-				// Log error but continue processing other actions
-				// In a real implementation, you might want structured logging here
+				// Log error (e.g., using a proper logger)
+				fmt.Printf("Player %d action error: %v (Action: %+v)\n", act.PlayerID, err, act)
+				// Depending on game rules, you might return err here or just skip this action
 				continue
 			}
-			if captured {
-				captures = append(captures, core.CaptureInfo{
-					X:        act.ToX,
-					Y:        act.ToY,
-					PlayerID: act.PlayerID,
-					TileType: e.gs.Board.T[e.gs.Board.Idx(act.ToX, act.ToY)].Type,
-				})
+			if captureDetail != nil {
+				allCaptureDetailsThisTurn = append(allCaptureDetailsThisTurn, *captureDetail)
 			}
 		}
 	}
 
-	// Process any special capture effects
-	core.ProcessCaptures(e.gs.Board, captures)
+	// Process captures to identify eliminations
+	eliminationOrders := core.ProcessCaptures(allCaptureDetailsThisTurn)
+	if len(eliminationOrders) > 0 {
+		e.handleEliminationsAndTileTurnover(eliminationOrders)
+	}
 
-	return nil
+	return nil // Or return aggregated errors if any occurred and were not 'continue'd
+}
+
+// handleEliminationsAndTileTurnover processes player eliminations and transfers tiles.
+func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminationOrder) {
+	for _, order := range orders {
+		eliminatedID := order.EliminatedPlayerID
+		newOwnerID := order.NewOwnerID
+
+		fmt.Printf("Player %d's General captured by Player %d! Transferring assets.\n", eliminatedID, newOwnerID)
+
+		// Iterate through all tiles on the board
+		for i := range e.gs.Board.T {
+			if e.gs.Board.T[i].Owner == eliminatedID {
+				e.gs.Board.T[i].Owner = newOwnerID
+				// Armies on the tiles remain as they are, as per your requirement.
+				// If the tile was a city or the captured general itself, its type doesn't change here,
+				// only its ownership. The captured general tile itself would have already been
+				// flipped to newOwnerID by ApplyMoveAction. This loop ensures all *other*
+				// tiles owned by eliminatedID are also flipped.
+			}
+		}
+		// Note: The actual marking of the player as 'dead' (e.g. e.gs.Players[eliminatedID].Alive = false)
+		// will be handled by `updatePlayerStats()` when it no longer finds a general for eliminatedID.
+		// This keeps `updatePlayerStats` as the single source of truth for Alive status based on general presence.
+	}
 }
 
 // processTurnProduction applies army growth

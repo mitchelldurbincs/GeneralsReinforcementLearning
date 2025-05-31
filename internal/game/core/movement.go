@@ -1,72 +1,118 @@
 package core
 
-// ApplyMoveAction applies a move action to the board
-// Returns true if the move resulted in a capture
-func ApplyMoveAction(b *Board, action *MoveAction) (bool, error) {
+// CaptureDetails provides rich information about a capture event.
+// It is returned by ApplyMoveAction if a tile changes ownership.
+type CaptureDetails struct {
+	X                 int // X coordinate of the captured tile
+	Y                 int // Y coordinate of the captured tile
+	TileType          int // Type of the tile that was captured (e.g., TileNormal, TileCity, TileGeneral)
+	CapturingPlayerID int // ID of the player who made the capture and now owns the tile
+	PreviousOwnerID   int // ID of the player who owned the tile before capture (can be NeutralID)
+	PreviousArmyCount int // Army count on the tile before capture
+}
+
+// ApplyMoveAction applies a move action to the board.
+// Returns CaptureDetails if the move resulted in a tile changing ownership, otherwise nil.
+// An error is returned if the action is invalid or an issue occurs.
+func ApplyMoveAction(b *Board, action *MoveAction) (*CaptureDetails, error) {
+	// Validate the action first (this now includes checks for target tile type like mountains)
 	if err := action.Validate(b, action.PlayerID); err != nil {
-		return false, err
+		return nil, err
 	}
-	
+
 	fromIdx := b.Idx(action.FromX, action.FromY)
 	toIdx := b.Idx(action.ToX, action.ToY)
-	
+
 	fromTile := &b.T[fromIdx]
 	toTile := &b.T[toIdx]
-	
-	// Calculate armies to move
+
+	// Store pre-capture state of toTile for CaptureDetails
+	originalToTileOwner := toTile.Owner
+	originalToTileArmy := toTile.Army
+	// TileType of toTile does not change upon capture, only owner and army.
+
 	var armiesToMove int
 	if action.MoveAll {
-		armiesToMove = fromTile.Army - 1 // Leave 1 behind
+		armiesToMove = fromTile.Army - 1
 	} else {
-		armiesToMove = fromTile.Army / 2 // Move half (rounded down)
-		if armiesToMove == 0 {
-			armiesToMove = 1 // Always move at least 1 if we have >1
+		// Current logic: move half (integer division), minimum 1 if source army > 1
+		armiesToMove = fromTile.Army / 2
+		if armiesToMove == 0 && fromTile.Army > 1 { // if fromTile.Army is 2 or 3, Army/2 is 1. If 1, Validate fails.
+			armiesToMove = 1
 		}
 	}
 	
-	// Apply the move
+	// Ensure armiesToMove is not negative or more than available (Validate should prevent fromTile.Army <=1)
+	if armiesToMove < 0 { // Should not happen if logic above is correct
+		armiesToMove = 0
+	}
+    if armiesToMove > fromTile.Army -1 && fromTile.Army > 1 { // Should not happen if logic above is correct
+        armiesToMove = fromTile.Army -1
+    }
+
+
+	var captureDetails *CaptureDetails = nil
+
+	// Apply the army reduction from the source tile
 	fromTile.Army -= armiesToMove
-	
-	captured := false
+
 	if toTile.Owner == action.PlayerID {
-		// Moving to own tile - just add armies
+		// Moving to own tile - just consolidate armies
 		toTile.Army += armiesToMove
 	} else {
-		// Combat resolution
+		// Moving to an enemy or neutral tile - combat resolution
 		if armiesToMove > toTile.Army {
-			// Successful capture
+			// Successful capture - tile changes ownership
 			toTile.Owner = action.PlayerID
 			toTile.Army = armiesToMove - toTile.Army
-			captured = true
+
+			captureDetails = &CaptureDetails{
+				X:                 action.ToX,
+				Y:                 action.ToY,
+				TileType:          toTile.Type, // The type of the tile that was captured
+				CapturingPlayerID: action.PlayerID,
+				PreviousOwnerID:   originalToTileOwner,
+				PreviousArmyCount: originalToTileArmy,
+			}
 		} else {
-			// Failed attack
+			// Failed attack - defender loses armies, but retains ownership
 			toTile.Army -= armiesToMove
 		}
 	}
-	
-	return captured, nil
+
+	return captureDetails, nil
 }
 
-// ProcessCaptures handles cascading captures (cities/generals)
-func ProcessCaptures(b *Board, captures []CaptureInfo) []CaptureInfo {
-	var newCaptures []CaptureInfo
-	
-	for _, capture := range captures {
-		idx := b.Idx(capture.X, capture.Y)
-		tile := &b.T[idx]
-		
-		if tile.IsGeneral() || tile.IsCity() {
-			// Special handling for important tiles
-			newCaptures = append(newCaptures, capture)
+// PlayerEliminationOrder instructs the engine on which player was eliminated
+// and who should take over their tiles.
+type PlayerEliminationOrder struct {
+	EliminatedPlayerID int
+	NewOwnerID         int // ID of the player who captured the general and takes over tiles
+}
+
+// ProcessCaptures analyzes all capture events from a turn and identifies
+// player eliminations based on General captures.
+// It returns a list of PlayerEliminationOrder structs for the engine to act upon.
+// This function does NOT modify the board or player states directly.
+func ProcessCaptures(allCaptureEventsThisTurn []CaptureDetails) []PlayerEliminationOrder {
+	var eliminationOrders []PlayerEliminationOrder
+	// Keep track of players whose elimination has already been ordered in this batch
+	// This handles rare cases like a player losing multiple generals simultaneously (if game rules allowed)
+	eliminationProcessedFor := make(map[int]bool)
+
+	for _, capture := range allCaptureEventsThisTurn {
+		// Check if a General tile was captured from an actual player by another player
+		if capture.TileType == TileGeneral &&
+			capture.PreviousOwnerID != NeutralID &&                 // The General was owned by a specific player
+			capture.PreviousOwnerID != capture.CapturingPlayerID && // Not a self-capture (should be impossible by rules)
+			!eliminationProcessedFor[capture.PreviousOwnerID] {     // This player's elimination hasn't been ordered yet
+
+			eliminationOrders = append(eliminationOrders, PlayerEliminationOrder{
+				EliminatedPlayerID: capture.PreviousOwnerID,
+				NewOwnerID:         capture.CapturingPlayerID,
+			})
+			eliminationProcessedFor[capture.PreviousOwnerID] = true
 		}
 	}
-	
-	return newCaptures
-}
-
-// CaptureInfo represents information about a captured tile
-type CaptureInfo struct {
-	X, Y     int
-	PlayerID int
-	TileType int
+	return eliminationOrders
 }
