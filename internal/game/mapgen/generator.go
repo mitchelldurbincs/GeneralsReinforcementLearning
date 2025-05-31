@@ -2,6 +2,7 @@ package mapgen
 
 import (
 	"math/rand"
+
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 )
 
@@ -13,6 +14,9 @@ type MapConfig struct {
 	CityRatio         int // 1 city per N tiles
 	CityStartArmy     int
 	MinGeneralSpacing int
+	NumMountainVeins  int     // Number of mountain veins/ranges to generate
+	MinVeinLength     int     // Minimum length of a mountain vein
+	MaxVeinLength     int     // Maximum length of a mountain vein
 }
 
 // DefaultMapConfig returns a sensible default configuration
@@ -24,6 +28,9 @@ func DefaultMapConfig(w, h, players int) MapConfig {
 		CityRatio:         20,
 		CityStartArmy:     40,
 		MinGeneralSpacing: 5,
+		NumMountainVeins:  (w * h) / 50, // Example: 1 vein per 100 tiles
+		MinVeinLength:     3,
+		MaxVeinLength:     w / 4,        // Example: Max vein length is a quarter of the width
 	}
 }
 
@@ -41,29 +48,98 @@ func NewGenerator(config MapConfig, rng *rand.Rand) *Generator {
 	}
 }
 
-// GenerateMap creates a new board with cities and generals placed
+// GenerateMap creates a new board with mountains, cities, and generals placed
 func (g *Generator) GenerateMap() *core.Board {
 	board := core.NewBoard(g.config.Width, g.config.Height)
-	
+
+	g.placeMountains(board) // Place mountains first
 	g.placeCities(board)
 	g.placeGenerals(board)
-	
+
 	return board
+}
+
+func (g *Generator) placeMountains(b *core.Board) {
+	for vein := 0; vein < g.config.NumMountainVeins; vein++ {
+		// Attempt to find a starting point for the vein
+		startX, startY := -1, -1
+		maxSeedAttempts := 100 // Try to find a valid seed for the vein start
+		foundSeed := false
+		for attempt := 0; attempt < maxSeedAttempts; attempt++ {
+			sx, sy := g.rng.Intn(b.W), g.rng.Intn(b.H)
+			sIdx := b.Idx(sx, sy)
+			// Seed must be on a normal, neutral tile
+			if b.T[sIdx].Type == core.TileNormal && b.T[sIdx].IsNeutral() {
+				startX, startY = sx, sy
+				foundSeed = true
+				break
+			}
+		}
+
+		if !foundSeed {
+			continue // Could not find a suitable seed for this vein, try next vein
+		}
+
+		currentX, currentY := startX, startY
+		idx := b.Idx(currentX, currentY)
+		b.T[idx].Type = core.TileMountain
+		b.T[idx].Army = 0 // Mountains are impassable and have no army
+		// Owner remains NeutralID (default)
+
+		veinLength := g.config.MinVeinLength
+		if g.config.MaxVeinLength > g.config.MinVeinLength {
+			veinLength += g.rng.Intn(g.config.MaxVeinLength - g.config.MinVeinLength + 1)
+		}
+
+		for i := 1; i < veinLength; i++ {
+			// Get valid neighbors (N, S, E, W) that are normal tiles
+			potentialNextSteps := []struct{ x, y int }{}
+			// Directions: N, E, S, W
+			dx := []int{0, 1, 0, -1}
+			dy := []int{-1, 0, 1, 0} // Common graphics coordinates: (0,0) top-left
+
+			// Shuffle directions to make veins more random
+			g.rng.Shuffle(len(dx), func(i, j int) { dx[i], dx[j] = dx[j], dx[i]; dy[i], dy[j] = dy[j], dy[i] })
+
+
+			for j := 0; j < 4; j++ {
+				nx, ny := currentX+dx[j], currentY+dy[j]
+				if nx >= 0 && nx < b.W && ny >= 0 && ny < b.H {
+					nIdx := b.Idx(nx, ny)
+					// Vein can only grow into normal, neutral tiles
+					if b.T[nIdx].Type == core.TileNormal && b.T[nIdx].IsNeutral() {
+						potentialNextSteps = append(potentialNextSteps, struct{ x, y int }{nx, ny})
+					}
+				}
+			}
+
+			if len(potentialNextSteps) == 0 {
+				break // Cannot extend vein further from this point
+			}
+
+			// Pick a random valid direction to grow
+			nextStep := potentialNextSteps[g.rng.Intn(len(potentialNextSteps))]
+			currentX, currentY = nextStep.x, nextStep.y
+			idx = b.Idx(currentX, currentY)
+			b.T[idx].Type = core.TileMountain
+			b.T[idx].Army = 0
+		}
+	}
 }
 
 func (g *Generator) placeCities(b *core.Board) {
 	want := (b.W * b.H) / g.config.CityRatio
 	placed := 0
-	
-	// Use a maximum attempt counter to avoid infinite loops
-	maxAttempts := want * 10
+
+	maxAttempts := want * 20 // Increased attempts slightly
 	attempts := 0
-	
+
 	for placed < want && attempts < maxAttempts {
 		x, y := g.rng.Intn(b.W), g.rng.Intn(b.H)
 		idx := b.Idx(x, y)
 		t := &b.T[idx]
-		
+
+		// Cities can only be placed on neutral, normal tiles
 		if t.IsNeutral() && t.Type == core.TileNormal {
 			t.Type = core.TileCity
 			t.Army = g.config.CityStartArmy
@@ -75,42 +151,46 @@ func (g *Generator) placeCities(b *core.Board) {
 
 func (g *Generator) placeGenerals(b *core.Board) []GeneralPlacement {
 	placements := make([]GeneralPlacement, g.config.PlayerCount)
-	
+
 	for pid := 0; pid < g.config.PlayerCount; pid++ {
 		placement := g.findGeneralLocation(b, placements[:pid])
-		
+
 		t := &b.T[placement.Idx]
 		t.Owner = pid
 		t.Army = 1
-		t.Type = core.TileGeneral
-		
+		t.Type = core.TileGeneral // This tile becomes a general tile
+
 		placements[pid] = placement
 	}
-	
+
 	return placements
 }
 
 func (g *Generator) findGeneralLocation(b *core.Board, existing []GeneralPlacement) GeneralPlacement {
-	maxAttempts := b.W * b.H // Fallback to prevent infinite loops
-	
+	maxAttempts := b.W * b.H 
+
 	for attempts := 0; attempts < maxAttempts; attempts++ {
 		x, y := g.rng.Intn(b.W), g.rng.Intn(b.H)
 		idx := b.Idx(x, y)
-		
-		if !b.T[idx].IsNeutral() || b.T[idx].IsCity() {
+		tile := &b.T[idx]
+
+		// Generals must be placed on neutral, normal tiles.
+		// Not on cities, existing generals, or mountains.
+		if !tile.IsNeutral() || tile.Type != core.TileNormal {
 			continue
 		}
-		
+
 		// Check minimum distance from existing generals
 		validLocation := true
 		for _, other := range existing {
 			otherX, otherY := b.XY(other.Idx)
+			// Using Board's Distance method
 			if b.Distance(x, y, otherX, otherY) < g.config.MinGeneralSpacing {
 				validLocation = false
 				break
 			}
 		}
-		
+
 		if validLocation {
 			return GeneralPlacement{
 				PlayerID: len(existing),
@@ -120,21 +200,39 @@ func (g *Generator) findGeneralLocation(b *core.Board, existing []GeneralPlaceme
 			}
 		}
 	}
-	
-	// Fallback: place anywhere valid (shouldn't happen with reasonable configs)
+
+	// Fallback: if truly no location respecting spacing is found after many attempts,
+	// try to find *any* valid normal tile. This is less likely with proper spacing.
 	for idx, tile := range b.T {
 		if tile.IsNeutral() && tile.Type == core.TileNormal {
+			// Check distance for fallback as well, if possible, but prioritize placement.
+			// For simplicity in fallback, we might ignore spacing if initial attempts fail badly.
+			// However, the problem description implies a robust system.
+			// The provided fallback just picks the first available, which might violate spacing.
+			// A better fallback would still try to respect spacing or have a relaxed spacing.
+			// For now, keeping the original fallback logic structure:
 			x, y := b.XY(idx)
-			return GeneralPlacement{
-				PlayerID: len(existing),
-				Idx:      idx,
-				X:        x,
-				Y:        y,
+			// Re-check spacing for fallback location if we want to be strict
+			validFallbackLocation := true
+			for _, other := range existing {
+				otherX, otherY := b.XY(other.Idx)
+				if b.Distance(x, y, otherX, otherY) < g.config.MinGeneralSpacing {
+					validFallbackLocation = false
+					break
+				}
+			}
+			if validFallbackLocation {
+				return GeneralPlacement{
+					PlayerID: len(existing),
+					Idx:      idx,
+					X:        x,
+					Y:        y,
+				}
 			}
 		}
 	}
-	
-	panic("Unable to place general - no valid locations")
+	// If even the fallback fails, it's a critical issue with map gen parameters or logic
+	panic("Unable to place general - no valid locations found even in fallback")
 }
 
 // GeneralPlacement tracks where a general was placed

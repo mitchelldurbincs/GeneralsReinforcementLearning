@@ -217,70 +217,99 @@ const (
 var playerColors = []string{ColorRed, ColorBlue, ColorGreen, ColorYellow, ColorPurple, ColorCyan}
 
 // Alternative: Compact board with unicode symbols
-func (e *Engine) Board() string {
+func (e *Engine) Board() string { // e.g. e is *game.Engine which has e.gs *game.State
 	var sb strings.Builder
-	
+
 	// Unicode symbols for better visual distinction
 	const (
-		EmptySymbol   = "·"
-		CitySymbol    = "⬢"
-		GeneralSymbol = "♔"
-		PlayerSymbols = "ABCDEFGH"
+		EmptySymbol    = "·"
+		CitySymbol     = "⬢" // Hexagon
+		GeneralSymbol  = "♔" // Crown
+		MountainSymbol = "▲" // Triangle for mountain
+		PlayerSymbols  = "ABCDEFGH"
 	)
-	
+
 	// Column headers
-	sb.WriteString("   ")
-	for x := range e.gs.Board.W {
+	sb.WriteString("   ") // Adjusted for row numbers
+	for x := 0; x < e.gs.Board.W; x++ {
 		sb.WriteString(fmt.Sprintf("%2d", x))
 	}
 	sb.WriteString("\n")
-	
-	for y := range e.gs.Board.H {
+
+	for y := 0; y < e.gs.Board.H; y++ {
 		sb.WriteString(fmt.Sprintf("%2d ", y))
-		
+
 		for x := 0; x < e.gs.Board.W; x++ {
-			t := e.gs.Board.T[e.gs.Board.Idx(x, y)]
-			
+			// Assuming e.gs.Board.Tile(x,y) or similar method exists if T is not public
+			// Or direct access if T is public and Idx method is on Board
+			t := e.gs.Board.T[e.gs.Board.Idx(x, y)] // Using direct access as in original
+
 			var symbol string
 			var color string
-			
+
 			switch {
-			case t.IsNeutral() && t.Army == 0:
-				symbol = " " + EmptySymbol
-				color = ColorGray
-				
-			case t.IsCity() && t.IsNeutral():
-				symbol = " " + CitySymbol
-				color = ColorWhite
-				
-			case t.IsGeneral():
+			case t.IsMountain(): // Priority 1: Mountains
+				symbol = " " + MountainSymbol
+				color = ColorGray // Mountains are gray
+			
+			case t.IsGeneral(): // Priority 2: Generals (owned)
 				playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
 				symbol = playerChar + GeneralSymbol
 				color = getPlayerColor(t.Owner)
-				
-			case t.IsCity():
+
+			case t.IsCity() && t.IsNeutral(): // Priority 3: Neutral Cities
+				symbol = " " + CitySymbol
+				color = ColorWhite // Neutral cities are white (or gray, depends on preference)
+			
+			case t.IsCity(): // Priority 4: Player-owned Cities
 				playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
 				symbol = playerChar + CitySymbol
 				color = getPlayerColor(t.Owner)
-				
-			default:
-				playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
-				if t.Army < 10 {
-					symbol = playerChar + fmt.Sprintf("%d", t.Army)
-				} else {
-					symbol = playerChar + "+"
-				}
-				color = getPlayerColor(t.Owner)
-			}
 			
+			// case t.IsNeutral() && t.Army == 0 && t.Type == core.TileNormal: // More specific empty
+			case t.IsNeutral() && t.Type == core.TileNormal: // Priority 5: Empty, neutral, normal land
+				// If army > 0 on neutral normal, it will be handled by default or a new specific case
+				if t.Army == 0 {
+					symbol = " " + EmptySymbol
+				} else {
+					// Neutral land with armies (e.g. from a previous owner)
+					symbol = fmt.Sprintf("%2d", t.Army) // Display army count for neutral land
+					if t.Army >= 10 { // Keep it to 2 chars
+						symbol = " +" // Or some other indicator for large neutral armies
+					}
+				}
+				color = ColorGray
+
+
+			default: // Player-owned normal tiles, or other neutral tiles with armies
+				if t.IsNeutral() { // Neutral tile (not city, not mountain, not empty normal) e.g. with army
+					if t.Army < 10 {
+						symbol = fmt.Sprintf(" %d", t.Army)
+					} else if t.Army < 100 { // Example for two digits
+						symbol = fmt.Sprintf("%2d", t.Army)
+					} else {
+						symbol = "++" // For very large armies
+					}
+					color = ColorGray
+				} else { // Player owned normal tile
+					playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
+					if t.Army < 10 {
+						symbol = playerChar + fmt.Sprintf("%d", t.Army)
+					} else {
+						// For armies >= 10 on player tiles, use P+ (Player initial + plus sign)
+						symbol = playerChar + "+"
+					}
+					color = getPlayerColor(t.Owner)
+				}
+			}
 			sb.WriteString(color + symbol + ColorReset)
 		}
 		sb.WriteString("\n")
 	}
-	
+
 	// Compact legend
-	sb.WriteString("\n" + EmptySymbol + "=empty " + CitySymbol + "=city " + GeneralSymbol + "=general A-H=players\n")
-	
+	sb.WriteString("\n" + EmptySymbol + "=empty " + CitySymbol + "=city " + GeneralSymbol + "=general " + MountainSymbol + "=mountain A-H=players\n")
+
 	return sb.String()
 }
 

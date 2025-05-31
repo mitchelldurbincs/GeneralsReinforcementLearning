@@ -16,21 +16,25 @@ type Board struct {
 }
 
 const (
-    TileNormal  = 0
-    TileGeneral = 1
-    TileCity    = 2
-    NeutralID   = -1
+    TileNormal   = 0
+    TileGeneral  = 1
+    TileCity     = 2
+	TileMountain = 3
+    NeutralID    = -1
 )
 
 func (t *Tile) IsNeutral() bool { return t.Owner == NeutralID }
 func (t *Tile) IsCity() bool    { return t.Type == TileCity }
 func (t *Tile) IsGeneral() bool { return t.Type == TileGeneral }
+func (t *Tile) IsMountain() bool { return t.Type == TileMountain }
 func (t Tile) IsEmpty() bool    { return t.IsNeutral() && t.Type == TileNormal && t.Army == 0 }
 
 func NewBoard(w, h int) *Board {
 	b := &Board{W: w, H: h, T: make([]Tile, w*h)}
 	for i := range b.T {
+		// All tiles start neural and normal
 		b.T[i].Owner = -1
+		b.T[i].Type = TileNormal 
 	}
 	return b
 }
@@ -40,11 +44,14 @@ func (b *Board) XY(idx int) (int, int)  { return idx % b.W, idx / b.W }
 
 // Manhattan distance between two board coordinates
 func (b *Board) Distance(x1, y1, x2, y2 int) int {
-	if x1 < x2 {
-		x2, x1 = x1, x2
+	// Optimized Manhattan distance calculation (abs(x1-x2) + abs(y1-y2))
+	dx := x1 - x2
+	if dx < 0 {
+		dx = -dx
 	}
-	if y1 < y2 {
-		y2, y1 = y1, y2
+	dy := y1 - y2
+	if dy < 0 {
+		dy = -dy
 	}
-	return (x1 - x2) + (y1 - y2)
+	return dx + dy
 }

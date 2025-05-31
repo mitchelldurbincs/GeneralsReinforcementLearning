@@ -5,7 +5,7 @@ type ActionType int
 
 const (
 	ActionMove ActionType = iota
-	// Future: ActionSplit, ActionDefend, etc.
+	// Future: ActionSplit, ActionDefend?, etc.
 )
 
 // Action represents a player action
