@@ -60,12 +60,12 @@ func (g *Generator) GenerateMap() *core.Board {
 }
 
 func (g *Generator) placeMountains(b *core.Board) {
-	for vein := 0; vein < g.config.NumMountainVeins; vein++ {
+	for range g.config.NumMountainVeins {
 		// Attempt to find a starting point for the vein
 		startX, startY := -1, -1
 		maxSeedAttempts := 100 // Try to find a valid seed for the vein start
 		foundSeed := false
-		for attempt := 0; attempt < maxSeedAttempts; attempt++ {
+		for range maxSeedAttempts {
 			sx, sy := g.rng.Intn(b.W), g.rng.Intn(b.H)
 			sIdx := b.Idx(sx, sy)
 			// Seed must be on a normal, neutral tile
@@ -102,7 +102,7 @@ func (g *Generator) placeMountains(b *core.Board) {
 			g.rng.Shuffle(len(dx), func(i, j int) { dx[i], dx[j] = dx[j], dx[i]; dy[i], dy[j] = dy[j], dy[i] })
 
 
-			for j := 0; j < 4; j++ {
+			for j := range 4 {
 				nx, ny := currentX+dx[j], currentY+dy[j]
 				if nx >= 0 && nx < b.W && ny >= 0 && ny < b.H {
 					nIdx := b.Idx(nx, ny)
@@ -152,7 +152,7 @@ func (g *Generator) placeCities(b *core.Board) {
 func (g *Generator) placeGenerals(b *core.Board) []GeneralPlacement {
 	placements := make([]GeneralPlacement, g.config.PlayerCount)
 
-	for pid := 0; pid < g.config.PlayerCount; pid++ {
+	for pid := range g.config.PlayerCount {
 		placement := g.findGeneralLocation(b, placements[:pid])
 
 		t := &b.T[placement.Idx]
@@ -169,7 +169,7 @@ func (g *Generator) placeGenerals(b *core.Board) []GeneralPlacement {
 func (g *Generator) findGeneralLocation(b *core.Board, existing []GeneralPlacement) GeneralPlacement {
 	maxAttempts := b.W * b.H 
 
-	for attempts := 0; attempts < maxAttempts; attempts++ {
+	for range maxAttempts {
 		x, y := g.rng.Intn(b.W), g.rng.Intn(b.H)
 		idx := b.Idx(x, y)
 		tile := &b.T[idx]

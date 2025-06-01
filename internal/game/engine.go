@@ -30,7 +30,7 @@ func NewEngine(w, h, players int, rng *rand.Rand) *Engine {
 
 	// Initialize players
 	playerSlice := make([]Player, players)
-	for i := 0; i < players; i++ {
+	for i := range players {
 		playerSlice[i] = Player{
 			ID:         i,
 			Alive:      true,
@@ -257,15 +257,15 @@ func (e *Engine) Board() string { // e.g. e is *game.Engine which has e.gs *game
 
 	// Column headers
 	sb.WriteString("   ") // Adjusted for row numbers
-	for x := 0; x < e.gs.Board.W; x++ {
+	for x := range e.gs.Board.W {
 		sb.WriteString(fmt.Sprintf("%2d", x))
 	}
 	sb.WriteString("\n")
 
-	for y := 0; y < e.gs.Board.H; y++ {
+	for y := range e.gs.Board.H {
 		sb.WriteString(fmt.Sprintf("%2d ", y))
 
-		for x := 0; x < e.gs.Board.W; x++ {
+		for x := range e.gs.Board.W {
 			// Assuming e.gs.Board.Tile(x,y) or similar method exists if T is not public
 			// Or direct access if T is public and Idx method is on Board
 			t := e.gs.Board.T[e.gs.Board.Idx(x, y)] // Using direct access as in original
