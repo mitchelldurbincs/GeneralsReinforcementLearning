@@ -1,7 +1,8 @@
 package game
 
 import (
-	"fmt"
+	"context"
+	"errors" 
 	"math/rand"
 	"sort"
 	"strings"
@@ -9,140 +10,231 @@ import (
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/mapgen"
+	"github.com/rs/zerolog"
 )
 
 type Engine struct {
 	gs       *GameState
 	rng      *rand.Rand
 	gameOver bool
+	logger   zerolog.Logger 
 }
 
 // NewEngine creates a new game engine with map generation
-func NewEngine(w, h, players int, rng *rand.Rand) *Engine {
-	if rng == nil {
-		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+// NewEngine creates a new game engine with map generation.
+// Accepts a context, primarily for consistency and potential future use (e.g., complex setup).
+func NewEngine(ctx context.Context, w, h, players int, rng *rand.Rand, parentLogger zerolog.Logger) *Engine {
+	// Create a logger for this engine instance, potentially deriving from a passed-in logger
+	// or using a default if none is provided.
+	// For this example, we'll use the parentLogger and add engine-specific fields.
+	engineLogger := parentLogger.With().Str("component", "GameEngine").Logger()
+
+	// Example: Check context if setup were long (not strictly necessary here yet)
+	select {
+	case <-ctx.Done():
+		engineLogger.Error().Err(ctx.Err()).Msg("Engine creation cancelled or timed out during initial phase")
+		return nil 
+	default:
 	}
 
-	// Use mapgen package
+	engineLogger.Info().
+		Int("width", w).
+		Int("height", h).
+		Int("num_players", players).
+		Msg("Initializing new game engine")
+
+	if rng == nil {
+		seed := time.Now().UnixNano()
+		engineLogger.Debug().Int64("seed", seed).Msg("RNG was nil, created new default RNG")
+		rng = rand.New(rand.NewSource(seed))
+	} else {
+		engineLogger.Debug().Msg("Using provided RNG")
+	}
+
 	config := mapgen.DefaultMapConfig(w, h, players)
 	generator := mapgen.NewGenerator(config, rng)
+	engineLogger.Debug().Interface("map_config", config).Msg("Map generator configured")
 	board := generator.GenerateMap()
+	engineLogger.Debug().Msg("Map generated")
 
-	// Initialize players
 	playerSlice := make([]Player, players)
 	for i := range players {
-		playerSlice[i] = Player{
-			ID:         i,
-			Alive:      true,
-			GeneralIdx: -1, // Will be set by updatePlayerStats
-		}
+		playerSlice[i] = Player{ID: i, Alive: true, GeneralIdx: -1}
 	}
+	engineLogger.Debug().Int("num_players", len(playerSlice)).Msg("Players initialized")
 
 	e := &Engine{
-		gs: &GameState{
-			Board:   board,
-			Players: playerSlice,
-		},
+		gs:       &GameState{Board: board, Players: playerSlice},
 		rng:      rng,
 		gameOver: false,
+		logger:   engineLogger,
 	}
 
-	e.updatePlayerStats()
+	e.updatePlayerStats() // This will use e.logger
+	e.logger.Info().Msg("Game engine created and initial stats updated")
 	return e
 }
 
-// Step processes actions and advances the game by one turn
-func (e *Engine) Step(actions []core.Action) error {
+// Step processes actions and advances the game by one turn.
+// It accepts a context for cancellation/timeout.
+func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
+	// At the beginning of the step, check for cancellation.
+	select {
+	case <-ctx.Done():
+		e.logger.Warn().Err(ctx.Err()).Int("turn", e.gs.Turn).Msg("Game step cancelled or timed out before starting")
+		return ctx.Err()
+	default:
+	}
+
 	if e.gameOver {
+		e.logger.Warn().Int("turn", e.gs.Turn).Msg("Attempted to step game that is already over")
 		return core.ErrGameOver
 	}
 
 	e.gs.Turn++
+	// You can derive the turnLogger from e.logger or potentially from a logger in ctx.
+	// For simplicity, we continue deriving from e.logger.
+	// If ctx contained a request-specific logger: `baseLoggerForTurn := zerolog.Ctx(ctx)`
+	// then `turnLogger := baseLoggerForTurn.With().Int("turn", e.gs.Turn).Logger()`
+	turnLogger := e.logger.With().Int("turn", e.gs.Turn).Logger()
 
-	// Process actions
-	if err := e.processActions(actions); err != nil {
+	turnLogger.Debug().Msg("Starting game step")
+
+	turnLogger.Debug().Int("num_actions_submitted", len(actions)).Msg("Processing actions")
+	if err := e.processActions(ctx, actions, turnLogger); err != nil {
+		// Check if the error is due to context cancellation, which might have already been logged by processActions
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err // Already logged, just propagate
+		}
+		// Other errors from processActions would have been logged there.
 		return err
 	}
+	turnLogger.Debug().Msg("Finished processing actions")
 
-	// Apply production
-	e.processTurnProduction()
+	// Check context again before potentially long operations
+	select {
+	case <-ctx.Done():
+		turnLogger.Warn().Err(ctx.Err()).Msg("Game step cancelled or timed out before production")
+		return ctx.Err()
+	default:
+	}
+	e.processTurnProduction(turnLogger)
 
-	// Update player stats and check win conditions
+	select {
+	case <-ctx.Done():
+		turnLogger.Warn().Err(ctx.Err()).Msg("Game step cancelled or timed out before updating/checking stats")
+		return ctx.Err()
+	default:
+	}
 	e.updatePlayerStats()
-	e.checkGameOver()
+	e.checkGameOver(turnLogger)
 
+	turnLogger.Debug().Msg("Game step finished")
 	return nil
 }
 
-// processActions handles all actions for this turn
-func (e *Engine) processActions(actions []core.Action) error {
-	// Sort actions for deterministic processing (by player ID)
+// processActions handles all actions for this turn.
+// It now accepts a context to check for cancellation during its loop.
+func (e *Engine) processActions(ctx context.Context, actions []core.Action, l zerolog.Logger) error {
+	l.Debug().Msg("Sorting actions for deterministic processing")
 	sort.Slice(actions, func(i, j int) bool {
 		return actions[i].GetPlayerID() < actions[j].GetPlayerID()
 	})
 
 	var allCaptureDetailsThisTurn []core.CaptureDetails
+	var encounteredError error
 
-	for _, action := range actions {
-		playerID := action.GetPlayerID()
-		// Validate player is alive (using the Players slice from GameState)
-		if playerID < 0 || playerID >= len(e.gs.Players) || !e.gs.Players[playerID].Alive {
-			continue // Skip actions from dead or invalid players
+	for i, action := range actions {
+		// Periodically check for context cancellation, especially if 'actions' can be very long.
+		if i%10 == 0 { // Example: Check every 10 actions
+			select {
+			case <-ctx.Done():
+				l.Warn().Err(ctx.Err()).Int("actions_processed_before_cancel", i).Msg("Action processing loop cancelled or timed out")
+				return ctx.Err()
+			default:
+				// Continue processing
+			}
 		}
 
+		playerID := action.GetPlayerID()
+		actionLogger := l.With().Int("player_id", playerID).Logger()
+
+		if playerID < 0 || playerID >= len(e.gs.Players) || !e.gs.Players[playerID].Alive {
+			actionLogger.Warn().Interface("action", action).Msg("Skipping action from dead or invalid player")
+			continue
+		}
+
+		actionLogger.Debug().Interface("action", action).Msg("Applying action")
 		switch act := action.(type) {
 		case *core.MoveAction:
-			// ApplyMoveAction now returns (*CaptureDetails, error)
-			captureDetail, err := core.ApplyMoveAction(e.gs.Board, act)
+			// Assuming ApplyMoveAction itself doesn't need context for internal long computations.
+			// If ApplyMoveAction also called action.Validate(..., logger), that logger could be actionLogger.
+			// And if action.Validate took context, it would be passed there too.
+			// For now, ApplyMoveAction doesn't take context in its signature.
+			captureDetail, err := core.ApplyMoveAction(e.gs.Board, act /*, actionLogger (if ApplyMoveAction takes it for Validate) */)
 			if err != nil {
-				// Log error (e.g., using a proper logger)
-				fmt.Printf("Player %d action error: %v (Action: %+v)\n", act.PlayerID, err, act)
-				// Depending on game rules, you might return err here or just skip this action
+				actionLogger.Error().Err(err).
+					Interface("action_details", act).
+					Msg("Failed to apply move action")
+				if encounteredError == nil {
+					encounteredError = err
+				}
 				continue
 			}
 			if captureDetail != nil {
+				actionLogger.Debug().
+					Interface("capture_details", *captureDetail).
+					Msg("Move resulted in capture")
 				allCaptureDetailsThisTurn = append(allCaptureDetailsThisTurn, *captureDetail)
 			}
+		default:
+			actionLogger.Warn().Str("action_type", core.GetActionType(action)).Msg("Unhandled action type in processActions")
 		}
 	}
 
-	// Process captures to identify eliminations
-	eliminationOrders := core.ProcessCaptures(allCaptureDetailsThisTurn)
-	if len(eliminationOrders) > 0 {
-		e.handleEliminationsAndTileTurnover(eliminationOrders)
+	if len(allCaptureDetailsThisTurn) > 0 {
+		l.Debug().Int("num_captures_this_turn", len(allCaptureDetailsThisTurn)).Msg("Processing captures for eliminations")
+		eliminationOrders := core.ProcessCaptures(allCaptureDetailsThisTurn)
+		if len(eliminationOrders) > 0 {
+			e.handleEliminationsAndTileTurnover(eliminationOrders, l)
+		}
 	}
 
-	return nil // Or return aggregated errors if any occurred and were not 'continue'd
+	return encounteredError
 }
 
 // handleEliminationsAndTileTurnover processes player eliminations and transfers tiles.
-func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminationOrder) {
+func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminationOrder, l zerolog.Logger) {
+	l.Info().Int("num_elimination_orders", len(orders)).Msg("Handling player eliminations and tile turnover")
 	for _, order := range orders {
-		eliminatedID := order.EliminatedPlayerID
-		newOwnerID := order.NewOwnerID
+		l.Info().
+			Int("eliminated_player_id", order.EliminatedPlayerID).
+			Int("new_owner_player_id", order.NewOwnerID).
+			Msg("Player eliminated, transferring assets")
 
-		fmt.Printf("Player %d's General captured by Player %d! Transferring assets.\n", eliminatedID, newOwnerID)
-
-		// Iterate through all tiles on the board
+		tilesTransferred := 0
 		for i := range e.gs.Board.T {
-			if e.gs.Board.T[i].Owner == eliminatedID {
-				e.gs.Board.T[i].Owner = newOwnerID
-				// Armies on the tiles remain as they are, as per your requirement.
-				// If the tile was a city or the captured general itself, its type doesn't change here,
-				// only its ownership. The captured general tile itself would have already been
-				// flipped to newOwnerID by ApplyMoveAction. This loop ensures all *other*
-				// tiles owned by eliminatedID are also flipped.
+			if e.gs.Board.T[i].Owner == order.EliminatedPlayerID {
+				e.gs.Board.T[i].Owner = order.NewOwnerID
+				tilesTransferred++
 			}
 		}
-		// Note: The actual marking of the player as 'dead' (e.g. e.gs.Players[eliminatedID].Alive = false)
-		// will be handled by `updatePlayerStats()` when it no longer finds a general for eliminatedID.
-		// This keeps `updatePlayerStats` as the single source of truth for Alive status based on general presence.
+		l.Debug().
+			Int("eliminated_player_id", order.EliminatedPlayerID).
+			Int("new_owner_player_id", order.NewOwnerID).
+			Int("tiles_transferred", tilesTransferred).
+			Msg("Asset transfer details")
 	}
 }
 
 // processTurnProduction applies army growth
-func (e *Engine) processTurnProduction() {
+func (e *Engine) processTurnProduction(l zerolog.Logger) {
 	growNormal := e.gs.Turn%NormalGrowInterval == 0
+	l.Debug().Bool("grow_normal_tiles", growNormal).Msg("Processing turn production")
+
+	// Could add more detailed logs here if needed, e.g., total production amounts
+	// For now, keeping it concise as per-tile logging would be too verbose for INFO/DEBUG
+	var totalGeneralProd, totalCityProd, totalNormalProd int
 
 	for i := range e.gs.Board.T {
 		t := &e.gs.Board.T[i]
@@ -153,85 +245,130 @@ func (e *Engine) processTurnProduction() {
 		switch t.Type {
 		case core.TileGeneral:
 			t.Army += GeneralProduction
+			totalGeneralProd += GeneralProduction
 		case core.TileCity:
 			t.Army += CityProduction
+			totalCityProd += CityProduction
 		case core.TileNormal:
 			if growNormal {
 				t.Army += NormalProduction
+				totalNormalProd += NormalProduction
 			}
 		}
 	}
+	l.Debug().
+		Int("total_general_production", totalGeneralProd).
+		Int("total_city_production", totalCityProd).
+		Int("total_normal_production", totalNormalProd).
+		Msg("Turn production complete")
 }
 
 // updatePlayerStats recalculates player statistics
 func (e *Engine) updatePlayerStats() {
-	// Reset stats
+	// This method is called frequently, so Info level might be too noisy.
+	// Debug level is appropriate.
+	e.logger.Debug().Msg("Updating player stats")
+
+	// Store pre-update stats for comparison if complex debugging is needed
+	// var preUpdateStats []Player = make([]Player, len(e.gs.Players))
+	// copy(preUpdateStats, e.gs.Players)
+
 	for pid := range e.gs.Players {
 		e.gs.Players[pid].ArmyCount = 0
 		e.gs.Players[pid].GeneralIdx = -1
+		// e.gs.Players[pid].LandCount = 0 // Example if you add land count
 	}
 
-	// Recalculate from board state
 	for i, t := range e.gs.Board.T {
 		if t.IsNeutral() {
+			continue
+		}
+		if t.Owner < 0 || t.Owner >= len(e.gs.Players) {
+			e.logger.Error().Int("tile_index", i).Int("tile_owner", t.Owner).Int("num_players", len(e.gs.Players)).Msg("Invalid owner found on tile during player stats update")
 			continue
 		}
 
 		p := &e.gs.Players[t.Owner]
 		p.ArmyCount += t.Army
+		// p.LandCount++ // Example
 
 		if t.IsGeneral() {
 			p.GeneralIdx = i
 		}
 	}
 
-	// Update alive status
 	for pid := range e.gs.Players {
+		oldAliveStatus := e.gs.Players[pid].Alive
 		e.gs.Players[pid].Alive = e.gs.Players[pid].GeneralIdx != -1
+		if oldAliveStatus && !e.gs.Players[pid].Alive {
+			e.logger.Info().Int("player_id", pid).Msg("Player lost their general and is now marked as dead")
+		} else if !oldAliveStatus && e.gs.Players[pid].Alive {
+			// This case should ideally not happen unless a general is respawned/reassigned.
+			e.logger.Warn().Int("player_id", pid).Msg("Player was dead and is now marked as alive - unexpected general appearance?")
+		}
 	}
+	e.logger.Debug().Msg("Player stats updated")
 }
 
 // checkGameOver determines if the game has ended
-func (e *Engine) checkGameOver() {
+func (e *Engine) checkGameOver(l zerolog.Logger) {
+	l.Debug().Msg("Checking game over conditions")
 	aliveCount := 0
+	var alivePlayers []int
 	for _, p := range e.gs.Players {
 		if p.Alive {
 			aliveCount++
+			alivePlayers = append(alivePlayers, p.ID)
 		}
 	}
+
+	wasGameOver := e.gameOver
 	e.gameOver = aliveCount <= 1
+
+	if !wasGameOver && e.gameOver {
+		l.Info().Int("alive_player_count", aliveCount).Interface("alive_players_ids", alivePlayers).Msg("Game over condition met")
+	} else if wasGameOver && !e.gameOver {
+		// This would be highly unusual
+		l.Error().Int("alive_player_count", aliveCount).Msg("Game was over, but is no longer over. This is unexpected!")
+	}
+	l.Debug().Bool("is_game_over", e.gameOver).Int("alive_player_count", aliveCount).Msg("Game over check complete")
 }
 
 // Public accessors
 func (e *Engine) GameState() GameState { return *e.gs }
-func (e *Engine) IsGameOver() bool     { return e.gameOver }
+func (e *Engine) IsGameOver() bool   { return e.gameOver }
 
-// GetWinner returns the winning player ID, or -1 if game isn't over
+// GetWinner returns the winning player ID, or -1 if game isn't over or it's a draw
 func (e *Engine) GetWinner() int {
+	e.logger.Debug().Bool("is_game_over_state", e.gameOver).Msg("GetWinner called")
 	if !e.gameOver {
+		e.logger.Warn().Msg("GetWinner called but game is not actually over according to internal state.")
+		// It's debatable whether to return -1 or re-check. For now, trust e.gameOver.
+		// If there's a possibility of e.gameOver being stale, one might call checkGameOver here.
 		return -1
 	}
 	for _, p := range e.gs.Players {
 		if p.Alive {
+			e.logger.Info().Int("winner_player_id", p.ID).Msg("Winner determined")
 			return p.ID
 		}
 	}
-	return -1 // Draw or no winner
+	e.logger.Info().Msg("No winner found (draw, or all players eliminated simultaneously)")
+	return -1 // Draw or no winner if all eliminated somehow
 }
 
-// ANSI color codes
+// ANSI color codes (Unchanged - for Board rendering)
 const (
 	ColorReset  = "\033[0m"
 	ColorRed    = "\033[31m"
-	ColorGreen  = "\033[32m" 
+	ColorGreen  = "\033[32m"
 	ColorYellow = "\033[33m"
 	ColorBlue   = "\033[34m"
 	ColorPurple = "\033[35m"
 	ColorCyan   = "\033[36m"
 	ColorWhite  = "\033[37m"
 	ColorGray   = "\033[90m"
-	
-	// Background colors for better visibility
+
 	BgRed    = "\033[41m"
 	BgGreen  = "\033[42m"
 	BgYellow = "\033[43m"
@@ -242,88 +379,68 @@ const (
 
 var playerColors = []string{ColorRed, ColorBlue, ColorGreen, ColorYellow, ColorPurple, ColorCyan}
 
-// Alternative: Compact board with unicode symbols
-func (e *Engine) Board() string { // e.g. e is *game.Engine which has e.gs *game.State
+// Board returns a string representation of the board (Unchanged)
+func (e *Engine) Board() string {
 	var sb strings.Builder
-
-	// Unicode symbols for better visual distinction
 	const (
 		EmptySymbol    = "·"
-		CitySymbol     = "⬢" // Hexagon
-		GeneralSymbol  = "♔" // Crown
-		MountainSymbol = "▲" // Triangle for mountain
+		CitySymbol     = "⬢"
+		GeneralSymbol  = "♔"
+		MountainSymbol = "▲"
 		PlayerSymbols  = "ABCDEFGH"
 	)
-
-	// Column headers
-	sb.WriteString("   ") // Adjusted for row numbers
+	sb.WriteString("    ")
 	for x := range e.gs.Board.W {
-		sb.WriteString(fmt.Sprintf("%2d", x))
+		sb.WriteString(core.IntToStringFixedWidth(x, 2)) // Assuming core.IntToStringFixedWidth
 	}
 	sb.WriteString("\n")
-
 	for y := range e.gs.Board.H {
-		sb.WriteString(fmt.Sprintf("%2d ", y))
-
+		sb.WriteString(core.IntToStringFixedWidth(y, 2) + " ")
 		for x := range e.gs.Board.W {
-			// Assuming e.gs.Board.Tile(x,y) or similar method exists if T is not public
-			// Or direct access if T is public and Idx method is on Board
-			t := e.gs.Board.T[e.gs.Board.Idx(x, y)] // Using direct access as in original
-
+			t := e.gs.Board.T[e.gs.Board.Idx(x, y)]
 			var symbol string
 			var color string
-
 			switch {
-			case t.IsMountain(): // Priority 1: Mountains
+			case t.IsMountain():
 				symbol = " " + MountainSymbol
-				color = ColorGray // Mountains are gray
-			
-			case t.IsGeneral(): // Priority 2: Generals (owned)
+				color = ColorGray
+			case t.IsGeneral():
 				playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
 				symbol = playerChar + GeneralSymbol
 				color = getPlayerColor(t.Owner)
-
-			case t.IsCity() && t.IsNeutral(): // Priority 3: Neutral Cities
+			case t.IsCity() && t.IsNeutral():
 				symbol = " " + CitySymbol
-				color = ColorWhite // Neutral cities are white (or gray, depends on preference)
-			
-			case t.IsCity(): // Priority 4: Player-owned Cities
+				color = ColorWhite
+			case t.IsCity():
 				playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
 				symbol = playerChar + CitySymbol
 				color = getPlayerColor(t.Owner)
-			
-			// case t.IsNeutral() && t.Army == 0 && t.Type == core.TileNormal: // More specific empty
-			case t.IsNeutral() && t.Type == core.TileNormal: // Priority 5: Empty, neutral, normal land
-				// If army > 0 on neutral normal, it will be handled by default or a new specific case
+			case t.IsNeutral() && t.Type == core.TileNormal:
 				if t.Army == 0 {
 					symbol = " " + EmptySymbol
 				} else {
-					// Neutral land with armies (e.g. from a previous owner)
-					symbol = fmt.Sprintf("%2d", t.Army) // Display army count for neutral land
-					if t.Army >= 10 { // Keep it to 2 chars
-						symbol = " +" // Or some other indicator for large neutral armies
-					}
+					symbol = core.IntToStringFixedWidth(t.Army, 2) // Assuming core.IntToStringFixedWidth
+					if t.Army >= 100 { // Adjusted for 2 chars
+						symbol = "++"
+					} else if t.Army >= 10 {
+						// Handled by IntToStringFixedWidth up to 99
+					} else {
+                        // prepend space if single digit
+                        symbol = " " + core.IntToStringFixedWidth(t.Army,1)
+                    }
 				}
 				color = ColorGray
-
-
-			default: // Player-owned normal tiles, or other neutral tiles with armies
-				if t.IsNeutral() { // Neutral tile (not city, not mountain, not empty normal) e.g. with army
-					if t.Army < 10 {
-						symbol = fmt.Sprintf(" %d", t.Army)
-					} else if t.Army < 100 { // Example for two digits
-						symbol = fmt.Sprintf("%2d", t.Army)
-					} else {
-						symbol = "++" // For very large armies
-					}
+			default: // Player-owned normal tiles or other neutral tiles
+				if t.IsNeutral() {
+					symbol = core.IntToStringFixedWidth(t.Army, 2)
+                    if t.Army >= 100 { symbol = "++" }
 					color = ColorGray
-				} else { // Player owned normal tile
+				} else {
 					playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
 					if t.Army < 10 {
-						symbol = playerChar + fmt.Sprintf("%d", t.Army)
+						symbol = playerChar + core.IntToStringFixedWidth(t.Army, 1)
 					} else {
-						// For armies >= 10 on player tiles, use P+ (Player initial + plus sign)
-						symbol = playerChar + "+"
+						symbol = playerChar + "+" // P+ for armies >=10
 					}
 					color = getPlayerColor(t.Owner)
 				}
@@ -332,10 +449,7 @@ func (e *Engine) Board() string { // e.g. e is *game.Engine which has e.gs *game
 		}
 		sb.WriteString("\n")
 	}
-
-	// Compact legend
 	sb.WriteString("\n" + EmptySymbol + "=empty " + CitySymbol + "=city " + GeneralSymbol + "=general " + MountainSymbol + "=mountain A-H=players\n")
-
 	return sb.String()
 }
 

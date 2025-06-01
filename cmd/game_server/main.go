@@ -1,153 +1,182 @@
 package main
 
 import (
-	"fmt"
+	"context" // Import the context package
+	"errors"  // Import the errors package for errors.Is
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log" // Using the global logger
 )
 
 func main() {
-	// Uncomment one of these to choose your testing mode:
-	
-	// Option 1: Random action simulation
+	// --- Zerolog Configuration ---
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	log.Logger = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stderr,
+		TimeFormat: time.RFC3339,
+		NoColor:    false,
+	}).With().Timestamp().Caller().Logger()
+
+	// Example for future production setup:
+	// if os.Getenv("APP_ENV") == "production" {
+	// 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	// 	log.Logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
+	// }
+
+	log.Info().Msg("Logger initialized")
+
 	randomActionDemo()
-	
-	// Option 2: Manual testing with fixed moves
 	// manualTest()
 }
 
 func randomActionDemo() {
-	// Create a seeded RNG for reproducible games during development
+	// --- Context for the demo ---
+	// For this standalone demo, context.Background() is sufficient.
+	// It's an empty context, signifying no specific deadline or cancellation signal from a parent.
+	// In a server environment, this context would typically come from the incoming request.
+	ctx := context.Background()
+
 	seed := time.Now().UnixNano()
-	fmt.Printf("Game seed: %d\n", seed)
+	log.Info().Int64("seed", seed).Msg("Starting random action demo")
 	rng := rand.New(rand.NewSource(seed))
-	
-	// Create a 8x8 game with 2 players for more interesting gameplay
-	g := game.NewEngine(8, 8, 2, rng)
-	
-	fmt.Printf("Initial board:\n%s\n", g.Board())
-	fmt.Printf("Player stats: %+v\n\n", g.GameState().Players)
-	
-	// Run game simulation
+
+	// Create a 8x8 game with 2 players
+	// Pass the context and the global logger (log.Logger) to NewEngine
+	g := game.NewEngine(ctx, 8, 8, 2, rng, log.Logger)
+	if g == nil {
+		log.Fatal().Msg("Failed to create game engine (NewEngine returned nil, possibly due to context cancellation during init)")
+		return
+	}
+
+
+	log.Info().Msgf("Initial board:\n%s", g.Board())
+	initialPlayers := g.GameState().Players
+	for i, p := range initialPlayers {
+		log.Info().
+			Int("player_id", p.ID).
+			Int("initial_army_count", p.ArmyCount).
+			Bool("initial_alive", p.Alive).
+			Int("initial_general_idx", p.GeneralIdx).
+			Msgf("Initial stats for player %d", i)
+	}
+
 	maxTurns := 50
 	for turn := 0; turn < maxTurns && !g.IsGameOver(); turn++ {
-		// Generate some random actions for demonstration
-		actions := generateRandomActions(g, rng)
-		
-		// Apply actions and advance game
-		if err := g.Step(actions); err != nil {
-			fmt.Printf("Error on turn %d: %v\n", turn+1, err)
-			break
+		actions := generateRandomActions(g, rng) // g is *game.Engine
+
+		turnLogger := log.With().Int("turn", turn+1).Logger()
+
+		// Pass the context to the Step method
+		if err := g.Step(ctx, actions); err != nil {
+			// Check if the error is due to context cancellation/deadline
+			if errors.Is(err, context.Canceled) {
+				turnLogger.Warn().Err(err).Msg("Game step was canceled")
+			} else if errors.Is(err, context.DeadlineExceeded) {
+				turnLogger.Error().Err(err).Msg("Game step timed out")
+			} else {
+				turnLogger.Error().Err(err).Msg("Error processing game step")
+			}
+			break // Stop simulation on any error
 		}
-		
-		// Print results every few turns
+
 		if turn%5 == 0 || len(actions) > 0 {
-			fmt.Printf("Turn %d (actions: %d):\n", turn+1, len(actions))
+			turnLogger.Info().Int("actions_count", len(actions)).Msg("Turn processed")
+
 			if len(actions) > 0 {
 				for _, action := range actions {
 					if moveAction, ok := action.(*core.MoveAction); ok {
-						fmt.Printf("  Player %d: (%d,%d) -> (%d,%d) [%s]\n", 
-							moveAction.PlayerID, 
-							moveAction.FromX, moveAction.FromY,
-							moveAction.ToX, moveAction.ToY,
-							map[bool]string{true: "all", false: "half"}[moveAction.MoveAll])
+						turnLogger.Debug().
+							Int("player_id", moveAction.PlayerID).
+							Int("from_x", moveAction.FromX).
+							Int("from_y", moveAction.FromY).
+							Int("to_x", moveAction.ToX).
+							Int("to_y", moveAction.ToY).
+							Bool("move_all", moveAction.MoveAll).
+							Msg("Player move action")
 					}
 				}
 			}
-			fmt.Printf("%s", g.Board())
-			
+			turnLogger.Info().Msgf("Board state:\n%s", g.Board())
+
 			state := g.GameState()
 			for _, player := range state.Players {
-				status := "ALIVE"
-				if !player.Alive {
-					status = "DEAD"
-				}
-				fmt.Printf("Player %d: %d armies, %s\n", player.ID, player.ArmyCount, status)
+				turnLogger.Info().
+					Int("player_id", player.ID).
+					Int("army_count", player.ArmyCount).
+					Bool("alive", player.Alive).
+					Msg("Player status")
 			}
-			fmt.Println()
 		}
 	}
-	
-	// Game over
+
 	if g.IsGameOver() {
 		winner := g.GetWinner()
 		if winner >= 0 {
-			fmt.Printf("🎉 Game Over! Player %d wins!\n", winner)
+			log.Info().Int("winner_player_id", winner).Msg("🎉 Game Over! Player wins!")
 		} else {
-			fmt.Printf("Game Over! No winner.\n")
+			log.Info().Msg("Game Over! No winner (draw or error).")
 		}
 	} else {
-		fmt.Printf("Game reached maximum turns (%d)\n", maxTurns)
+		log.Info().Int("max_turns_reached", maxTurns).Msg("Game reached maximum turns")
 	}
-	
-	fmt.Printf("\nFinal board:\n%s", g.Board())
+
+	log.Info().Msgf("Final board:\n%s", g.Board())
 }
 
-// generateRandomActions creates some random actions for alive players
-// This is just for demonstration - in a real game, actions would come from players/AI
+// generateRandomActions remains the same
 func generateRandomActions(g *game.Engine, rng *rand.Rand) []core.Action {
 	var actions []core.Action
 	state := g.GameState()
-	
+
 	for _, player := range state.Players {
 		if !player.Alive {
 			continue
 		}
-		
-		// 30% chance this player takes an action this turn
 		if rng.Float32() > 0.3 {
 			continue
 		}
-		
-		// Find tiles owned by this player that can move
 		var validMoves []core.MoveAction
 		board := state.Board
-		
 		for y := 0; y < board.H; y++ {
 			for x := 0; x < board.W; x++ {
 				idx := board.Idx(x, y)
 				tile := board.T[idx]
-				
 				if tile.Owner != player.ID || tile.Army <= 1 {
 					continue
 				}
-				
-				// Check all 4 adjacent tiles
 				directions := [][]int{{0, 1}, {0, -1}, {1, 0}, {-1, 0}}
 				for _, dir := range directions {
 					toX, toY := x+dir[0], y+dir[1]
-					
-					// Check bounds
 					if toX < 0 || toX >= board.W || toY < 0 || toY >= board.H {
 						continue
 					}
-					
+					targetIdx := board.Idx(toX, toY)
+					if board.T[targetIdx].IsMountain() {
+						continue
+					}
 					move := core.MoveAction{
-						PlayerID: player.ID,
-						FromX:    x,
-						FromY:    y,
-						ToX:      toX,
-						ToY:      toY,
-						MoveAll:  rng.Float32() < 0.7, // 70% chance to move all
+						PlayerID: player.ID, FromX: x, FromY: y, ToX: toX, ToY: toY,
+						MoveAll: rng.Float32() < 0.7,
 					}
-					
-					// Validate the move
-					if move.Validate(board, player.ID) == nil {
-						validMoves = append(validMoves, move)
-					}
+					validMoves = append(validMoves, move)
 				}
 			}
 		}
-		
-		// Pick a random valid move
 		if len(validMoves) > 0 {
 			chosen := validMoves[rng.Intn(len(validMoves))]
 			actions = append(actions, &chosen)
+			log.Debug(). // Using the global logger here for simplicity in this helper
+					Int("player_id", player.ID).
+					Int("from_x", chosen.FromX).Int("from_y", chosen.FromY).
+					Int("to_x", chosen.ToX).Int("to_y", chosen.ToY).
+					Bool("move_all", chosen.MoveAll).
+					Msg("Generated random action")
 		}
 	}
-	
 	return actions
 }
