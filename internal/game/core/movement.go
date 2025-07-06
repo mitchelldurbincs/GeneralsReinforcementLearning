@@ -14,7 +14,8 @@ type CaptureDetails struct {
 // ApplyMoveAction applies a move action to the board.
 // Returns CaptureDetails if the move resulted in a tile changing ownership, otherwise nil.
 // An error is returned if the action is invalid or an issue occurs.
-func ApplyMoveAction(b *Board, action *MoveAction) (*CaptureDetails, error) {
+// The changedTiles parameter is optional - if provided, modified tile indices will be added to it.
+func ApplyMoveAction(b *Board, action *MoveAction, changedTiles map[int]struct{}) (*CaptureDetails, error) {
 	// Validate the action first (this now includes checks for target tile type like mountains)
 	if err := action.Validate(b, action.PlayerID); err != nil {
 		return nil, err
@@ -35,32 +36,30 @@ func ApplyMoveAction(b *Board, action *MoveAction) (*CaptureDetails, error) {
 	if action.MoveAll {
 		armiesToMove = fromTile.Army - 1
 	} else {
-		// Current logic: move half (integer division), minimum 1 if source army > 1
+		// Move half (integer division), minimum 1
 		armiesToMove = fromTile.Army / 2
-		if armiesToMove == 0 && fromTile.Army > 1 { // if fromTile.Army is 2 or 3, Army/2 is 1. If 1, Validate fails.
+		if armiesToMove == 0 {
 			armiesToMove = 1
 		}
 	}
-	
-	// Ensure armiesToMove is not negative or more than available (Validate should prevent fromTile.Army <=1)
-	if armiesToMove < 0 { // Should not happen if logic above is correct
-		armiesToMove = 0
-	}
-    if armiesToMove > fromTile.Army -1 && fromTile.Army > 1 { // Should not happen if logic above is correct
-        armiesToMove = fromTile.Army -1
-    }
 
 
 	var captureDetails *CaptureDetails = nil
 
 	// Apply the army reduction from the source tile
 	fromTile.Army -= armiesToMove
+	
+	// Track changed tiles if map provided
+	if changedTiles != nil {
+		changedTiles[fromIdx] = struct{}{}
+		changedTiles[toIdx] = struct{}{}
+	}
 
 	if toTile.Owner == action.PlayerID {
-		// Moving to own tile - just consolidate armies
+		// Fast path: Moving to own tile - just consolidate armies
 		toTile.Army += armiesToMove
 	} else {
-		// Moving to an enemy or neutral tile - combat resolution
+		// Combat path: Moving to an enemy or neutral tile
 		if armiesToMove > toTile.Army {
 			// Successful capture - tile changes ownership
 			toTile.Owner = action.PlayerID
@@ -69,13 +68,13 @@ func ApplyMoveAction(b *Board, action *MoveAction) (*CaptureDetails, error) {
 			captureDetails = &CaptureDetails{
 				X:                 action.ToX,
 				Y:                 action.ToY,
-				TileType:          toTile.Type, // The type of the tile that was captured
+				TileType:          toTile.Type,
 				CapturingPlayerID: action.PlayerID,
 				PreviousOwnerID:   originalToTileOwner,
 				PreviousArmyCount: originalToTileArmy,
 			}
 		} else {
-			// Failed attack - defender loses armies, but retains ownership
+			// Failed attack - defender loses armies but retains ownership
 			toTile.Army -= armiesToMove
 		}
 	}

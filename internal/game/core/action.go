@@ -31,11 +31,11 @@ func (m *MoveAction) GetType() ActionType { return ActionMove }
 
 func (m *MoveAction) Validate(b *Board, playerID int) error {
 	// Check bounds for From coordinates
-	if m.FromX < 0 || m.FromX >= b.W || m.FromY < 0 || m.FromY >= b.H {
+	if !b.InBounds(m.FromX, m.FromY) {
 		return ErrInvalidCoordinates
 	}
 	// Check bounds for To coordinates
-	if m.ToX < 0 || m.ToX >= b.W || m.ToY < 0 || m.ToY >= b.H {
+	if !b.InBounds(m.ToX, m.ToY) {
 		return ErrInvalidCoordinates
 	}
 

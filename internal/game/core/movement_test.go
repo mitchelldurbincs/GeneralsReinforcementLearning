@@ -43,7 +43,7 @@ func TestCaptureGeneralAndEliminationOrder(t *testing.T) {
 	}
 
 	// 3. Call ApplyMoveAction
-	captureDetails, err := ApplyMoveAction(board, &moveAction)
+	captureDetails, err := ApplyMoveAction(board, &moveAction, nil)
 
 	// Assertions for ApplyMoveAction
 	// Using 'require' for conditions that make subsequent checks pointless if they fail.

@@ -9,10 +9,12 @@ type Player struct {
 	Alive      bool
 	ArmyCount  int // cached every turn
 	GeneralIdx int // -1 if eliminated
+	OwnedTiles []int // indices of tiles owned by this player
 }
 
 type GameState struct {
 	Turn    int
 	Board   *core.Board
 	Players []Player
+	ChangedTiles map[int]struct{} // Set of tile indices that changed this turn
 }

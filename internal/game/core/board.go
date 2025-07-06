@@ -27,7 +27,7 @@ func (t *Tile) IsNeutral() bool { return t.Owner == NeutralID }
 func (t *Tile) IsCity() bool    { return t.Type == TileCity }
 func (t *Tile) IsGeneral() bool { return t.Type == TileGeneral }
 func (t *Tile) IsMountain() bool { return t.Type == TileMountain }
-func (t Tile) IsEmpty() bool    { return t.IsNeutral() && t.Type == TileNormal && t.Army == 0 }
+func (t *Tile) IsEmpty() bool    { return t.IsNeutral() && t.Type == TileNormal && t.Army == 0 }
 
 func NewBoard(w, h int) *Board {
 	b := &Board{W: w, H: h, T: make([]Tile, w*h)}
@@ -41,6 +41,19 @@ func NewBoard(w, h int) *Board {
 
 func (b *Board) Idx(x, y int) int       { return y*b.W + x }
 func (b *Board) XY(idx int) (int, int)  { return idx % b.W, idx / b.W }
+
+// InBounds checks if coordinates are within board boundaries
+func (b *Board) InBounds(x, y int) bool {
+	return x >= 0 && x < b.W && y >= 0 && y < b.H
+}
+
+// GetTile safely returns a tile pointer if coordinates are valid, nil otherwise
+func (b *Board) GetTile(x, y int) *Tile {
+	if !b.InBounds(x, y) {
+		return nil
+	}
+	return &b.T[b.Idx(x, y)]
+}
 
 // Manhattan distance between two board coordinates
 func (b *Board) Distance(x1, y1, x2, y2 int) int {

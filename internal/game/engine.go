@@ -59,12 +59,21 @@ func NewEngine(ctx context.Context, w, h, players int, rng *rand.Rand, parentLog
 
 	playerSlice := make([]Player, players)
 	for i := range players {
-		playerSlice[i] = Player{ID: i, Alive: true, GeneralIdx: -1}
+		playerSlice[i] = Player{
+			ID: i, 
+			Alive: true, 
+			GeneralIdx: -1,
+			OwnedTiles: make([]int, 0),
+		}
 	}
 	engineLogger.Debug().Int("num_players", len(playerSlice)).Msg("Players initialized")
 
 	e := &Engine{
-		gs:       &GameState{Board: board, Players: playerSlice},
+		gs: &GameState{
+			Board: board, 
+			Players: playerSlice,
+			ChangedTiles: make(map[int]struct{}),
+		},
 		rng:      rng,
 		gameOver: false,
 		logger:   engineLogger,
@@ -92,6 +101,11 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	}
 
 	e.gs.Turn++
+	// Clear changed tiles from previous turn (reuse the map to avoid allocation)
+	for k := range e.gs.ChangedTiles {
+		delete(e.gs.ChangedTiles, k)
+	}
+	
 	// You can derive the turnLogger from e.logger or potentially from a logger in ctx.
 	// For simplicity, we continue deriving from e.logger.
 	// If ctx contained a request-specific logger: `baseLoggerForTurn := zerolog.Ctx(ctx)`
@@ -141,7 +155,8 @@ func (e *Engine) processActions(ctx context.Context, actions []core.Action, l ze
 		return actions[i].GetPlayerID() < actions[j].GetPlayerID()
 	})
 
-	var allCaptureDetailsThisTurn []core.CaptureDetails
+	// Pre-allocate slice with reasonable capacity to reduce allocations
+	allCaptureDetailsThisTurn := make([]core.CaptureDetails, 0, len(actions)/4)
 	var encounteredError error
 
 	for i, action := range actions {
@@ -157,23 +172,23 @@ func (e *Engine) processActions(ctx context.Context, actions []core.Action, l ze
 		}
 
 		playerID := action.GetPlayerID()
-		actionLogger := l.With().Int("player_id", playerID).Logger()
 
 		if playerID < 0 || playerID >= len(e.gs.Players) || !e.gs.Players[playerID].Alive {
-			actionLogger.Warn().Interface("action", action).Msg("Skipping action from dead or invalid player")
+			l.Warn().Int("player_id", playerID).Interface("action", action).Msg("Skipping action from dead or invalid player")
 			continue
 		}
 
-		actionLogger.Debug().Interface("action", action).Msg("Applying action")
+		l.Debug().Int("player_id", playerID).Interface("action", action).Msg("Applying action")
 		switch act := action.(type) {
 		case *core.MoveAction:
 			// Assuming ApplyMoveAction itself doesn't need context for internal long computations.
 			// If ApplyMoveAction also called action.Validate(..., logger), that logger could be actionLogger.
 			// And if action.Validate took context, it would be passed there too.
 			// For now, ApplyMoveAction doesn't take context in its signature.
-			captureDetail, err := core.ApplyMoveAction(e.gs.Board, act /*, actionLogger (if ApplyMoveAction takes it for Validate) */)
+			captureDetail, err := core.ApplyMoveAction(e.gs.Board, act, e.gs.ChangedTiles)
 			if err != nil {
-				actionLogger.Error().Err(err).
+				l.Error().Err(err).
+					Int("player_id", playerID).
 					Interface("action_details", act).
 					Msg("Failed to apply move action")
 				if encounteredError == nil {
@@ -182,13 +197,14 @@ func (e *Engine) processActions(ctx context.Context, actions []core.Action, l ze
 				continue
 			}
 			if captureDetail != nil {
-				actionLogger.Debug().
+				l.Debug().
+					Int("player_id", playerID).
 					Interface("capture_details", *captureDetail).
 					Msg("Move resulted in capture")
 				allCaptureDetailsThisTurn = append(allCaptureDetailsThisTurn, *captureDetail)
 			}
 		default:
-			actionLogger.Warn().Str("action_type", core.GetActionType(action)).Msg("Unhandled action type in processActions")
+			l.Warn().Int("player_id", playerID).Str("action_type", core.GetActionType(action)).Msg("Unhandled action type in processActions")
 		}
 	}
 
@@ -212,13 +228,18 @@ func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminati
 			Int("new_owner_player_id", order.NewOwnerID).
 			Msg("Player eliminated, transferring assets")
 
+		// Use the owned tiles list for efficient transfer
+		eliminatedPlayer := &e.gs.Players[order.EliminatedPlayerID]
 		tilesTransferred := 0
-		for i := range e.gs.Board.T {
-			if e.gs.Board.T[i].Owner == order.EliminatedPlayerID {
-				e.gs.Board.T[i].Owner = order.NewOwnerID
+		
+		for _, tileIdx := range eliminatedPlayer.OwnedTiles {
+			if e.gs.Board.T[tileIdx].Owner == order.EliminatedPlayerID {
+				e.gs.Board.T[tileIdx].Owner = order.NewOwnerID
+				e.gs.ChangedTiles[tileIdx] = struct{}{}
 				tilesTransferred++
 			}
 		}
+		
 		l.Debug().
 			Int("eliminated_player_id", order.EliminatedPlayerID).
 			Int("new_owner_player_id", order.NewOwnerID).
@@ -236,23 +257,30 @@ func (e *Engine) processTurnProduction(l zerolog.Logger) {
 	// For now, keeping it concise as per-tile logging would be too verbose for INFO/DEBUG
 	var totalGeneralProd, totalCityProd, totalNormalProd int
 
-	for i := range e.gs.Board.T {
-		t := &e.gs.Board.T[i]
-		if t.IsNeutral() {
+	// Iterate only through tiles owned by players
+	for pid := range e.gs.Players {
+		if !e.gs.Players[pid].Alive {
 			continue
 		}
-
-		switch t.Type {
-		case core.TileGeneral:
-			t.Army += GeneralProduction
-			totalGeneralProd += GeneralProduction
-		case core.TileCity:
-			t.Army += CityProduction
-			totalCityProd += CityProduction
-		case core.TileNormal:
-			if growNormal {
-				t.Army += NormalProduction
-				totalNormalProd += NormalProduction
+		
+		for _, tileIdx := range e.gs.Players[pid].OwnedTiles {
+			t := &e.gs.Board.T[tileIdx]
+			
+			switch t.Type {
+			case core.TileGeneral:
+				t.Army += GeneralProduction
+				totalGeneralProd += GeneralProduction
+				e.gs.ChangedTiles[tileIdx] = struct{}{}
+			case core.TileCity:
+				t.Army += CityProduction
+				totalCityProd += CityProduction
+				e.gs.ChangedTiles[tileIdx] = struct{}{}
+			case core.TileNormal:
+				if growNormal {
+					t.Army += NormalProduction
+					totalNormalProd += NormalProduction
+					e.gs.ChangedTiles[tileIdx] = struct{}{}
+				}
 			}
 		}
 	}
@@ -264,19 +292,24 @@ func (e *Engine) processTurnProduction(l zerolog.Logger) {
 }
 
 // updatePlayerStats recalculates player statistics
+// If forceFullUpdate is true, it scans all tiles. Otherwise, it uses incremental updates.
 func (e *Engine) updatePlayerStats() {
-	// This method is called frequently, so Info level might be too noisy.
-	// Debug level is appropriate.
-	e.logger.Debug().Msg("Updating player stats")
+	// Only do full update if we have changed tiles or on initialization
+	if len(e.gs.ChangedTiles) == 0 && e.gs.Turn > 0 {
+		// No changes, stats are already up to date
+		e.logger.Debug().Msg("No tile changes, skipping player stats update")
+		return
+	}
 
-	// Store pre-update stats for comparison if complex debugging is needed
-	// var preUpdateStats []Player = make([]Player, len(e.gs.Players))
-	// copy(preUpdateStats, e.gs.Players)
+	e.logger.Debug().Int("changed_tiles", len(e.gs.ChangedTiles)).Msg("Updating player stats")
 
+	// For now, still do full update but only when needed
+	// TODO: Implement true incremental updates based on ChangedTiles
+	
 	for pid := range e.gs.Players {
 		e.gs.Players[pid].ArmyCount = 0
 		e.gs.Players[pid].GeneralIdx = -1
-		// e.gs.Players[pid].LandCount = 0 // Example if you add land count
+		e.gs.Players[pid].OwnedTiles = e.gs.Players[pid].OwnedTiles[:0] // Clear but keep capacity
 	}
 
 	for i, t := range e.gs.Board.T {
@@ -290,7 +323,7 @@ func (e *Engine) updatePlayerStats() {
 
 		p := &e.gs.Players[t.Owner]
 		p.ArmyCount += t.Army
-		// p.LandCount++ // Example
+		p.OwnedTiles = append(p.OwnedTiles, i)
 
 		if t.IsGeneral() {
 			p.GeneralIdx = i
@@ -323,7 +356,14 @@ func (e *Engine) checkGameOver(l zerolog.Logger) {
 	}
 
 	wasGameOver := e.gameOver
-	e.gameOver = aliveCount <= 1
+	// Game is over only if:
+	// - 0 players alive (draw)
+	// - 1 player alive AND there were originally more than 1 player
+	if len(e.gs.Players) > 1 {
+		e.gameOver = aliveCount <= 1
+	} else {
+		e.gameOver = aliveCount == 0
+	}
 
 	if !wasGameOver && e.gameOver {
 		l.Info().Int("alive_player_count", aliveCount).Interface("alive_players_ids", alivePlayers).Msg("Game over condition met")

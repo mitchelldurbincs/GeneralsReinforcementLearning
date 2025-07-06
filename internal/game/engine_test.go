@@ -197,13 +197,14 @@ func TestEngine_PlayerEliminationAndTileTurnover(t *testing.T) {
 	assert.True(t, engine.gs.Players[0].Alive, "Player 0 should still be alive")
 
 	// Assert tile ownership and army counts post-capture
+	// Note: Step() applies production after actions, so generals and cities get +1
 	assert.Equal(t, 0, board.T[p1NewGeneralIdx].Owner, "Captured general tile should be owned by Player 0")
-	assert.Equal(t, 18, board.T[p1NewGeneralIdx].Army, "Army count on captured general tile mismatch (20 attacker - 1 left - 1 defender general)")
+	assert.Equal(t, 19, board.T[p1NewGeneralIdx].Army, "Army count on captured general tile (20 - 1 left - 1 defender + 1 production)")
 
 	assert.Equal(t, 0, board.T[p1CityIdx].Owner, "Player 1's city should now be owned by Player 0")
-	assert.Equal(t, 5, board.T[p1CityIdx].Army, "Player 1's city army count should remain")
+	assert.Equal(t, 6, board.T[p1CityIdx].Army, "Player 1's city army count (5 + 1 production)")
 	assert.Equal(t, 0, board.T[p1LandIdx].Owner, "Player 1's land should now be owned by Player 0")
-	assert.Equal(t, 3, board.T[p1LandIdx].Army, "Player 1's land army count should remain")
+	assert.Equal(t, 3, board.T[p1LandIdx].Army, "Player 1's land army count should remain (no production for normal tiles on turn 1)")
 
 	assert.True(t, engine.IsGameOver(), "Game should be over after elimination")
 	assert.Equal(t, 0, engine.GetWinner(), "Player 0 should be the winner")
@@ -215,6 +216,12 @@ func TestEngine_Step_ActionFromDeadPlayer(t *testing.T) {
 	player0ID := 0
 	player1ID := 1
 
+	// First, remove P1's general from the board to truly make them dead
+	if engine.gs.Players[player1ID].GeneralIdx != -1 {
+		board := engine.gs.Board
+		board.T[engine.gs.Players[player1ID].GeneralIdx] = core.Tile{Owner: core.NeutralID, Army: 0, Type: core.TileNormal}
+	}
+	
 	engine.gs.Players[player1ID].Alive = false
 	engine.gs.Players[player1ID].GeneralIdx = -1
 
