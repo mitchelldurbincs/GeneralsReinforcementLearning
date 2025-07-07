@@ -16,5 +16,5 @@ type GameState struct {
 	Turn    int
 	Board   *core.Board
 	Players []Player
-	ChangedTiles map[int]struct{} // Set of tile indices that changed this turn
+	ChangedTiles map[int]struct{}
 }

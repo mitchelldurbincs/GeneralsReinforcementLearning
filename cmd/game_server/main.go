@@ -74,7 +74,7 @@ func randomActionDemo() {
 
 	maxTurns := 50
 	for turn := 0; turn < maxTurns && !g.IsGameOver(); turn++ {
-		actions := game.GenerateRandomActions(g, rng) // g is *game.Engine
+		actions := game.GenerateRandomActions(g, rng)
 
 		turnLogger := log.With().Int("turn", turn+1).Logger()
 

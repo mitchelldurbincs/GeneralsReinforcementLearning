@@ -135,8 +135,7 @@ func TestMoveAction_Validate(t *testing.T) {
 		assert.ErrorIs(t, err, ErrNotOwned, "Expected ErrNotOwned")
 	})
 
-	// Test Cases: Insufficient Army
-	insufficientArmyTests := []struct {
+		insufficientArmyTests := []struct {
 		name      string
 		armyCount int
 	}{
@@ -148,10 +147,10 @@ func TestMoveAction_Validate(t *testing.T) {
 			board := NewBoard(boardWidth, boardHeight)
 			fromIdx := board.Idx(1, 1)
 			board.T[fromIdx].Owner = playerID
-			board.T[fromIdx].Army = tc.armyCount // Set insufficient army
+			board.T[fromIdx].Army = tc.armyCount
 			board.T[fromIdx].Type = TileNormal
 
-			toIdx := board.Idx(1, 2) // Valid target tile
+			toIdx := board.Idx(1, 2)
             board.T[toIdx].Type = TileNormal
 
 

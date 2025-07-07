@@ -92,20 +92,15 @@ type PlayerEliminationOrder struct {
 
 // ProcessCaptures analyzes all capture events from a turn and identifies
 // player eliminations based on General captures.
-// It returns a list of PlayerEliminationOrder structs for the engine to act upon.
-// This function does NOT modify the board or player states directly.
 func ProcessCaptures(allCaptureEventsThisTurn []CaptureDetails) []PlayerEliminationOrder {
 	var eliminationOrders []PlayerEliminationOrder
-	// Keep track of players whose elimination has already been ordered in this batch
-	// This handles rare cases like a player losing multiple generals simultaneously (if game rules allowed)
 	eliminationProcessedFor := make(map[int]bool)
 
 	for _, capture := range allCaptureEventsThisTurn {
-		// Check if a General tile was captured from an actual player by another player
 		if capture.TileType == TileGeneral &&
-			capture.PreviousOwnerID != NeutralID &&                 // The General was owned by a specific player
-			capture.PreviousOwnerID != capture.CapturingPlayerID && // Not a self-capture (should be impossible by rules)
-			!eliminationProcessedFor[capture.PreviousOwnerID] {     // This player's elimination hasn't been ordered yet
+			capture.PreviousOwnerID != NeutralID &&
+			capture.PreviousOwnerID != capture.CapturingPlayerID &&
+			!eliminationProcessedFor[capture.PreviousOwnerID] {
 
 			eliminationOrders = append(eliminationOrders, PlayerEliminationOrder{
 				EliminatedPlayerID: capture.PreviousOwnerID,

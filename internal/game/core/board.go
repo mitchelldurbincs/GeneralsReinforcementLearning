@@ -55,9 +55,7 @@ func (b *Board) GetTile(x, y int) *Tile {
 	return &b.T[b.Idx(x, y)]
 }
 
-// Manhattan distance between two board coordinates
 func (b *Board) Distance(x1, y1, x2, y2 int) int {
-	// Optimized Manhattan distance calculation (abs(x1-x2) + abs(y1-y2))
 	dx := x1 - x2
 	if dx < 0 {
 		dx = -dx

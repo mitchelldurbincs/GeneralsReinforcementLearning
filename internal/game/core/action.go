@@ -78,7 +78,6 @@ func (m *MoveAction) Validate(b *Board, playerID int) error {
 	return nil
 }
 
-// IsAdjacent checks if two coordinates are orthogonally adjacent
 func IsAdjacent(x1, y1, x2, y2 int) bool {
 	dx := abs(x1 - x2)
 	dy := abs(y1 - y2)

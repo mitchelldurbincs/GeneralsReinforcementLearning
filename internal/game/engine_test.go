@@ -300,8 +300,3 @@ func TestEngine_Step_ActionFromDeadPlayer(t *testing.T) {
 	assert.False(t, engine.gs.Players[player1ID].Alive, "Player 1 should remain dead")
 }
 
-// Suggestions for more tests:
-// - Test GetWinner when game is not over.
-// - Test GetWinner in a draw scenario (if game rules allow, though current logic makes it 1 or 0 winners).
-// - Test Step with an action that fails validation (e.g., move to mountain) and ensure game state consistency.
-// - Test edge cases for production (e.g., turn 0).

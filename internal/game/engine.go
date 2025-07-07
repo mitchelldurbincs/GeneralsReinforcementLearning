@@ -426,7 +426,7 @@ const (
 
 var playerColors = []string{ColorRed, ColorBlue, ColorGreen, ColorYellow, ColorPurple, ColorCyan}
 
-// Board returns a string representation of the board (Unchanged)
+// Board returns a string representation of the board
 func (e *Engine) Board() string {
 	const (
 		EmptySymbol    = "·"
@@ -437,7 +437,7 @@ func (e *Engine) Board() string {
 	var sb strings.Builder
 	sb.WriteString("    ")
 	for x := range e.gs.Board.W {
-		sb.WriteString(core.IntToStringFixedWidth(x, 2)) // Assuming core.IntToStringFixedWidth
+		sb.WriteString(core.IntToStringFixedWidth(x, 2))
 	}
 	sb.WriteString("\n")
 	for y := range e.gs.Board.H {

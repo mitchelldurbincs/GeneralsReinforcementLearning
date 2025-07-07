@@ -50,7 +50,7 @@ func GenerateRandomActions(g *Engine, rng *rand.Rand) []core.Action {
 		if len(validMoves) > 0 {
 			chosen := validMoves[rng.Intn(len(validMoves))]
 			actions = append(actions, &chosen)
-			log.Debug(). // Using the global logger here for simplicity in this helper
+			log.Debug().
 					Int("player_id", player.ID).
 					Int("from_x", chosen.FromX).Int("from_y", chosen.FromY).
 					Int("to_x", chosen.ToX).Int("to_y", chosen.ToY).
