@@ -13,7 +13,7 @@ import (
 )
 
 // -----------------------------------------------------------------------------
-// Colour definitions
+// Color definitions
 // -----------------------------------------------------------------------------
 
 var PlayerColors = map[int]color.Color{
@@ -30,6 +30,7 @@ var (
 	GeneralSymbolColor = color.White
 	CitySymbolColor    = color.White
 	ArmyTextColor      = color.White
+	GeneralArmyTextColor = color.Black
 )
 
 // -----------------------------------------------------------------------------
@@ -122,6 +123,11 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 		if tile.Army > 0 && !tile.IsMountain() && br.defaultFont != nil {
 			armyStr := strconv.Itoa(tile.Army)
 
+			textColor := ArmyTextColor
+			if tile.IsGeneral() {
+				textColor = GeneralArmyTextColor
+			}
+
 			// text bounds in pixels
 			b := text.BoundString(br.defaultFont, armyStr)
 			textW := b.Max.X - b.Min.X
@@ -130,7 +136,7 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 			x := int(screenX) + (br.tileSize-textW)/2
 			y := int(screenY) + (br.tileSize+textH)/2
 
-			text.Draw(screen, armyStr, br.defaultFont, x, y, ArmyTextColor)
+			text.Draw(screen, armyStr, br.defaultFont, x, y, textColor)
 		}
 	}
 }
