@@ -20,48 +20,55 @@ type Engine struct {
 	logger   zerolog.Logger 
 }
 
-// NewEngine creates a new game engine with map generation
+type GameConfig struct {
+	Width    int
+	Height   int
+	Players  int
+	Rng      *rand.Rand
+	Logger   zerolog.Logger
+}
+
 // NewEngine creates a new game engine with map generation.
 // Accepts a context, primarily for consistency and potential future use (e.g., complex setup).
-func NewEngine(ctx context.Context, w, h, players int, rng *rand.Rand, parentLogger zerolog.Logger) *Engine {
+func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 	// Create a logger for this engine instance, potentially deriving from a passed-in logger
 	// or using a default if none is provided.
 	// For this example, we'll use the parentLogger and add engine-specific fields.
-	engineLogger := parentLogger.With().Str("component", "GameEngine").Logger()
+	engineLogger := cfg.Logger.With().Str("component", "GameEngine").Logger()
 
 	// Example: Check context if setup were long (not strictly necessary here yet)
 	select {
 	case <-ctx.Done():
 		engineLogger.Error().Err(ctx.Err()).Msg("Engine creation cancelled or timed out during initial phase")
-		return nil 
+		return nil
 	default:
 	}
 
 	engineLogger.Info().
-		Int("width", w).
-		Int("height", h).
-		Int("num_players", players).
+		Int("width", cfg.Width).
+		Int("height", cfg.Height).
+		Int("num_players", cfg.Players).
 		Msg("Initializing new game engine")
 
-	if rng == nil {
+	if cfg.Rng == nil {
 		seed := time.Now().UnixNano()
 		engineLogger.Debug().Int64("seed", seed).Msg("RNG was nil, created new default RNG")
-		rng = rand.New(rand.NewSource(seed))
+		cfg.Rng = rand.New(rand.NewSource(seed))
 	} else {
 		engineLogger.Debug().Msg("Using provided RNG")
 	}
 
-	config := mapgen.DefaultMapConfig(w, h, players)
-	generator := mapgen.NewGenerator(config, rng)
+	config := mapgen.DefaultMapConfig(cfg.Width, cfg.Height, cfg.Players)
+	generator := mapgen.NewGenerator(config, cfg.Rng)
 	engineLogger.Debug().Interface("map_config", config).Msg("Map generator configured")
 	board := generator.GenerateMap()
 	engineLogger.Debug().Msg("Map generated")
 
-	playerSlice := make([]Player, players)
-	for i := range players {
+	playerSlice := make([]Player, cfg.Players)
+	for i := range cfg.Players {
 		playerSlice[i] = Player{
-			ID: i, 
-			Alive: true, 
+			ID:         i,
+			Alive:      true,
 			GeneralIdx: -1,
 			OwnedTiles: make([]int, 0),
 		}
@@ -70,11 +77,11 @@ func NewEngine(ctx context.Context, w, h, players int, rng *rand.Rand, parentLog
 
 	e := &Engine{
 		gs: &GameState{
-			Board: board, 
-			Players: playerSlice,
+			Board:        board,
+			Players:      playerSlice,
 			ChangedTiles: make(map[int]struct{}),
 		},
-		rng:      rng,
+		rng:      cfg.Rng,
 		gameOver: false,
 		logger:   engineLogger,
 	}
@@ -421,14 +428,13 @@ var playerColors = []string{ColorRed, ColorBlue, ColorGreen, ColorYellow, ColorP
 
 // Board returns a string representation of the board (Unchanged)
 func (e *Engine) Board() string {
-	var sb strings.Builder
 	const (
 		EmptySymbol    = "·"
 		CitySymbol     = "⬢"
 		GeneralSymbol  = "♔"
 		MountainSymbol = "▲"
-		PlayerSymbols  = "ABCDEFGH"
 	)
+	var sb strings.Builder
 	sb.WriteString("    ")
 	for x := range e.gs.Board.W {
 		sb.WriteString(core.IntToStringFixedWidth(x, 2)) // Assuming core.IntToStringFixedWidth
@@ -438,59 +444,74 @@ func (e *Engine) Board() string {
 		sb.WriteString(core.IntToStringFixedWidth(y, 2) + " ")
 		for x := range e.gs.Board.W {
 			t := e.gs.Board.T[e.gs.Board.Idx(x, y)]
-			var symbol string
-			var color string
-			switch {
-			case t.IsMountain():
-				symbol = " " + MountainSymbol
-				color = ColorGray
-			case t.IsGeneral():
-				playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
-				symbol = playerChar + GeneralSymbol
-				color = getPlayerColor(t.Owner)
-			case t.IsCity() && t.IsNeutral():
-				symbol = " " + CitySymbol
-				color = ColorWhite
-			case t.IsCity():
-				playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
-				symbol = playerChar + CitySymbol
-				color = getPlayerColor(t.Owner)
-			case t.IsNeutral() && t.Type == core.TileNormal:
-				if t.Army == 0 {
-					symbol = " " + EmptySymbol
-				} else {
-					symbol = core.IntToStringFixedWidth(t.Army, 2) // Assuming core.IntToStringFixedWidth
-					if t.Army >= 100 { // Adjusted for 2 chars
-						symbol = "++"
-					} else if t.Army >= 10 {
-						// Handled by IntToStringFixedWidth up to 99
-					} else {
-                        // prepend space if single digit
-                        symbol = " " + core.IntToStringFixedWidth(t.Army,1)
-                    }
-				}
-				color = ColorGray
-			default: // Player-owned normal tiles or other neutral tiles
-				if t.IsNeutral() {
-					symbol = core.IntToStringFixedWidth(t.Army, 2)
-                    if t.Army >= 100 { symbol = "++" }
-					color = ColorGray
-				} else {
-					playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
-					if t.Army < 10 {
-						symbol = playerChar + core.IntToStringFixedWidth(t.Army, 1)
-					} else {
-						symbol = playerChar + "+" // P+ for armies >=10
-					}
-					color = getPlayerColor(t.Owner)
-				}
-			}
+			symbol, color := e.getTileDisplay(t)
 			sb.WriteString(color + symbol + ColorReset)
 		}
 		sb.WriteString("\n")
 	}
 	sb.WriteString("\n" + EmptySymbol + "=empty " + CitySymbol + "=city " + GeneralSymbol + "=general " + MountainSymbol + "=mountain A-H=players\n")
 	return sb.String()
+}
+
+func (e *Engine) getTileDisplay(t core.Tile) (string, string) {
+	const (
+		EmptySymbol    = "·"
+		CitySymbol     = "⬢"
+		GeneralSymbol  = "♔"
+		MountainSymbol = "▲"
+		PlayerSymbols  = "ABCDEFGH"
+	)
+
+	var symbol string
+	var color string
+	switch {
+	case t.IsMountain():
+		symbol = " " + MountainSymbol
+		color = ColorGray
+	case t.IsGeneral():
+		playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
+		symbol = playerChar + GeneralSymbol
+		color = getPlayerColor(t.Owner)
+	case t.IsCity() && t.IsNeutral():
+		symbol = " " + CitySymbol
+		color = ColorWhite
+	case t.IsCity():
+		playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
+		symbol = playerChar + CitySymbol
+		color = getPlayerColor(t.Owner)
+	case t.IsNeutral() && t.Type == core.TileNormal:
+		if t.Army == 0 {
+			symbol = " " + EmptySymbol
+		} else {
+			symbol = core.IntToStringFixedWidth(t.Army, 2) // Assuming core.IntToStringFixedWidth
+			if t.Army >= 100 { // Adjusted for 2 chars
+				symbol = "++"
+			} else if t.Army >= 10 {
+				// Handled by IntToStringFixedWidth up to 99
+			} else {
+				// prepend space if single digit
+				symbol = " " + core.IntToStringFixedWidth(t.Army, 1)
+			}
+		}
+		color = ColorGray
+	default: // Player-owned normal tiles or other neutral tiles
+		if t.IsNeutral() {
+			symbol = core.IntToStringFixedWidth(t.Army, 2)
+			if t.Army >= 100 {
+				symbol = "++"
+			}
+			color = ColorGray
+		} else {
+			playerChar := string(PlayerSymbols[t.Owner%len(PlayerSymbols)])
+			if t.Army < 10 {
+				symbol = playerChar + core.IntToStringFixedWidth(t.Army, 1)
+			} else {
+				symbol = playerChar + "+" // P+ for armies >=10
+			}
+			color = getPlayerColor(t.Owner)
+		}
+	}
+	return symbol, color
 }
 
 func getPlayerColor(playerID int) string {

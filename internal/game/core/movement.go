@@ -58,25 +58,26 @@ func ApplyMoveAction(b *Board, action *MoveAction, changedTiles map[int]struct{}
 	if toTile.Owner == action.PlayerID {
 		// Fast path: Moving to own tile - just consolidate armies
 		toTile.Army += armiesToMove
-	} else {
-		// Combat path: Moving to an enemy or neutral tile
-		if armiesToMove > toTile.Army {
-			// Successful capture - tile changes ownership
-			toTile.Owner = action.PlayerID
-			toTile.Army = armiesToMove - toTile.Army
+		return nil, nil
+	}
 
-			captureDetails = &CaptureDetails{
-				X:                 action.ToX,
-				Y:                 action.ToY,
-				TileType:          toTile.Type,
-				CapturingPlayerID: action.PlayerID,
-				PreviousOwnerID:   originalToTileOwner,
-				PreviousArmyCount: originalToTileArmy,
-			}
-		} else {
-			// Failed attack - defender loses armies but retains ownership
-			toTile.Army -= armiesToMove
+	// Combat path: Moving to an enemy or neutral tile
+	if armiesToMove > toTile.Army {
+		// Successful capture - tile changes ownership
+		toTile.Owner = action.PlayerID
+		toTile.Army = armiesToMove - toTile.Army
+
+		captureDetails = &CaptureDetails{
+			X:                 action.ToX,
+			Y:                 action.ToY,
+			TileType:          toTile.Type,
+			CapturingPlayerID: action.PlayerID,
+			PreviousOwnerID:   originalToTileOwner,
+			PreviousArmyCount: originalToTileArmy,
 		}
+	} else {
+		// Failed attack - defender loses armies but retains ownership
+		toTile.Army -= armiesToMove
 	}
 
 	return captureDetails, nil

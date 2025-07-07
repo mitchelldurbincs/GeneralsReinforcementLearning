@@ -26,7 +26,14 @@ func TestNewEngine(t *testing.T) {
 	width, height, numPlayers := 8, 8, 2
 	ctx := context.Background()
 
-	engine := NewEngine(ctx, width, height, numPlayers, rng, testLogger())
+	config := GameConfig{
+		Width:   width,
+		Height:  height,
+		Players: numPlayers,
+		Rng:     rng,
+		Logger:  testLogger(),
+	}
+	engine := NewEngine(ctx, config)
 
 	require.NotNil(t, engine, "Engine should not be nil")
 	require.NotNil(t, engine.gs, "GameState should not be nil")
@@ -56,7 +63,14 @@ func TestNewEngine(t *testing.T) {
 
 func TestEngine_Step_BasicTurn(t *testing.T) {
 	ctx := context.Background()
-	engine := NewEngine(ctx, 5, 5, 1, newTestRNG(), testLogger())
+	config := GameConfig{
+		Width:   5,
+		Height:  5,
+		Players: 1,
+		Rng:     newTestRNG(),
+		Logger:  testLogger(),
+	}
+	engine := NewEngine(ctx, config)
 	initialTurn := engine.gs.Turn
 	initialArmy := engine.gs.Players[0].ArmyCount
 
@@ -71,7 +85,14 @@ func TestEngine_Step_BasicTurn(t *testing.T) {
 
 func TestEngine_Step_GameOverReturnError(t *testing.T) {
 	ctx := context.Background()
-	engine := NewEngine(ctx, 5, 5, 1, newTestRNG(), testLogger())
+	config := GameConfig{
+		Width:   5,
+		Height:  5,
+		Players: 1,
+		Rng:     newTestRNG(),
+		Logger:  testLogger(),
+	}
+	engine := NewEngine(ctx, config)
 	engine.gameOver = true // Manually set game to over
 
 	err := engine.Step(ctx, nil)
@@ -89,7 +110,14 @@ func TestEngine_ProcessTurnProduction(t *testing.T) {
 		actualNormalProduction   = 1
 	)
 
-	engine := NewEngine(ctx, 5, 5, 1, newTestRNG(), testLogger())
+	config := GameConfig{
+		Width:   5,
+		Height:  5,
+		Players: 1,
+		Rng:     newTestRNG(),
+		Logger:  testLogger(),
+	}
+	engine := NewEngine(ctx, config)
 	playerID := 0
 	p := &engine.gs.Players[playerID]
 
@@ -153,7 +181,14 @@ func TestEngine_ProcessTurnProduction(t *testing.T) {
 
 func TestEngine_PlayerEliminationAndTileTurnover(t *testing.T) {
 	ctx := context.Background()
-	engine := NewEngine(ctx, 5, 5, 2, newTestRNG(), testLogger()) // Player 0 and Player 1
+	config := GameConfig{
+		Width:   5,
+		Height:  5,
+		Players: 2,
+		Rng:     newTestRNG(),
+		Logger:  testLogger(),
+	}
+	engine := NewEngine(ctx, config) // Player 0 and Player 1
 	p0, p1 := &engine.gs.Players[0], &engine.gs.Players[1]
 
 	// Setup: P0 attacks P1's General
@@ -212,7 +247,14 @@ func TestEngine_PlayerEliminationAndTileTurnover(t *testing.T) {
 
 func TestEngine_Step_ActionFromDeadPlayer(t *testing.T) {
 	ctx := context.Background()
-	engine := NewEngine(ctx, 5, 5, 2, newTestRNG(), testLogger())
+	config := GameConfig{
+		Width:   5,
+		Height:  5,
+		Players: 2,
+		Rng:     newTestRNG(),
+		Logger:  testLogger(),
+	}
+	engine := NewEngine(ctx, config)
 	player0ID := 0
 	player1ID := 1
 

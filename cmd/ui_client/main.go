@@ -17,7 +17,14 @@ func main() {
 	// Initialize your game engine (this is just an example setup)
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
-	gameEngine := game.NewEngine(context.Background(), 20, 15, 2, rng, logger) // Example: 20x15 map, 2 players
+	config := game.GameConfig{
+		Width:   20,
+		Height:  15,
+		Players: 2,
+		Rng:     rng,
+		Logger:  logger,
+	}
+	gameEngine := game.NewEngine(context.Background(), config) // Example: 20x15 map, 2 players
 
 	uiGame, err := ui.NewUIGame(gameEngine)
 	if err != nil {

@@ -47,7 +47,14 @@ func randomActionDemo() {
 
 	// Create a 8x8 game with 2 players
 	// Pass the context and the global logger (log.Logger) to NewEngine
-	g := game.NewEngine(ctx, 8, 8, 2, rng, log.Logger)
+	config := game.GameConfig{
+		Width:   8,
+		Height:  8,
+		Players: 2,
+		Rng:     rng,
+		Logger:  log.Logger,
+	}
+	g := game.NewEngine(ctx, config)
 	if g == nil {
 		log.Fatal().Msg("Failed to create game engine (NewEngine returned nil, possibly due to context cancellation during init)")
 		return
@@ -67,7 +74,7 @@ func randomActionDemo() {
 
 	maxTurns := 50
 	for turn := 0; turn < maxTurns && !g.IsGameOver(); turn++ {
-		actions := generateRandomActions(g, rng) // g is *game.Engine
+		actions := game.GenerateRandomActions(g, rng) // g is *game.Engine
 
 		turnLogger := log.With().Int("turn", turn+1).Logger()
 
@@ -128,55 +135,3 @@ func randomActionDemo() {
 	log.Info().Msgf("Final board:\n%s", g.Board())
 }
 
-// generateRandomActions remains the same
-func generateRandomActions(g *game.Engine, rng *rand.Rand) []core.Action {
-	var actions []core.Action
-	state := g.GameState()
-
-	for _, player := range state.Players {
-		if !player.Alive {
-			continue
-		}
-		if rng.Float32() > 0.3 {
-			continue
-		}
-		var validMoves []core.MoveAction
-		board := state.Board
-		for y := 0; y < board.H; y++ {
-			for x := 0; x < board.W; x++ {
-				idx := board.Idx(x, y)
-				tile := board.T[idx]
-				if tile.Owner != player.ID || tile.Army <= 1 {
-					continue
-				}
-				directions := [][]int{{0, 1}, {0, -1}, {1, 0}, {-1, 0}}
-				for _, dir := range directions {
-					toX, toY := x+dir[0], y+dir[1]
-					if toX < 0 || toX >= board.W || toY < 0 || toY >= board.H {
-						continue
-					}
-					targetIdx := board.Idx(toX, toY)
-					if board.T[targetIdx].IsMountain() {
-						continue
-					}
-					move := core.MoveAction{
-						PlayerID: player.ID, FromX: x, FromY: y, ToX: toX, ToY: toY,
-						MoveAll: rng.Float32() < 0.7,
-					}
-					validMoves = append(validMoves, move)
-				}
-			}
-		}
-		if len(validMoves) > 0 {
-			chosen := validMoves[rng.Intn(len(validMoves))]
-			actions = append(actions, &chosen)
-			log.Debug(). // Using the global logger here for simplicity in this helper
-					Int("player_id", player.ID).
-					Int("from_x", chosen.FromX).Int("from_y", chosen.FromY).
-					Int("to_x", chosen.ToX).Int("to_y", chosen.ToY).
-					Bool("move_all", chosen.MoveAll).
-					Msg("Generated random action")
-		}
-	}
-	return actions
-}
