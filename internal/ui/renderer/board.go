@@ -72,10 +72,15 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 			cell.Fill(MountainColor)
 
 		default: // land / city / general
+			// Only show player colors for visible tiles
 			tileColor := PlayerColors[core.NeutralID]
-			if c, ok := PlayerColors[tile.Owner]; ok {
-				tileColor = c
+			if visible {
+				// For visible tiles, show the actual owner's color
+				if c, ok := PlayerColors[tile.Owner]; ok {
+					tileColor = c
+				}
 			}
+			// For non-visible tiles, we use the neutral gray color
 			cell.Fill(tileColor)
 
 			// owned city (shaded inner square)
@@ -111,7 +116,7 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 
 		if !visible {
 			fog := ebiten.NewImage(br.tileSize, br.tileSize)
-			fog.Fill(color.RGBA{25, 25, 25, 180}) // Semi-transparent fog
+			fog.Fill(color.RGBA{25, 25, 25, 200}) // More opaque fog
 			cell.DrawImage(fog, nil)
 		}
 
