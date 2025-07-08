@@ -95,7 +95,7 @@ func (ebr *EnhancedBoardRenderer) drawOverlays(screen *ebiten.Image, board *core
 	
 	// Draw hover highlight
 	if board.InBounds(ebr.hoverX, ebr.hoverY) {
-		idx := board.I(ebr.hoverX, ebr.hoverY)
+		idx := board.Idx(ebr.hoverX, ebr.hoverY)
 		tile := board.T[idx]
 		
 		// Show different hover colors based on context
