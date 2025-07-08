@@ -77,9 +77,10 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 
 	e := &Engine{
 		gs: &GameState{
-			Board:        board,
-			Players:      playerSlice,
-			ChangedTiles: make(map[int]struct{}),
+			Board:           board,
+			Players:         playerSlice,
+			ChangedTiles:    make(map[int]struct{}),
+			FogOfWarEnabled: true,
 		},
 		rng:      cfg.Rng,
 		gameOver: false,
@@ -108,6 +109,7 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	}
 
 	e.gs.Turn++
+	e.updateFogOfWar()
 	// Clear changed tiles from previous turn (reuse the map to avoid allocation)
 	for k := range e.gs.ChangedTiles {
 		delete(e.gs.ChangedTiles, k)
@@ -350,6 +352,37 @@ func (e *Engine) updatePlayerStats() {
 	e.logger.Debug().Msg("Player stats updated")
 }
 
+func (e *Engine) updateFogOfWar() {
+	if !e.gs.FogOfWarEnabled {
+		return
+	}
+
+	for i := range e.gs.Board.T {
+		for pid := range e.gs.Players {
+			e.gs.Board.T[i].Visible[pid] = false
+		}
+	}
+
+	for pid, p := range e.gs.Players {
+		if !p.Alive {
+			continue
+		}
+		for _, tileIdx := range p.OwnedTiles {
+			x, y := e.gs.Board.XY(tileIdx)
+			// Set visibility for the 3x3 area around the tile
+			for dx := -1; dx <= 1; dx++ {
+				for dy := -1; dy <= 1; dy++ {
+					nx, ny := x+dx, y+dy
+					if e.gs.Board.InBounds(nx, ny) {
+						e.gs.Board.T[e.gs.Board.Idx(nx, ny)].Visible[pid] = true
+					}
+				}
+			}
+		}
+	}
+}
+
+
 // checkGameOver determines if the game has ended
 func (e *Engine) checkGameOver(l zerolog.Logger) {
 	l.Debug().Msg("Checking game over conditions")
@@ -427,7 +460,7 @@ const (
 var playerColors = []string{ColorRed, ColorBlue, ColorGreen, ColorYellow, ColorPurple, ColorCyan}
 
 // Board returns a string representation of the board
-func (e *Engine) Board() string {
+func (e *Engine) Board(playerID int) string {
 	const (
 		EmptySymbol    = "·"
 		CitySymbol     = "⬢"
@@ -444,7 +477,7 @@ func (e *Engine) Board() string {
 		sb.WriteString(core.IntToStringFixedWidth(y, 2) + " ")
 		for x := range e.gs.Board.W {
 			t := e.gs.Board.T[e.gs.Board.Idx(x, y)]
-			symbol, color := e.getTileDisplay(t)
+			symbol, color := e.getTileDisplay(t, playerID)
 			sb.WriteString(color + symbol + ColorReset)
 		}
 		sb.WriteString("\n")
@@ -453,7 +486,7 @@ func (e *Engine) Board() string {
 	return sb.String()
 }
 
-func (e *Engine) getTileDisplay(t core.Tile) (string, string) {
+func (e *Engine) getTileDisplay(t core.Tile, playerID int) (string, string) {
 	const (
 		EmptySymbol    = "·"
 		CitySymbol     = "⬢"
@@ -462,9 +495,14 @@ func (e *Engine) getTileDisplay(t core.Tile) (string, string) {
 		PlayerSymbols  = "ABCDEFGH"
 	)
 
+	visible := playerID < 0 || !e.gs.FogOfWarEnabled || t.Visible[playerID]
+
 	var symbol string
 	var color string
 	switch {
+	case !visible:
+		symbol = " "
+		color = ColorGray
 	case t.IsMountain():
 		symbol = " " + MountainSymbol
 		color = ColorGray

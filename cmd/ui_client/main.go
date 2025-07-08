@@ -25,7 +25,7 @@ func main() {
 	}
 	gameEngine := game.NewEngine(context.Background(), config)
 
-	uiGame, err := ui.NewUIGame(gameEngine)
+	uiGame, err := ui.NewUIGame(gameEngine, 0)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -5,9 +5,10 @@ package core
 // Army: number of units on that tile.
 // Type - 0 = normal, 1 = general, 2 = city.
 type Tile struct {
-    Owner int
-    Army  int
-    Type  int 
+    Owner   int
+    Army    int
+    Type    int
+    Visible map[int]bool // PlayerID -> is visible
 }
 
 type Board struct {
@@ -34,7 +35,8 @@ func NewBoard(w, h int) *Board {
 	for i := range b.T {
 		// All tiles start neural and normal
 		b.T[i].Owner = -1
-		b.T[i].Type = TileNormal 
+		b.T[i].Type = TileNormal
+		b.T[i].Visible = make(map[int]bool)
 	}
 	return b
 }

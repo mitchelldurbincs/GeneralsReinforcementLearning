@@ -29,6 +29,7 @@ type UIGame struct {
 	engine        *game.Engine
 	boardRenderer *renderer.BoardRenderer
 	defaultFont   font.Face
+	playerID      int
 
 	// For simulation
 	rng       *rand.Rand
@@ -36,12 +37,13 @@ type UIGame struct {
 }
 
 // NewUIGame creates a new Ebitengine game instance.
-func NewUIGame(engine *game.Engine) (*UIGame, error) {
+func NewUIGame(engine *game.Engine, playerID int) (*UIGame, error) {
 	g := &UIGame{
 		engine:      engine,
 		rng:         rand.New(rand.NewSource(time.Now().UnixNano())),
 		turnTimer:   0,
 		defaultFont: basicfont.Face7x13,
+		playerID:    playerID,
 	}
 
 	g.boardRenderer = renderer.NewBoardRenderer(TileSize, g.defaultFont)
@@ -114,7 +116,7 @@ func (g *UIGame) Draw(screen *ebiten.Image) {
 	currentGameState := g.engine.GameState()
 
 	if g.boardRenderer != nil {
-		g.boardRenderer.Draw(screen, currentGameState.Board, currentGameState.Players)
+		g.boardRenderer.Draw(screen, currentGameState.Board, currentGameState.Players, g.playerID)
 	}
 
 	turnStr := fmt.Sprintf("Turn: %d", currentGameState.Turn)

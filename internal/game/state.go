@@ -13,8 +13,9 @@ type Player struct {
 }
 
 type GameState struct {
-	Turn    int
-	Board   *core.Board
-	Players []Player
-	ChangedTiles map[int]struct{}
+	Turn            int
+	Board           *core.Board
+	Players         []Player
+	ChangedTiles    map[int]struct{}
+	FogOfWarEnabled bool
 }

@@ -61,7 +61,7 @@ func randomActionDemo() {
 	}
 
 
-	log.Info().Msgf("Initial board:\n%s", g.Board())
+	log.Info().Msgf("Initial board:\n%s", g.Board(-1))
 	initialPlayers := g.GameState().Players
 	for i, p := range initialPlayers {
 		log.Info().
@@ -108,7 +108,7 @@ func randomActionDemo() {
 					}
 				}
 			}
-			turnLogger.Info().Msgf("Board state:\n%s", g.Board())
+			turnLogger.Info().Msgf("Board state:\n%s", g.Board(-1))
 
 			state := g.GameState()
 			for _, player := range state.Players {
@@ -132,6 +132,6 @@ func randomActionDemo() {
 		log.Info().Int("max_turns_reached", maxTurns).Msg("Game reached maximum turns")
 	}
 
-	log.Info().Msgf("Final board:\n%s", g.Board())
+	log.Info().Msgf("Final board:\n%s", g.Board(-1))
 }
 

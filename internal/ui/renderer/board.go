@@ -48,7 +48,7 @@ func NewBoardRenderer(tileSize int, f font.Face) *BoardRenderer {
 }
 
 // Draw renders the board on the supplied Ebiten screen.
-func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players []game.Player) {
+func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players []game.Player, playerID int) {
 	if board == nil {
 		return
 	}
@@ -60,12 +60,7 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 		screenY := float64(gridY * br.tileSize)
 
 		// ---------------------------------------------------------------------
-		// Choose base colour
-		// ---------------------------------------------------------------------
-		tileColor := PlayerColors[core.NeutralID]
-		if c, ok := PlayerColors[tile.Owner]; ok {
-			tileColor = c
-		}
+		visible := playerID < 0 || tile.Visible[playerID]
 
 		cell := ebiten.NewImage(br.tileSize, br.tileSize)
 
@@ -77,10 +72,14 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 			cell.Fill(MountainColor)
 
 		default: // land / city / general
+			tileColor := PlayerColors[core.NeutralID]
+			if c, ok := PlayerColors[tile.Owner]; ok {
+				tileColor = c
+			}
 			cell.Fill(tileColor)
 
 			// owned city (shaded inner square)
-			if tile.IsCity() && tile.Owner != core.NeutralID {
+			if visible && tile.IsCity() && tile.Owner != core.NeutralID {
 				m := br.tileSize / 3
 				sq := ebiten.NewImage(m, m)
 				sq.Fill(shiftColor(tileColor, CityOwnedHueShift))
@@ -90,7 +89,7 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 			}
 
 			// neutral city marker
-			if tile.IsCity() && tile.Owner == core.NeutralID {
+			if tile.IsCity() && (visible || tile.Owner == core.NeutralID) {
 				m := br.tileSize / 2
 				sq := ebiten.NewImage(m, m)
 				sq.Fill(color.RGBA{180, 180, 180, 255})
@@ -100,7 +99,7 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 			}
 
 			// general marker
-			if tile.IsGeneral() {
+			if visible && tile.IsGeneral() {
 				m := br.tileSize / 2
 				sq := ebiten.NewImage(m, m)
 				sq.Fill(GeneralSymbolColor)
@@ -108,6 +107,12 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 				op.GeoM.Translate(float64(br.tileSize-m)/2, float64(br.tileSize-m)/2)
 				cell.DrawImage(sq, op)
 			}
+		}
+
+		if !visible {
+			fog := ebiten.NewImage(br.tileSize, br.tileSize)
+			fog.Fill(color.RGBA{25, 25, 25, 180}) // Semi-transparent fog
+			cell.DrawImage(fog, nil)
 		}
 
 		// ---------------------------------------------------------------------
@@ -120,7 +125,7 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 		// ---------------------------------------------------------------------
 		// Army count (skip mountains & zero-armies)
 		// ---------------------------------------------------------------------
-		if tile.Army > 0 && !tile.IsMountain() && br.defaultFont != nil {
+		if visible && tile.Army > 0 && !tile.IsMountain() && br.defaultFont != nil {
 			armyStr := strconv.Itoa(tile.Army)
 
 			textColor := ArmyTextColor
