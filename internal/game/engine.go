@@ -88,6 +88,7 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 	}
 
 	e.updatePlayerStats() // This will use e.logger
+	e.updateFogOfWar() // Initialize fog of war visibility
 	e.logger.Info().Msg("Game engine created and initial stats updated")
 	return e
 }
