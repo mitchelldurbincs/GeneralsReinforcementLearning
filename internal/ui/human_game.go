@@ -136,7 +136,7 @@ func (g *HumanGame) handleHumanTurn(player game.Player) {
 	
 	for _, move := range pendingMoves {
 		// Validate the move
-		fromIdx := gs.Board.I(move.FromX, move.FromY)
+		fromIdx := gs.Board.Idx(move.FromX, move.FromY)
 		tile := gs.Board.T[fromIdx]
 		
 		if tile.Owner != player.ID || tile.Army <= 1 {
@@ -158,7 +158,7 @@ func (g *HumanGame) handleHumanTurn(player game.Player) {
 		}
 		
 		// Check if destination is not a mountain
-		toIdx := gs.Board.I(move.ToX, move.ToY)
+		toIdx := gs.Board.Idx(move.ToX, move.ToY)
 		if gs.Board.T[toIdx].IsMountain() {
 			g.showMessage("Cannot move to mountains", 60)
 			continue
@@ -221,7 +221,7 @@ func (g *HumanGame) handleAITurn(player game.Player) {
 			toX, toY := fromX+d[0], fromY+d[1]
 			
 			if gs.Board.InBounds(toX, toY) {
-				toIdx := gs.Board.I(toX, toY)
+				toIdx := gs.Board.Idx(toX, toY)
 				if !gs.Board.T[toIdx].IsMountain() {
 					actions = append(actions, &core.MoveAction{
 						PlayerID: player.ID,
@@ -261,7 +261,7 @@ func (g *HumanGame) Draw(screen *ebiten.Image) {
 	}
 	
 	// Draw UI elements
-	g.drawUI(screen, currentGameState)
+	g.drawUI(screen, &currentGameState)
 }
 
 func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
