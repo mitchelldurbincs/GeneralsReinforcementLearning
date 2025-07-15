@@ -75,7 +75,7 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 		humanPlayerID: humanPlayerID,
 		currentTurnPlayer: 0,
 		framesSinceStep: 0,
-		stepsPerSecond: 1, // One game step per second
+		stepsPerSecond: 10, // Ten game steps per second for responsive gameplay
 		accumulatedActions: make(map[int][]core.Action),
 	}
 	
