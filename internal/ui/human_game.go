@@ -81,6 +81,7 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 	
 	g.boardRenderer = renderer.NewEnhancedBoardRenderer(TileSize, g.defaultFont)
 	g.inputHandler = input.NewHandler(TileSize)
+	g.inputHandler.SetBoardOffset(0, 0) // Board is rendered at origin
 	
 	// Set up tile validator
 	g.inputHandler.SetTileValidator(func(x, y int) (bool, string) {
@@ -92,10 +93,6 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 		idx := gs.Board.Idx(x, y)
 		tile := gs.Board.T[idx]
 		
-		// Check if it's the human player's turn
-		if g.playerConfigs[g.currentTurnPlayer].Type != PlayerTypeHuman {
-			return false, "Not your turn"
-		}
 		
 		// Check if tile belongs to the human player
 		if tile.Owner != g.humanPlayerID {
