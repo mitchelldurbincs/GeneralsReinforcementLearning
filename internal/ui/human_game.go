@@ -44,9 +44,12 @@ type HumanGame struct {
 	// Turn management
 	rng            *rand.Rand
 	turnTimer      int
-	autoTurnDelay  int // Frames to wait between AI turns
-	waitingForHuman bool
 	currentTurnPlayer int
+	
+	// Game progression
+	framesSinceStep int
+	stepsPerSecond  int // How many game steps per second
+	accumulatedActions map[int][]core.Action // Actions accumulated per player
 	
 	// UI state
 	statusMessage  string
@@ -67,15 +70,45 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 		engine:        engine,
 		rng:           rand.New(rand.NewSource(time.Now().UnixNano())),
 		turnTimer:     0,
-		autoTurnDelay: 30, // 0.5 seconds at 60 FPS
 		defaultFont:   basicfont.Face7x13,
 		playerConfigs: playerConfigs,
 		humanPlayerID: humanPlayerID,
 		currentTurnPlayer: 0,
+		framesSinceStep: 0,
+		stepsPerSecond: 1, // One game step per second
+		accumulatedActions: make(map[int][]core.Action),
 	}
 	
 	g.boardRenderer = renderer.NewEnhancedBoardRenderer(TileSize, g.defaultFont)
 	g.inputHandler = input.NewHandler(TileSize)
+	
+	// Set up tile validator
+	g.inputHandler.SetTileValidator(func(x, y int) (bool, string) {
+		gs := g.engine.GameState()
+		if !gs.Board.InBounds(x, y) {
+			return false, "Out of bounds"
+		}
+		
+		idx := gs.Board.Idx(x, y)
+		tile := gs.Board.T[idx]
+		
+		// Check if it's the human player's turn
+		if g.playerConfigs[g.currentTurnPlayer].Type != PlayerTypeHuman {
+			return false, "Not your turn"
+		}
+		
+		// Check if tile belongs to the human player
+		if tile.Owner != g.humanPlayerID {
+			return false, "Not your tile"
+		}
+		
+		// Check if tile has enough army
+		if tile.Army <= 1 {
+			return false, "Not enough army"
+		}
+		
+		return true, ""
+	})
 	
 	return g, nil
 }
@@ -104,42 +137,59 @@ func (g *HumanGame) Update() error {
 		return nil
 	}
 	
-	gs := g.engine.GameState()
-	
-	// Determine whose turn it is
-	currentPlayer := gs.Players[g.currentTurnPlayer]
-	if !currentPlayer.Alive {
-		g.nextPlayer()
-		return nil
+	// Handle continuous input from human player
+	if g.humanPlayerID >= 0 && g.playerConfigs[g.humanPlayerID].Type == PlayerTypeHuman {
+		g.handleHumanInput()
 	}
 	
-	currentConfig := g.playerConfigs[g.currentTurnPlayer]
+	// Handle AI players continuously
+	g.handleAIPlayers()
 	
-	if currentConfig.Type == PlayerTypeHuman {
-		g.handleHumanTurn(currentPlayer)
-	} else {
-		g.handleAITurn(currentPlayer)
+	// Automatic game progression
+	g.framesSinceStep++
+	framesPerStep := 60 / g.stepsPerSecond // 60 FPS assumed
+	
+	if g.framesSinceStep >= framesPerStep {
+		g.framesSinceStep = 0
+		
+		// Collect all accumulated actions
+		allActions := []core.Action{}
+		for _, actions := range g.accumulatedActions {
+			allActions = append(allActions, actions...)
+		}
+		
+		// Clear accumulated actions
+		g.accumulatedActions = make(map[int][]core.Action)
+		
+		// Step the game
+		g.engine.Step(context.Background(), allActions)
+		
+		// Update turn counter display
+		g.currentTurnPlayer = (g.currentTurnPlayer + 1) % len(g.playerConfigs)
 	}
 	
 	return nil
 }
 
-func (g *HumanGame) handleHumanTurn(player game.Player) {
+func (g *HumanGame) handleHumanInput() {
 	g.inputHandler.SetPlayerTurn(true)
-	g.waitingForHuman = true
 	
 	gs := g.engine.GameState()
 	
+	// Check for validation messages
+	if msg := g.inputHandler.GetLastValidationMessage(); msg != "" {
+		g.showMessage(msg, 60)
+	}
+	
 	// Check for tile selection and movement
 	pendingMoves := g.inputHandler.GetPendingMoves()
-	validActions := []core.Action{}
 	
 	for _, move := range pendingMoves {
 		// Validate the move
 		fromIdx := gs.Board.Idx(move.FromX, move.FromY)
 		tile := gs.Board.T[fromIdx]
 		
-		if tile.Owner != player.ID || tile.Army <= 1 {
+		if tile.Owner != g.humanPlayerID || tile.Army <= 1 {
 			g.showMessage("Invalid source tile", 60)
 			continue
 		}
@@ -165,7 +215,7 @@ func (g *HumanGame) handleHumanTurn(player game.Player) {
 		}
 		
 		action := &core.MoveAction{
-			PlayerID: player.ID,
+			PlayerID: g.humanPlayerID,
 			FromX:    move.FromX,
 			FromY:    move.FromY,
 			ToX:      move.ToX,
@@ -173,46 +223,42 @@ func (g *HumanGame) handleHumanTurn(player game.Player) {
 			MoveAll:  !move.MoveHalf,
 		}
 		
-		validActions = append(validActions, action)
+		// Add to accumulated actions
+		g.accumulatedActions[g.humanPlayerID] = append(g.accumulatedActions[g.humanPlayerID], action)
 	}
 	
 	g.inputHandler.ClearPendingMoves()
-	
-	// Execute moves or check for turn end
-	if len(validActions) > 0 || g.inputHandler.IsTurnEnded() {
-		g.engine.Step(context.Background(), validActions)
-		g.waitingForHuman = false
-		g.inputHandler.SetPlayerTurn(false)
-		g.nextPlayer()
-		
-		if len(validActions) > 0 {
-			g.showMessage(fmt.Sprintf("Executed %d moves", len(validActions)), 60)
-		}
-	}
 }
 
-func (g *HumanGame) handleAITurn(player game.Player) {
-	g.turnTimer++
-	if g.turnTimer < g.autoTurnDelay {
-		return
-	}
-	g.turnTimer = 0
-	
+func (g *HumanGame) handleAIPlayers() {
 	gs := g.engine.GameState()
-	var actions []core.Action
 	
-	// Simple random AI
-	var potentialSources []int
-	for i, tile := range gs.Board.T {
-		if tile.Owner == player.ID && tile.Army > 1 {
-			potentialSources = append(potentialSources, i)
+	// Process each AI player
+	for i, config := range g.playerConfigs {
+		if config.Type != PlayerTypeAI {
+			continue
 		}
-	}
-	
-	if len(potentialSources) > 0 {
-		// Make 1-3 random moves
-		numMoves := 1 + g.rng.Intn(3)
-		for i := 0; i < numMoves && len(potentialSources) > 0; i++ {
+		
+		player := gs.Players[i]
+		if !player.Alive {
+			continue
+		}
+		
+		// Check if enough time has passed for this AI to make a move
+		// Each AI gets its own timer to avoid all AIs moving at once
+		if g.turnTimer%30 != i*10 { // Stagger AI moves
+			continue
+		}
+		
+		// Simple random AI - make one move per step
+		var potentialSources []int
+		for idx, tile := range gs.Board.T {
+			if tile.Owner == player.ID && tile.Army > 1 {
+				potentialSources = append(potentialSources, idx)
+			}
+		}
+		
+		if len(potentialSources) > 0 {
 			sourceIdx := potentialSources[g.rng.Intn(len(potentialSources))]
 			fromX, fromY := gs.Board.XY(sourceIdx)
 			
@@ -223,27 +269,23 @@ func (g *HumanGame) handleAITurn(player game.Player) {
 			if gs.Board.InBounds(toX, toY) {
 				toIdx := gs.Board.Idx(toX, toY)
 				if !gs.Board.T[toIdx].IsMountain() {
-					actions = append(actions, &core.MoveAction{
+					action := &core.MoveAction{
 						PlayerID: player.ID,
 						FromX:    fromX,
 						FromY:    fromY,
 						ToX:      toX,
 						ToY:      toY,
 						MoveAll:  g.rng.Intn(2) == 0,
-					})
+					}
+					g.accumulatedActions[player.ID] = append(g.accumulatedActions[player.ID], action)
 				}
 			}
 		}
 	}
 	
-	g.engine.Step(context.Background(), actions)
-	g.nextPlayer()
+	g.turnTimer++
 }
 
-func (g *HumanGame) nextPlayer() {
-	g.currentTurnPlayer = (g.currentTurnPlayer + 1) % len(g.playerConfigs)
-	g.turnTimer = 0
-}
 
 func (g *HumanGame) showMessage(msg string, duration int) {
 	g.statusMessage = msg
@@ -269,15 +311,10 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 	turnStr := fmt.Sprintf("Turn: %d", gs.Turn)
 	ebitenutil.DebugPrintAt(screen, turnStr, 5, 5)
 	
-	// Current player indicator
-	currentPlayer := gs.Players[g.currentTurnPlayer]
-	currentStr := fmt.Sprintf("Current Turn: Player %d", currentPlayer.ID)
-	if g.playerConfigs[g.currentTurnPlayer].Type == PlayerTypeHuman {
-		currentStr += " (Human)"
-	} else {
-		currentStr += " (AI)"
-	}
-	text.Draw(screen, currentStr, g.defaultFont, 5, 25, color.White)
+	// Game is now continuous, show next step timer
+	timeToNextStep := float64(60/g.stepsPerSecond - g.framesSinceStep) / 60.0
+	stepStr := fmt.Sprintf("Next step in: %.1fs", timeToNextStep)
+	text.Draw(screen, stepStr, g.defaultFont, 5, 25, color.White)
 	
 	// Player stats
 	for i, player := range gs.Players {
@@ -293,23 +330,20 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 	}
 	
 	// Controls help
-	if g.waitingForHuman {
-		helpY := ScreenHeight - 80
-		text.Draw(screen, "Controls:", g.defaultFont, 5, helpY, color.White)
-		text.Draw(screen, "Click: Select/Move", g.defaultFont, 5, helpY+15, color.Gray{200})
-		text.Draw(screen, "Q/W: Full/Half army", g.defaultFont, 5, helpY+30, color.Gray{200})
-		text.Draw(screen, "Space: End turn", g.defaultFont, 5, helpY+45, color.Gray{200})
-		text.Draw(screen, "ESC: Deselect", g.defaultFont, 5, helpY+60, color.Gray{200})
-		
-		// Move mode indicator
-		modeStr := "Move Mode: "
-		if g.inputHandler.GetMoveMode() == input.MoveFull {
-			modeStr += "Full Army"
-		} else {
-			modeStr += "Half Army"
-		}
-		text.Draw(screen, modeStr, g.defaultFont, ScreenWidth-150, 5, color.White)
+	helpY := ScreenHeight - 80
+	text.Draw(screen, "Controls:", g.defaultFont, 5, helpY, color.White)
+	text.Draw(screen, "Click: Select/Move", g.defaultFont, 5, helpY+15, color.Gray{200})
+	text.Draw(screen, "Q/W: Full/Half army", g.defaultFont, 5, helpY+30, color.Gray{200})
+	text.Draw(screen, "ESC: Deselect", g.defaultFont, 5, helpY+45, color.Gray{200})
+	
+	// Move mode indicator
+	modeStr := "Move Mode: "
+	if g.inputHandler.GetMoveMode() == input.MoveFull {
+		modeStr += "Full Army"
+	} else {
+		modeStr += "Half Army"
 	}
+	text.Draw(screen, modeStr, g.defaultFont, ScreenWidth-150, 5, color.White)
 	
 	// Status message
 	if g.messageTimer > 0 && g.statusMessage != "" {

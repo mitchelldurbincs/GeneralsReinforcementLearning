@@ -41,6 +41,10 @@ type Handler struct {
 	// Turn state
 	isPlayerTurn   bool
 	turnEnded      bool
+	
+	// Validation callback
+	tileValidator  func(x, y int) (bool, string)
+	lastValidationMessage string
 }
 
 type PendingMove struct {
@@ -85,9 +89,21 @@ func (h *Handler) handleLeftClick() {
 	switch h.selectionState {
 	case SelectionNone:
 		// Select a tile if it belongs to the player
-		h.selectedTileX = tileX
-		h.selectedTileY = tileY
-		h.selectionState = SelectionTileSelected
+		if h.tileValidator != nil {
+			if valid, msg := h.tileValidator(tileX, tileY); valid {
+				h.selectedTileX = tileX
+				h.selectedTileY = tileY
+				h.selectionState = SelectionTileSelected
+				h.lastValidationMessage = ""
+			} else {
+				h.lastValidationMessage = msg
+			}
+		} else {
+			// Fallback to old behavior if no validator
+			h.selectedTileX = tileX
+			h.selectedTileY = tileY
+			h.selectionState = SelectionTileSelected
+		}
 		
 	case SelectionTileSelected:
 		// If clicking the same tile, deselect
@@ -113,11 +129,6 @@ func (h *Handler) handleRightClick() {
 }
 
 func (h *Handler) handleKeyboard() {
-	// Space to end turn
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		h.turnEnded = true
-	}
-	
 	// Q for full army movement
 	if inpututil.IsKeyJustPressed(ebiten.KeyQ) {
 		h.moveMode = MoveFull
@@ -185,4 +196,14 @@ func (h *Handler) IsTurnEnded() bool {
 
 func (h *Handler) GetMoveMode() MoveMode {
 	return h.moveMode
+}
+
+func (h *Handler) SetTileValidator(validator func(x, y int) (bool, string)) {
+	h.tileValidator = validator
+}
+
+func (h *Handler) GetLastValidationMessage() string {
+	msg := h.lastValidationMessage
+	h.lastValidationMessage = "" // Clear after reading
+	return msg
 }
