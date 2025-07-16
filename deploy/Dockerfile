@@ -1,3 +1,6 @@
+# Dockerfile for the Generals.io game server
+# Builds a lightweight headless game server binary
+
 # -------- build stage --------
 FROM golang:1.24-alpine AS builder
 WORKDIR /app
@@ -9,8 +12,8 @@ RUN go mod download
 # Copy the rest of your source tree
 COPY . .
 
-# Build the headless game binary (adjust path if you renamed the folder)
-RUN CGO_ENABLED=0 go build -o generals ./cmd/game
+# Build the headless game binary
+RUN CGO_ENABLED=0 go build -o generals ./cmd/game_server
 
 # -------- runtime stage --------
 FROM alpine:3.21
