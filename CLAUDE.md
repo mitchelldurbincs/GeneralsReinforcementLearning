@@ -16,8 +16,8 @@ go build -o game_server ./cmd/game_server
 # Build the UI client (with graphics)
 go build -o ui_client ./cmd/ui_client
 
-# Build for Docker deployment
-CGO_ENABLED=0 go build -o generals ./cmd/game
+# Build for Docker deployment (Note: cmd/game doesn't exist, use game_server)
+CGO_ENABLED=0 go build -o game_server ./cmd/game_server
 ```
 
 ### Testing
@@ -31,6 +31,8 @@ go test -cover ./...
 # Run tests for a specific package
 go test ./internal/game/core
 go test ./internal/game/mapgen
+go test ./internal/ui/renderer
+go test ./internal/common
 ```
 
 ### Running
@@ -49,19 +51,41 @@ go mod download
 ## Architecture Overview
 
 ### Core Game Logic (`internal/game/`)
-- **engine.go**: Main game loop, turn processing, win condition checking
-- **state.go**: Game state management, player tracking
+- **engine.go**: Main game loop, turn processing, action execution, win condition checking
+- **state.go**: Game state management, player and board state tracking
 - **constants.go**: Game balance parameters (production rates, growth intervals)
+- **visibility.go**: Fog of war implementation with incremental updates (3x3 visibility around owned tiles)
+- **stats.go**: Player statistics tracking with optimized incremental updates
+- **rendering.go**: Terminal-based board visualization with ANSI colors
+- **demo_helpers.go**: Random action generation for testing and demonstrations
 - **core/**: Low-level game mechanics
-  - `board.go`: Grid-based game board
+  - `board.go`: 2D grid-based game board implementation
   - `movement.go`: Army movement and combat resolution
-  - `player.go`: Player state and actions
+  - `player.go`: Player state and properties
   - `tile.go`: Tile types (empty, mountain, city, general)
-- **mapgen/**: Procedural map generation with city and mountain placement
+  - `action.go`: Action types and validation
+  - `utils.go`: Core utility functions
+- **mapgen/**: Procedural map generation
+  - `generator.go`: Map generation with city and mountain placement
 
 ### UI System (`internal/ui/`)
-- **renderer/**: Ebiten-based rendering for board, units, and fog of war
-- **input/**: Mouse and keyboard handling for player interactions
+- **game.go**: Base game interface definition
+- **human_game.go**: Human player implementation
+- **renderer/**: Ebiten-based rendering system
+  - `board.go`: Basic board rendering
+  - `enhanced_board.go`: Enhanced visual features
+  - `fog.go`: Fog of war rendering
+  - `units.go`: Unit/army visualization
+- **input/**: Input handling system
+  - `handler.go`: Main input coordination
+  - `mouse.go`: Mouse interactions
+  - `keyboard.go`: Keyboard shortcuts
+  - `actions.go`: Input action mapping
+
+### Common Utilities (`internal/common/`)
+- **colors.go**: Color definitions and utilities
+- **math.go**: Mathematical helper functions
+- **validation.go**: Coordinate validation and distance calculations
 
 ### Entry Points (`cmd/`)
 - **game_server/**: Headless server for game logic (planned for RL training)
@@ -72,11 +96,17 @@ go mod download
 - City starting army: 40 units
 - Production: 1 army/turn for generals and cities
 - Normal tile growth: Every 25 turns
-- Fog of war: Recently implemented, hides enemy positions
+- Fog of war: Fully implemented with toggle via `FogOfWarEnabled` flag
+- Minimum general spacing: 5 (Manhattan distance)
 
 ### Deployment
-- Docker multi-stage builds for containerization
-- Terraform configuration for AWS deployment (EC2, ECR, S3, VPC)
+- Docker multi-stage builds for containerization (golang:1.24-alpine → alpine:3.21)
+- Terraform configuration for AWS deployment:
+  - Individual .tf files for each component (compute, ECR, networking, security, etc.)
+  - EC2 instances for game server and RL trainer
+  - ECR for container registry
+  - S3 for storage
+  - VPC and security groups
 
 ## Development Notes
 
@@ -85,5 +115,11 @@ When modifying game mechanics, key files to consider:
 - Turn processing: `internal/game/engine.go`
 - Movement logic: `internal/game/core/movement.go`
 - Visual rendering: `internal/ui/renderer/`
+- Fog of war: `internal/game/visibility.go`
+- Performance optimization: Check incremental update patterns in `stats.go` and `visibility.go`
 
-The project uses Zerolog for structured logging throughout the codebase.
+The project uses:
+- **Zerolog** for structured logging throughout the codebase
+- **Ebiten v2** for game graphics and rendering
+- **Testify** for testing assertions
+- **Go 1.24.0** as the base language version
