@@ -1,5 +1,7 @@
 package core
 
+import "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/common"
+
 // ActionType represents the type of action
 type ActionType int
 
@@ -45,7 +47,7 @@ func (m *MoveAction) Validate(b *Board, playerID int) error {
 	}
 
 	// Check adjacency (only orthogonal moves allowed)
-	if !IsAdjacent(m.FromX, m.FromY, m.ToX, m.ToY) {
+	if !common.IsAdjacent(m.FromX, m.FromY, m.ToX, m.ToY) {
 		return ErrNotAdjacent
 	}
 
@@ -78,15 +80,3 @@ func (m *MoveAction) Validate(b *Board, playerID int) error {
 	return nil
 }
 
-func IsAdjacent(x1, y1, x2, y2 int) bool {
-	dx := abs(x1 - x2)
-	dy := abs(y1 - y2)
-	return (dx == 1 && dy == 0) || (dx == 0 && dy == 1)
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}

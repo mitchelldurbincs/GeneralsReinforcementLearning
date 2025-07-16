@@ -18,4 +18,7 @@ type GameState struct {
 	Players         []Player
 	ChangedTiles    map[int]struct{}
 	FogOfWarEnabled bool
+	// VisibilityChanges tracks tiles whose ownership changed, affecting visibility
+	// Used for incremental fog of war updates
+	VisibilityChangedTiles map[int]struct{}
 }

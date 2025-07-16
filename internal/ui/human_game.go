@@ -13,6 +13,7 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/common"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/ui/input"
@@ -192,8 +193,8 @@ func (g *HumanGame) handleHumanInput() {
 		}
 		
 		// Check if destination is adjacent
-		dx := abs(move.ToX - move.FromX)
-		dy := abs(move.ToY - move.FromY)
+		dx := common.Abs(move.ToX - move.FromX)
+		dy := common.Abs(move.ToY - move.FromY)
 		if dx+dy != 1 {
 			g.showMessage("Can only move to adjacent tiles", 60)
 			continue
@@ -322,7 +323,7 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 		}
 		
 		// Use player color for the text
-		playerColor := renderer.PlayerColors[player.ID]
+		playerColor := common.PlayerColors[player.ID]
 		text.Draw(screen, playerStr, g.defaultFont, 5, y, playerColor)
 	}
 	
@@ -354,9 +355,3 @@ func (g *HumanGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screen
 	return ScreenWidth, ScreenHeight
 }
 
-func abs(n int) int {
-	if n < 0 {
-		return -n
-	}
-	return n
-}

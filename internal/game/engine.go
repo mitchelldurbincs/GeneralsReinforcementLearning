@@ -17,7 +17,11 @@ type Engine struct {
 	gs       *GameState
 	rng      *rand.Rand
 	gameOver bool
-	logger   zerolog.Logger 
+	logger   zerolog.Logger
+	
+	// Reusable temporary maps to avoid allocations
+	tempTileOwnership   map[int]int        // Used in performIncrementalStatsUpdate
+	tempAffectedPlayers map[int]struct{}   // Used in performIncrementalVisibilityUpdate
 }
 
 type GameConfig struct {
@@ -70,21 +74,24 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 			ID:         i,
 			Alive:      true,
 			GeneralIdx: -1,
-			OwnedTiles: make([]int, 0),
+			OwnedTiles: make([]int, 0, 50), // Pre-allocate for typical ownership
 		}
 	}
 	engineLogger.Debug().Int("num_players", len(playerSlice)).Msg("Players initialized")
 
 	e := &Engine{
 		gs: &GameState{
-			Board:           board,
-			Players:         playerSlice,
-			ChangedTiles:    make(map[int]struct{}),
-			FogOfWarEnabled: true,
+			Board:                  board,
+			Players:                playerSlice,
+			ChangedTiles:           make(map[int]struct{}),
+			FogOfWarEnabled:        true,
+			VisibilityChangedTiles: make(map[int]struct{}),
 		},
-		rng:      cfg.Rng,
-		gameOver: false,
-		logger:   engineLogger,
+		rng:                 cfg.Rng,
+		gameOver:            false,
+		logger:              engineLogger,
+		tempTileOwnership:   make(map[int]int),
+		tempAffectedPlayers: make(map[int]struct{}),
 	}
 
 	e.updatePlayerStats() // This will use e.logger
@@ -114,6 +121,9 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	// Clear changed tiles from previous turn (reuse the map to avoid allocation)
 	for k := range e.gs.ChangedTiles {
 		delete(e.gs.ChangedTiles, k)
+	}
+	for k := range e.gs.VisibilityChangedTiles {
+		delete(e.gs.VisibilityChangedTiles, k)
 	}
 	
 	// You can derive the turnLogger from e.logger or potentially from a logger in ctx.
@@ -212,6 +222,9 @@ func (e *Engine) processActions(ctx context.Context, actions []core.Action, l ze
 					Interface("capture_details", *captureDetail).
 					Msg("Move resulted in capture")
 				allCaptureDetailsThisTurn = append(allCaptureDetailsThisTurn, *captureDetail)
+				// Mark tile for visibility update since ownership changed
+				capturedTileIdx := e.gs.Board.Idx(captureDetail.X, captureDetail.Y)
+				e.gs.VisibilityChangedTiles[capturedTileIdx] = struct{}{}
 			}
 		default:
 			l.Warn().Int("player_id", playerID).Str("action_type", core.GetActionType(action)).Msg("Unhandled action type in processActions")
@@ -246,6 +259,7 @@ func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminati
 			if e.gs.Board.T[tileIdx].Owner == order.EliminatedPlayerID {
 				e.gs.Board.T[tileIdx].Owner = order.NewOwnerID
 				e.gs.ChangedTiles[tileIdx] = struct{}{}
+				e.gs.VisibilityChangedTiles[tileIdx] = struct{}{}
 				tilesTransferred++
 			}
 		}
@@ -302,7 +316,8 @@ func (e *Engine) processTurnProduction(l zerolog.Logger) {
 }
 
 // updatePlayerStats recalculates player statistics
-// If forceFullUpdate is true, it scans all tiles. Otherwise, it uses incremental updates.
+// On turn 0 or when no previous stats exist, it does a full scan.
+// Otherwise, it uses incremental updates based on ChangedTiles.
 func (e *Engine) updatePlayerStats() {
 	// Only do full update if we have changed tiles or on initialization
 	if len(e.gs.ChangedTiles) == 0 && e.gs.Turn > 0 {
@@ -313,9 +328,22 @@ func (e *Engine) updatePlayerStats() {
 
 	e.logger.Debug().Int("changed_tiles", len(e.gs.ChangedTiles)).Msg("Updating player stats")
 
-	// For now, still do full update but only when needed
-	// TODO: Implement true incremental updates based on ChangedTiles
-	
+	// On turn 0 or if we have too many changes, do a full update
+	// Using 20% of board size as threshold for full update vs incremental
+	fullUpdateThreshold := len(e.gs.Board.T) / 5
+	if e.gs.Turn == 0 || len(e.gs.ChangedTiles) > fullUpdateThreshold {
+		e.logger.Debug().Msg("Performing full stats update")
+		e.performFullStatsUpdate()
+		return
+	}
+
+	// Incremental update based on changed tiles
+	e.logger.Debug().Msg("Performing incremental stats update")
+	e.performIncrementalStatsUpdate()
+}
+
+// performFullStatsUpdate does a complete recalculation of all player stats
+func (e *Engine) performFullStatsUpdate() {
 	for pid := range e.gs.Players {
 		e.gs.Players[pid].ArmyCount = 0
 		e.gs.Players[pid].GeneralIdx = -1
@@ -339,6 +367,81 @@ func (e *Engine) updatePlayerStats() {
 			p.GeneralIdx = i
 		}
 	}
+}
+
+// performIncrementalStatsUpdate updates stats based only on changed tiles
+func (e *Engine) performIncrementalStatsUpdate() {
+	// We need to track the old state of tiles to properly update stats
+	// Since we don't have that, we'll need to reconstruct ownership from OwnedTiles
+	
+	// Clear and reuse the temporary map instead of allocating new one
+	for k := range e.tempTileOwnership {
+		delete(e.tempTileOwnership, k)
+	}
+	
+	// Build tile ownership map for quick lookup
+	for pid := range e.gs.Players {
+		for _, tileIdx := range e.gs.Players[pid].OwnedTiles {
+			e.tempTileOwnership[tileIdx] = pid
+		}
+	}
+	
+	// Process each changed tile
+	for tileIdx := range e.gs.ChangedTiles {
+		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
+			continue
+		}
+		
+		tile := &e.gs.Board.T[tileIdx]
+		oldOwner, hadOldOwner := e.tempTileOwnership[tileIdx]
+		newOwner := tile.Owner
+		
+		// Remove from old owner's stats
+		if hadOldOwner && oldOwner >= 0 && oldOwner < len(e.gs.Players) {
+			p := &e.gs.Players[oldOwner]
+			// Remove from OwnedTiles using swap-and-truncate for O(1) removal
+			for i, idx := range p.OwnedTiles {
+				if idx == tileIdx {
+					// Swap with last element and truncate
+					lastIdx := len(p.OwnedTiles) - 1
+					p.OwnedTiles[i] = p.OwnedTiles[lastIdx]
+					p.OwnedTiles = p.OwnedTiles[:lastIdx]
+					break
+				}
+			}
+			// Note: We can't accurately remove the old army count without knowing the previous value
+			// This is a limitation of not tracking tile state changes
+		}
+		
+		// Add to new owner's stats
+		if newOwner >= 0 && newOwner < len(e.gs.Players) && !tile.IsNeutral() {
+			p := &e.gs.Players[newOwner]
+			// Add to OwnedTiles if not already there
+			found := false
+			for _, idx := range p.OwnedTiles {
+				if idx == tileIdx {
+					found = true
+					break
+				}
+			}
+			if !found {
+				p.OwnedTiles = append(p.OwnedTiles, tileIdx)
+			}
+			
+			if tile.IsGeneral() {
+				p.GeneralIdx = tileIdx
+			}
+		}
+	}
+	
+	// After updating ownership, recalculate army counts
+	// We have to do this for all players since we don't track army deltas
+	for pid := range e.gs.Players {
+		e.gs.Players[pid].ArmyCount = 0
+		for _, tileIdx := range e.gs.Players[pid].OwnedTiles {
+			e.gs.Players[pid].ArmyCount += e.gs.Board.T[tileIdx].Army
+		}
+	}
 
 	for pid := range e.gs.Players {
 		oldAliveStatus := e.gs.Players[pid].Alive
@@ -358,25 +461,110 @@ func (e *Engine) updateFogOfWar() {
 		return
 	}
 
+	// On turn 0 or if too many visibility changes, do full update
+	fullUpdateThreshold := len(e.gs.Board.T) / 10 // 10% of board
+	if e.gs.Turn == 0 || len(e.gs.VisibilityChangedTiles) > fullUpdateThreshold {
+		e.performFullVisibilityUpdate()
+		return
+	}
+
+	// Incremental update based on changed tiles
+	e.performIncrementalVisibilityUpdate()
+}
+
+// performFullVisibilityUpdate recalculates all visibility from scratch
+func (e *Engine) performFullVisibilityUpdate() {
+	// Clear all visibility
 	for i := range e.gs.Board.T {
 		for pid := range e.gs.Players {
 			e.gs.Board.T[i].Visible[pid] = false
 		}
 	}
 
+	// Set visibility from all owned tiles
 	for pid, p := range e.gs.Players {
 		if !p.Alive {
 			continue
 		}
 		for _, tileIdx := range p.OwnedTiles {
-			x, y := e.gs.Board.XY(tileIdx)
-			// Set visibility for the 3x3 area around the tile
-			for dx := -1; dx <= 1; dx++ {
-				for dy := -1; dy <= 1; dy++ {
-					nx, ny := x+dx, y+dy
-					if e.gs.Board.InBounds(nx, ny) {
-						e.gs.Board.T[e.gs.Board.Idx(nx, ny)].Visible[pid] = true
-					}
+			e.setVisibilityAround(tileIdx, pid)
+		}
+	}
+	
+	e.logger.Debug().Msg("Performed full visibility update")
+}
+
+// performIncrementalVisibilityUpdate only updates visibility for changed tiles
+func (e *Engine) performIncrementalVisibilityUpdate() {
+	// For each tile that changed ownership, update visibility
+	for tileIdx := range e.gs.VisibilityChangedTiles {
+		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
+			continue
+		}
+		
+		// Get the current owner of the tile
+		currentOwner := e.gs.Board.T[tileIdx].Owner
+		
+		// Clear visibility for all players around this tile first
+		// This is necessary because we don't track previous owners
+		e.clearVisibilityAround(tileIdx)
+		
+		// If tile has a new owner, grant visibility
+		if currentOwner >= 0 && currentOwner < len(e.gs.Players) && e.gs.Players[currentOwner].Alive {
+			e.setVisibilityAround(tileIdx, currentOwner)
+		}
+	}
+	
+	// Re-establish visibility from all owned tiles of affected players
+	// This prevents removing visibility that should still exist from other tiles
+	
+	// Clear and reuse temporary map
+	for k := range e.tempAffectedPlayers {
+		delete(e.tempAffectedPlayers, k)
+	}
+	
+	for tileIdx := range e.gs.VisibilityChangedTiles {
+		tile := &e.gs.Board.T[tileIdx]
+		if tile.Owner >= 0 {
+			e.tempAffectedPlayers[tile.Owner] = struct{}{}
+		}
+	}
+	
+	for pid := range e.tempAffectedPlayers {
+		if !e.gs.Players[pid].Alive {
+			continue
+		}
+		for _, ownedTileIdx := range e.gs.Players[pid].OwnedTiles {
+			e.setVisibilityAround(ownedTileIdx, pid)
+		}
+	}
+	
+	e.logger.Debug().Int("changed_tiles", len(e.gs.VisibilityChangedTiles)).Msg("Performed incremental visibility update")
+}
+
+// setVisibilityAround sets visibility for a player in a 3x3 area around a tile
+func (e *Engine) setVisibilityAround(tileIdx int, playerID int) {
+	x, y := e.gs.Board.XY(tileIdx)
+	for dx := -1; dx <= 1; dx++ {
+		for dy := -1; dy <= 1; dy++ {
+			nx, ny := x+dx, y+dy
+			if e.gs.Board.InBounds(nx, ny) {
+				e.gs.Board.T[e.gs.Board.Idx(nx, ny)].Visible[playerID] = true
+			}
+		}
+	}
+}
+
+// clearVisibilityAround clears visibility for all players in a 3x3 area around a tile
+func (e *Engine) clearVisibilityAround(tileIdx int) {
+	x, y := e.gs.Board.XY(tileIdx)
+	for dx := -1; dx <= 1; dx++ {
+		for dy := -1; dy <= 1; dy++ {
+			nx, ny := x+dx, y+dy
+			if e.gs.Board.InBounds(nx, ny) {
+				idx := e.gs.Board.Idx(nx, ny)
+				for pid := range e.gs.Players {
+					e.gs.Board.T[idx].Visible[pid] = false
 				}
 			}
 		}
@@ -468,23 +656,113 @@ func (e *Engine) Board(playerID int) string {
 		GeneralSymbol  = "♔"
 		MountainSymbol = "▲"
 	)
+	
+	// Pre-allocate buffer size based on board dimensions
+	// Each cell takes roughly: 2 chars for symbol + ~20 chars for ANSI codes
+	// Plus headers and legend
+	width := e.gs.Board.W
+	height := e.gs.Board.H
+	estimatedSize := (width*22 + 10) * (height + 3) + 100 // Extra for headers and legend
+	
 	var sb strings.Builder
+	sb.Grow(estimatedSize)
+	
+	// Header row
 	sb.WriteString("    ")
-	for x := range e.gs.Board.W {
+	for x := 0; x < width; x++ {
 		sb.WriteString(core.IntToStringFixedWidth(x, 2))
 	}
 	sb.WriteString("\n")
-	for y := range e.gs.Board.H {
-		sb.WriteString(core.IntToStringFixedWidth(y, 2) + " ")
-		for x := range e.gs.Board.W {
+	
+	// Board rows
+	for y := 0; y < height; y++ {
+		sb.WriteString(core.IntToStringFixedWidth(y, 2))
+		sb.WriteString(" ")
+		for x := 0; x < width; x++ {
 			t := e.gs.Board.T[e.gs.Board.Idx(x, y)]
-			symbol, color := e.getTileDisplay(t, playerID)
-			sb.WriteString(color + symbol + ColorReset)
+			e.getTileDisplayDirect(&sb, t, playerID)
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString("\n" + EmptySymbol + "=empty " + CitySymbol + "=city " + GeneralSymbol + "=general " + MountainSymbol + "=mountain A-H=players\n")
+	
+	// Legend
+	sb.WriteString("\n")
+	sb.WriteString(EmptySymbol)
+	sb.WriteString("=empty ")
+	sb.WriteString(CitySymbol)
+	sb.WriteString("=city ")
+	sb.WriteString(GeneralSymbol)
+	sb.WriteString("=general ")
+	sb.WriteString(MountainSymbol)
+	sb.WriteString("=mountain A-H=players\n")
+	
 	return sb.String()
+}
+
+// getTileDisplay writes the tile display directly to the strings.Builder to avoid allocations
+func (e *Engine) getTileDisplayDirect(sb *strings.Builder, t core.Tile, playerID int) {
+	const (
+		EmptySymbol    = "·"
+		CitySymbol     = "⬢"
+		GeneralSymbol  = "♔"
+		MountainSymbol = "▲"
+		PlayerSymbols  = "ABCDEFGH"
+	)
+
+	visible := playerID < 0 || !e.gs.FogOfWarEnabled || t.Visible[playerID]
+
+	// Write color first
+	if !visible {
+		sb.WriteString(ColorGray)
+		sb.WriteString(" ")
+	} else if t.IsMountain() {
+		sb.WriteString(ColorGray)
+		sb.WriteString(" ")
+		sb.WriteString(MountainSymbol)
+	} else if t.IsGeneral() {
+		sb.WriteString(getPlayerColor(t.Owner))
+		sb.WriteByte(PlayerSymbols[t.Owner%len(PlayerSymbols)])
+		sb.WriteString(GeneralSymbol)
+	} else if t.IsCity() && t.IsNeutral() {
+		sb.WriteString(ColorWhite)
+		sb.WriteString(" ")
+		sb.WriteString(CitySymbol)
+	} else if t.IsCity() {
+		sb.WriteString(getPlayerColor(t.Owner))
+		sb.WriteByte(PlayerSymbols[t.Owner%len(PlayerSymbols)])
+		sb.WriteString(CitySymbol)
+	} else if t.IsNeutral() && t.Type == core.TileNormal {
+		sb.WriteString(ColorGray)
+		if t.Army == 0 {
+			sb.WriteString(" ")
+			sb.WriteString(EmptySymbol)
+		} else if t.Army >= 100 {
+			sb.WriteString("++")
+		} else if t.Army >= 10 {
+			sb.WriteString(core.IntToStringFixedWidth(t.Army, 2))
+		} else {
+			sb.WriteString(" ")
+			sb.WriteString(core.IntToStringFixedWidth(t.Army, 1))
+		}
+	} else { // Player-owned normal tiles or other neutral tiles
+		if t.IsNeutral() {
+			sb.WriteString(ColorGray)
+			if t.Army >= 100 {
+				sb.WriteString("++")
+			} else {
+				sb.WriteString(core.IntToStringFixedWidth(t.Army, 2))
+			}
+		} else {
+			sb.WriteString(getPlayerColor(t.Owner))
+			sb.WriteByte(PlayerSymbols[t.Owner%len(PlayerSymbols)])
+			if t.Army < 10 {
+				sb.WriteString(core.IntToStringFixedWidth(t.Army, 1))
+			} else {
+				sb.WriteString("+") // P+ for armies >=10
+			}
+		}
+	}
+	sb.WriteString(ColorReset)
 }
 
 func (e *Engine) getTileDisplay(t core.Tile, playerID int) (string, string) {

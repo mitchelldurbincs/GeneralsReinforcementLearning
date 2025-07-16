@@ -8,29 +8,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font"
 
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/common"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
-)
-
-// -----------------------------------------------------------------------------
-// Color definitions
-// -----------------------------------------------------------------------------
-
-var PlayerColors = map[int]color.Color{
-	core.NeutralID: color.RGBA{120, 120, 120, 255}, // Neutral – gray
-	0:              color.RGBA{200, 50, 50, 255},   // Red
-	1:              color.RGBA{50, 100, 200, 255},  // Blue
-	2:              color.RGBA{50, 200, 50, 255},   // Green
-	3:              color.RGBA{200, 200, 50, 255},  // Yellow
-}
-
-var (
-	MountainColor      = color.RGBA{80, 80, 80, 255}
-	CityOwnedHueShift  = 30
-	GeneralSymbolColor = color.White
-	CitySymbolColor    = color.White
-	ArmyTextColor      = color.White
-	GeneralArmyTextColor = color.Black
 )
 
 // -----------------------------------------------------------------------------
@@ -69,14 +49,14 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 		// ---------------------------------------------------------------------
 		switch {
 		case tile.IsMountain():
-			cell.Fill(MountainColor)
+			cell.Fill(common.MountainColor)
 
 		default: // land / city / general
 			// Only show player colors for visible tiles
-			tileColor := PlayerColors[core.NeutralID]
+			tileColor := common.PlayerColors[core.NeutralID]
 			if visible {
 				// For visible tiles, show the actual owner's color
-				if c, ok := PlayerColors[tile.Owner]; ok {
+				if c, ok := common.PlayerColors[tile.Owner]; ok {
 					tileColor = c
 				}
 			}
@@ -87,7 +67,7 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 			if visible && tile.IsCity() && tile.Owner != core.NeutralID {
 				m := br.tileSize / 3
 				sq := ebiten.NewImage(m, m)
-				sq.Fill(shiftColor(tileColor, CityOwnedHueShift))
+				sq.Fill(shiftColor(tileColor, common.CityOwnedHueShift))
 				op := &ebiten.DrawImageOptions{}
 				op.GeoM.Translate(float64(br.tileSize-m)/2, float64(br.tileSize-m)/2)
 				cell.DrawImage(sq, op)
@@ -107,7 +87,7 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 			if visible && tile.IsGeneral() {
 				m := br.tileSize / 2
 				sq := ebiten.NewImage(m, m)
-				sq.Fill(GeneralSymbolColor)
+				sq.Fill(common.GeneralSymbolColor)
 				op := &ebiten.DrawImageOptions{}
 				op.GeoM.Translate(float64(br.tileSize-m)/2, float64(br.tileSize-m)/2)
 				cell.DrawImage(sq, op)
@@ -133,9 +113,9 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 		if visible && tile.Army > 0 && !tile.IsMountain() && br.defaultFont != nil {
 			armyStr := strconv.Itoa(tile.Army)
 
-			textColor := ArmyTextColor
+			textColor := common.ArmyTextColor
 			if tile.IsGeneral() {
-				textColor = GeneralArmyTextColor
+				textColor = common.GeneralArmyTextColor
 			}
 
 			// text bounds in pixels
