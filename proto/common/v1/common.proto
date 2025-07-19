@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package generals.common.v1;
+
+option go_package = "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/common/v1;commonv1";
+
+// Coordinate represents a position on the game board
+message Coordinate {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+// TileType represents the different types of tiles on the board
+enum TileType {
+  TILE_TYPE_UNSPECIFIED = 0;
+  TILE_TYPE_NORMAL = 1;
+  TILE_TYPE_GENERAL = 2;
+  TILE_TYPE_CITY = 3;
+  TILE_TYPE_MOUNTAIN = 4;
+}
+
+// PlayerStatus represents the current state of a player
+enum PlayerStatus {
+  PLAYER_STATUS_UNSPECIFIED = 0;
+  PLAYER_STATUS_ACTIVE = 1;
+  PLAYER_STATUS_ELIMINATED = 2;
+  PLAYER_STATUS_DISCONNECTED = 3;
+}
+
+// ActionType represents the type of action a player can take
+enum ActionType {
+  ACTION_TYPE_UNSPECIFIED = 0;
+  ACTION_TYPE_MOVE = 1;
+  // Future: ACTION_TYPE_SPLIT = 2;
+  // Future: ACTION_TYPE_DEFEND = 3;
+}
+
+// ErrorCode represents game-specific error conditions
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_COORDINATES = 1;
+  ERROR_CODE_NOT_ADJACENT = 2;
+  ERROR_CODE_NOT_OWNED = 3;
+  ERROR_CODE_INSUFFICIENT_ARMY = 4;
+  ERROR_CODE_GAME_OVER = 5;
+  ERROR_CODE_INVALID_PLAYER = 6;
+  ERROR_CODE_MOVE_TO_SELF = 7;
+  ERROR_CODE_TARGET_IS_MOUNTAIN = 8;
+  ERROR_CODE_INVALID_TURN = 9;
+  ERROR_CODE_GAME_NOT_FOUND = 10;
+  ERROR_CODE_GAME_FULL = 11;
+  ERROR_CODE_ALREADY_JOINED = 12;
+}
+
+// GameStatus represents the current state of a game
+enum GameStatus {
+  GAME_STATUS_UNSPECIFIED = 0;
+  GAME_STATUS_WAITING = 1;     // Waiting for players to join
+  GAME_STATUS_IN_PROGRESS = 2; // Game is actively being played
+  GAME_STATUS_FINISHED = 3;    // Game has ended
+  GAME_STATUS_CANCELLED = 4;   // Game was cancelled
+}

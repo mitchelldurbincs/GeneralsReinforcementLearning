@@ -1,0 +1,214 @@
+syntax = "proto3";
+
+package generals.game.v1;
+
+import "common/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/game/v1;gamev1";
+
+// GameService provides the gRPC API for the Generals.io game
+service GameService {
+  // CreateGame creates a new game instance
+  rpc CreateGame(CreateGameRequest) returns (CreateGameResponse);
+  
+  // JoinGame allows a player to join an existing game
+  rpc JoinGame(JoinGameRequest) returns (JoinGameResponse);
+  
+  // SubmitAction submits a player action (move) to the game
+  rpc SubmitAction(SubmitActionRequest) returns (SubmitActionResponse);
+  
+  // GetGameState retrieves the current game state for a player (with fog of war)
+  rpc GetGameState(GetGameStateRequest) returns (GetGameStateResponse);
+  
+  // StreamGame streams real-time game updates to connected players
+  rpc StreamGame(StreamGameRequest) returns (stream GameUpdate);
+}
+
+// CreateGameRequest is sent to create a new game
+message CreateGameRequest {
+  // Optional game configuration
+  GameConfig config = 1;
+}
+
+// CreateGameResponse contains the created game information
+message CreateGameResponse {
+  string game_id = 1;
+  GameConfig config = 2;
+}
+
+// GameConfig contains game configuration parameters
+message GameConfig {
+  int32 width = 1;         // Board width (default: 20)
+  int32 height = 2;        // Board height (default: 20)
+  int32 max_players = 3;   // Maximum number of players (default: 2)
+  bool fog_of_war = 4;     // Enable fog of war (default: true)
+  int32 turn_time_ms = 5;  // Time per turn in milliseconds (0 = no limit)
+}
+
+// JoinGameRequest is sent when a player wants to join a game
+message JoinGameRequest {
+  string game_id = 1;
+  string player_name = 2;
+  string player_token = 3; // Optional authentication token
+}
+
+// JoinGameResponse contains the player's information in the game
+message JoinGameResponse {
+  int32 player_id = 1;
+  string player_token = 2; // Token to use for subsequent requests
+  GameState initial_state = 3;
+}
+
+// SubmitActionRequest contains a player's action
+message SubmitActionRequest {
+  string game_id = 1;
+  int32 player_id = 2;
+  string player_token = 3;
+  Action action = 4;
+  string idempotency_key = 5; // Optional key for idempotent requests
+}
+
+// SubmitActionResponse indicates whether the action was accepted
+message SubmitActionResponse {
+  bool success = 1;
+  generals.common.v1.ErrorCode error_code = 2;
+  string error_message = 3;
+  int32 next_turn_number = 4;
+}
+
+// Action represents a player's move
+message Action {
+  generals.common.v1.ActionType type = 1;
+  generals.common.v1.Coordinate from = 2;
+  generals.common.v1.Coordinate to = 3;
+  int32 turn_number = 4; // Expected turn number for validation
+  bool half = 5;         // Whether to move half armies (like generals.io)
+}
+
+// GetGameStateRequest requests the current game state
+message GetGameStateRequest {
+  string game_id = 1;
+  int32 player_id = 2;
+  string player_token = 3;
+}
+
+// GetGameStateResponse contains the current game state
+message GetGameStateResponse {
+  GameState state = 1;
+}
+
+// StreamGameRequest initiates a game update stream
+message StreamGameRequest {
+  string game_id = 1;
+  int32 player_id = 2;
+  string player_token = 3;
+}
+
+// GameUpdate represents a real-time game state update
+message GameUpdate {
+  oneof update {
+    GameState full_state = 1;     // Full state update
+    GameStateDelta delta = 2;     // Incremental update
+    GameEvent event = 3;          // Game event notification
+  }
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// GameState represents the complete game state
+message GameState {
+  string game_id = 1;
+  generals.common.v1.GameStatus status = 2;
+  int32 turn = 3;
+  Board board = 4;
+  repeated PlayerState players = 5;
+  int32 winner_id = 6; // -1 if no winner yet
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+// Board represents the game board
+message Board {
+  int32 width = 1;
+  int32 height = 2;
+  repeated Tile tiles = 3; // Flattened 2D array (row-major order)
+}
+
+// Tile represents a single board tile
+message Tile {
+  generals.common.v1.TileType type = 1;
+  int32 owner_id = 2;    // -1 for neutral
+  int32 army_count = 3;
+  bool visible = 4;      // Whether this tile is visible to the requesting player
+  bool fog_of_war = 5;   // Whether this tile is in fog of war (known but not currently visible)
+}
+
+// PlayerState represents a player's current state
+message PlayerState {
+  int32 id = 1;
+  string name = 2;
+  generals.common.v1.PlayerStatus status = 3;
+  int32 army_count = 4;
+  int32 tile_count = 5;
+  generals.common.v1.Coordinate general_position = 6; // Only visible if discovered or eliminated
+  string color = 7; // Hex color code for rendering
+}
+
+// GameStateDelta represents an incremental game state update
+message GameStateDelta {
+  int32 turn = 1;
+  repeated TileUpdate tile_updates = 2;
+  repeated PlayerUpdate player_updates = 3;
+}
+
+// TileUpdate represents a change to a single tile
+message TileUpdate {
+  generals.common.v1.Coordinate position = 1;
+  Tile tile = 2;
+}
+
+// PlayerUpdate represents a change to a player's state
+message PlayerUpdate {
+  int32 player_id = 1;
+  PlayerState state = 2;
+}
+
+// GameEvent represents various game events
+message GameEvent {
+  oneof event {
+    PlayerJoinedEvent player_joined = 1;
+    PlayerEliminatedEvent player_eliminated = 2;
+    GameStartedEvent game_started = 3;
+    GameEndedEvent game_ended = 4;
+    PlayerDisconnectedEvent player_disconnected = 5;
+    PlayerReconnectedEvent player_reconnected = 6;
+  }
+}
+
+// Event messages
+message PlayerJoinedEvent {
+  int32 player_id = 1;
+  string player_name = 2;
+}
+
+message PlayerEliminatedEvent {
+  int32 player_id = 1;
+  int32 eliminated_by = 2; // Player who eliminated them
+}
+
+message GameStartedEvent {
+  google.protobuf.Timestamp started_at = 1;
+}
+
+message GameEndedEvent {
+  int32 winner_id = 1;
+  google.protobuf.Timestamp ended_at = 2;
+}
+
+message PlayerDisconnectedEvent {
+  int32 player_id = 1;
+}
+
+message PlayerReconnectedEvent {
+  int32 player_id = 1;
+}
