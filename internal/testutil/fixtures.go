@@ -1,7 +1,7 @@
 package testutil
 
 import (
-	"github.com/your-org/generals/internal/game/core"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 )
 
 // CreateTestBoard creates a test board with the given dimensions
