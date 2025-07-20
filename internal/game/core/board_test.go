@@ -292,3 +292,114 @@ func TestBoard_VisibilityMap(t *testing.T) {
 	assert.False(t, tile.Visible[1])
 	assert.False(t, tile.Visible[2]) // unset defaults to false
 }
+
+func TestTileBitfieldVisibility(t *testing.T) {
+	t.Run("BasicVisibilityOperations", func(t *testing.T) {
+		tile := &Tile{VisibleBitfield: 0, Visible: make(map[int]bool)}
+		
+		// Test setting visibility
+		tile.SetVisible(0, true)
+		assert.True(t, tile.IsVisibleTo(0))
+		assert.False(t, tile.IsVisibleTo(1))
+		
+		// Test setting multiple players
+		tile.SetVisible(3, true)
+		tile.SetVisible(7, true)
+		assert.True(t, tile.IsVisibleTo(0))
+		assert.True(t, tile.IsVisibleTo(3))
+		assert.True(t, tile.IsVisibleTo(7))
+		assert.False(t, tile.IsVisibleTo(1))
+		assert.False(t, tile.IsVisibleTo(2))
+		
+		// Test clearing visibility
+		tile.SetVisible(0, false)
+		assert.False(t, tile.IsVisibleTo(0))
+		assert.True(t, tile.IsVisibleTo(3))
+		assert.True(t, tile.IsVisibleTo(7))
+	})
+
+	t.Run("BoundaryConditions", func(t *testing.T) {
+		tile := &Tile{VisibleBitfield: 0}
+		
+		// Test invalid player IDs
+		tile.SetVisible(-1, true)
+		assert.False(t, tile.IsVisibleTo(-1))
+		
+		tile.SetVisible(32, true)
+		assert.False(t, tile.IsVisibleTo(32))
+		
+		// Test max valid player ID (31)
+		tile.SetVisible(31, true)
+		assert.True(t, tile.IsVisibleTo(31))
+	})
+
+	t.Run("AllPlayersVisible", func(t *testing.T) {
+		tile := &Tile{VisibleBitfield: 0}
+		
+		// Set all 32 players as visible
+		for i := 0; i < 32; i++ {
+			tile.SetVisible(i, true)
+		}
+		
+		// Check all are visible
+		for i := 0; i < 32; i++ {
+			assert.True(t, tile.IsVisibleTo(i))
+		}
+		
+		// Clear one in the middle
+		tile.SetVisible(15, false)
+		assert.False(t, tile.IsVisibleTo(15))
+		assert.True(t, tile.IsVisibleTo(14))
+		assert.True(t, tile.IsVisibleTo(16))
+	})
+
+	t.Run("CompatibilityLayer", func(t *testing.T) {
+		tile := &Tile{
+			VisibleBitfield: 0,
+			Visible: make(map[int]bool),
+		}
+		
+		// Test sync from map to bitfield
+		tile.Visible[0] = true
+		tile.Visible[5] = true
+		tile.Visible[10] = true
+		tile.SyncVisibilityFromMap()
+		
+		assert.True(t, tile.IsVisibleTo(0))
+		assert.True(t, tile.IsVisibleTo(5))
+		assert.True(t, tile.IsVisibleTo(10))
+		assert.False(t, tile.IsVisibleTo(1))
+		
+		// Test sync from bitfield to map
+		tile.SetVisible(15, true)
+		tile.SetVisible(20, true)
+		tile.SyncVisibilityToMap()
+		
+		assert.True(t, tile.Visible[0])
+		assert.True(t, tile.Visible[5])
+		assert.True(t, tile.Visible[10])
+		assert.True(t, tile.Visible[15])
+		assert.True(t, tile.Visible[20])
+		assert.False(t, tile.Visible[1])
+		
+		// Verify map doesn't have entries for false values
+		_, exists := tile.Visible[1]
+		assert.False(t, exists)
+	})
+
+	t.Run("BitfieldDirectManipulation", func(t *testing.T) {
+		tile := &Tile{VisibleBitfield: 0}
+		
+		// Directly set some bits
+		tile.VisibleBitfield = 0b10101010
+		
+		assert.False(t, tile.IsVisibleTo(0))
+		assert.True(t, tile.IsVisibleTo(1))
+		assert.False(t, tile.IsVisibleTo(2))
+		assert.True(t, tile.IsVisibleTo(3))
+		assert.False(t, tile.IsVisibleTo(4))
+		assert.True(t, tile.IsVisibleTo(5))
+		assert.False(t, tile.IsVisibleTo(6))
+		assert.True(t, tile.IsVisibleTo(7))
+	})
+}

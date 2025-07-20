@@ -183,6 +183,7 @@ type FeaturesConfig struct {
 	EnableMultiplayer bool `mapstructure:"enable_multiplayer"`
 	EnableReplay      bool `mapstructure:"enable_replay"`
 	EnableSpectator   bool `mapstructure:"enable_spectator"`
+	UseOptimizedVisibility bool `mapstructure:"use_optimized_visibility"`
 }
 
 var (
@@ -278,6 +279,7 @@ func setViperDefaults(v *viper.Viper) {
 	v.SetDefault("features.enable_multiplayer", true)
 	v.SetDefault("features.enable_replay", false)
 	v.SetDefault("features.enable_spectator", false)
+	v.SetDefault("features.use_optimized_visibility", false) // Start with false for safe rollout
 }
 
 // Init initializes the configuration

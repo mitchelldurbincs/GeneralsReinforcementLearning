@@ -1,11 +1,21 @@
 package game
 
-import "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
+import (
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/config"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
+)
 
 // This file contains all fog of war and visibility-related functionality for the game engine.
 
 // updateFogOfWar updates the fog of war visibility for all players
 func (e *Engine) updateFogOfWar() {
+	// Check if we should use the optimized implementation
+	if config.Get().Features.UseOptimizedVisibility {
+		e.updateFogOfWarOptimized()
+		return
+	}
+	
+	// Original implementation
 	if !e.gs.FogOfWarEnabled {
 		return
 	}
@@ -129,6 +139,12 @@ type PlayerVisibility struct {
 
 // ComputePlayerVisibility computes visibility information for a specific player
 func (e *Engine) ComputePlayerVisibility(playerID int) PlayerVisibility {
+	// Check if we should use the optimized implementation
+	if config.Get().Features.UseOptimizedVisibility {
+		return e.ComputePlayerVisibilityOptimized(playerID)
+	}
+	
+	// Original implementation
 	numTiles := len(e.gs.Board.T)
 	vis := PlayerVisibility{
 		VisibleTiles: make([]bool, numTiles),
