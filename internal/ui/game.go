@@ -12,17 +12,28 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/config"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/ui/renderer"
 )
 
-const (
-	ScreenWidth  = 800
-	ScreenHeight = 600
-	TileSize     = 32
-	TurnInterval = 30 // Frames per turn
-)
+// UI configuration functions
+func ScreenWidth() int {
+	return config.Get().UI.Window.Width
+}
+
+func ScreenHeight() int {
+	return config.Get().UI.Window.Height
+}
+
+func TileSize() int {
+	return config.Get().UI.Game.TileSize
+}
+
+func TurnInterval() int {
+	return config.Get().UI.Game.TurnInterval
+}
 
 // UIGame holds the game engine instance and UI-specific state
 type UIGame struct {
@@ -46,7 +57,7 @@ func NewUIGame(engine *game.Engine, playerID int) (*UIGame, error) {
 		playerID:    playerID,
 	}
 
-	g.boardRenderer = renderer.NewBoardRenderer(TileSize, g.defaultFont)
+	g.boardRenderer = renderer.NewBoardRenderer(TileSize(), g.defaultFont)
 
 	return g, nil
 }
@@ -54,7 +65,7 @@ func NewUIGame(engine *game.Engine, playerID int) (*UIGame, error) {
 // Update proceeds the game state.
 func (g *UIGame) Update() error {
 	g.turnTimer++
-	if g.turnTimer < TurnInterval || g.engine.IsGameOver() {
+	if g.turnTimer < TurnInterval() || g.engine.IsGameOver() {
 		return nil
 	}
 	g.turnTimer = 0
@@ -130,5 +141,5 @@ func (g *UIGame) Draw(screen *ebiten.Image) {
 
 // Layout defines the Ebitengine screen size.
 func (g *UIGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return ScreenWidth, ScreenHeight
+	return ScreenWidth(), ScreenHeight()
 }

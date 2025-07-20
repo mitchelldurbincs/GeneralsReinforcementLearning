@@ -1,0 +1,36 @@
+# Production environment configuration overrides
+# This file only contains values that differ from the base config.yaml
+
+# Production server configuration
+server:
+  game_server:
+    log_level: "error"          # Only log errors in production
+    log_format: "json"          # Structured logging for production
+  
+  grpc_server:
+    host: "0.0.0.0"
+    port: 8080                  # Production port
+    log_level: "warn"           # Less verbose in production
+    turn_timeout: 5000          # 5 seconds timeout
+    max_games: 1000             # Higher limit for production
+    enable_reflection: false    # Disable reflection for security
+    graceful_shutdown_delay: 30 # Longer delay for production
+
+# Production performance settings
+performance:
+  preallocate_capacity: 100     # Higher pre-allocation for production
+  incremental_updates: true
+
+# Production development settings
+development:
+  verbose_logging: false
+  show_all_tiles: false
+  show_coordinates: false
+  show_performance_stats: false # No debug overlays in production
+
+# Production features
+features:
+  enable_ai: true
+  enable_multiplayer: true
+  enable_replay: false          # Disable experimental features
+  enable_spectator: false

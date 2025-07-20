@@ -3,10 +3,12 @@ package main
 import (
 	"context" // Import the context package
 	"errors"  // Import the errors package for errors.Is
+	"flag"
 	"math/rand"
 	"os"
 	"time"
 
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/config"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/rs/zerolog"
@@ -14,19 +16,33 @@ import (
 )
 
 func main() {
+	// Command line flags
+	configPath := flag.String("config", "", "Path to config file")
+	flag.Parse()
+	
+	// Initialize configuration
+	if err := config.Init(*configPath); err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize config")
+	}
+	
+	cfg := config.Get()
+	
 	// --- Zerolog Configuration ---
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	log.Logger = log.Output(zerolog.ConsoleWriter{
-		Out:        os.Stderr,
-		TimeFormat: time.RFC3339,
-		NoColor:    false,
-	}).With().Timestamp().Caller().Logger()
-
-	// Example for future production setup:
-	// if os.Getenv("APP_ENV") == "production" {
-	// 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	// 	log.Logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
-	// }
+	logLevel, err := zerolog.ParseLevel(cfg.Server.GameServer.LogLevel)
+	if err != nil {
+		logLevel = zerolog.InfoLevel
+	}
+	zerolog.SetGlobalLevel(logLevel)
+	
+	if cfg.Server.GameServer.LogFormat == "json" || os.Getenv("APP_ENV") == "production" {
+		log.Logger = zerolog.New(os.Stdout).With().Timestamp().Caller().Logger()
+	} else {
+		log.Logger = log.Output(zerolog.ConsoleWriter{
+			Out:        os.Stderr,
+			TimeFormat: time.RFC3339,
+			NoColor:    false,
+		}).With().Timestamp().Caller().Logger()
+	}
 
 	log.Info().Msg("Logger initialized")
 
@@ -45,16 +61,18 @@ func randomActionDemo() {
 	log.Info().Int64("seed", seed).Msg("Starting random action demo")
 	rng := rand.New(rand.NewSource(seed))
 
-	// Create a 8x8 game with 2 players
+	cfg := config.Get()
+	
+	// Create a game with config values
 	// Pass the context and the global logger (log.Logger) to NewEngine
-	config := game.GameConfig{
-		Width:   8,
-		Height:  8,
+	gameConfig := game.GameConfig{
+		Width:   cfg.Server.GameServer.Demo.BoardWidth,
+		Height:  cfg.Server.GameServer.Demo.BoardHeight,
 		Players: 2,
 		Rng:     rng,
 		Logger:  log.Logger,
 	}
-	g := game.NewEngine(ctx, config)
+	g := game.NewEngine(ctx, gameConfig)
 	if g == nil {
 		log.Fatal().Msg("Failed to create game engine (NewEngine returned nil, possibly due to context cancellation during init)")
 		return
@@ -72,7 +90,7 @@ func randomActionDemo() {
 			Msgf("Initial stats for player %d", i)
 	}
 
-	maxTurns := 50
+	maxTurns := cfg.Server.GameServer.Demo.MaxTurns
 	for turn := 0; turn < maxTurns && !g.IsGameOver(); turn++ {
 		actions := game.GenerateRandomActions(g, rng)
 

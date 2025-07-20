@@ -19,21 +19,49 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/config"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/grpc/gameserver"
 	gamev1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/game/v1"
 )
 
-var (
-	port             = flag.Int("port", 50051, "The server port")
-	host             = flag.String("host", "0.0.0.0", "The server host")
-	logLevel         = flag.String("log-level", "info", "Log level (debug, info, warn, error)")
-	turnTimeout      = flag.Int("turn-timeout", 0, "Default turn timeout in milliseconds (0 = no timeout)")
-	maxGames         = flag.Int("max-games", 100, "Maximum concurrent games")
-	enableReflection = flag.Bool("enable-reflection", true, "Enable gRPC reflection for debugging")
-)
-
 func main() {
+	// Command line flags
+	configPath := flag.String("config", "", "Path to config file")
+	port := flag.Int("port", -1, "The server port (-1 to use config default)")
+	host := flag.String("host", "", "The server host (empty to use config default)")
+	logLevel := flag.String("log-level", "", "Log level (debug, info, warn, error) (empty to use config default)")
+	turnTimeout := flag.Int("turn-timeout", -1, "Default turn timeout in milliseconds (-1 to use config default)")
+	maxGames := flag.Int("max-games", -1, "Maximum concurrent games (-1 to use config default)")
+	enableReflection := flag.Bool("enable-reflection", false, "Enable gRPC reflection for debugging")
 	flag.Parse()
+	
+	// Initialize configuration
+	if err := config.Init(*configPath); err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize config")
+	}
+	
+	cfg := config.Get()
+	
+	// Use config defaults if not overridden by flags
+	if *port == -1 {
+		*port = cfg.Server.GRPCServer.Port
+	}
+	if *host == "" {
+		*host = cfg.Server.GRPCServer.Host
+	}
+	if *logLevel == "" {
+		*logLevel = cfg.Server.GRPCServer.LogLevel
+	}
+	if *turnTimeout == -1 {
+		*turnTimeout = cfg.Server.GRPCServer.TurnTimeout
+	}
+	if *maxGames == -1 {
+		*maxGames = cfg.Server.GRPCServer.MaxGames
+	}
+	// For enableReflection, use config if flag not explicitly set to true
+	if !*enableReflection {
+		*enableReflection = cfg.Server.GRPCServer.EnableReflection
+	}
 
 	// Setup logging
 	setupLogging(*logLevel)
@@ -100,7 +128,7 @@ func main() {
 		healthServer.SetServingStatus(gamev1.GameService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 		
 		// Give ongoing requests time to complete
-		time.Sleep(5 * time.Second)
+		time.Sleep(time.Duration(cfg.Server.GRPCServer.GracefulShutdownDelay) * time.Second)
 		
 		log.Info().Msg("Gracefully stopping gRPC server")
 		grpcServer.GracefulStop()

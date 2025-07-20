@@ -252,7 +252,7 @@ func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminati
 
 // processTurnProduction applies army growth
 func (e *Engine) processTurnProduction(l zerolog.Logger) {
-	growNormal := e.gs.Turn%NormalGrowInterval == 0
+	growNormal := e.gs.Turn%NormalGrowInterval() == 0
 	l.Debug().Bool("grow_normal_tiles", growNormal).Msg("Processing turn production")
 
 	// Could add more detailed logs here if needed, e.g., total production amounts
@@ -270,17 +270,17 @@ func (e *Engine) processTurnProduction(l zerolog.Logger) {
 			
 			switch t.Type {
 			case core.TileGeneral:
-				t.Army += GeneralProduction
-				totalGeneralProd += GeneralProduction
+				t.Army += GeneralProduction()
+				totalGeneralProd += GeneralProduction()
 				e.gs.ChangedTiles[tileIdx] = struct{}{}
 			case core.TileCity:
-				t.Army += CityProduction
-				totalCityProd += CityProduction
+				t.Army += CityProduction()
+				totalCityProd += CityProduction()
 				e.gs.ChangedTiles[tileIdx] = struct{}{}
 			case core.TileNormal:
 				if growNormal {
-					t.Army += NormalProduction
-					totalNormalProd += NormalProduction
+					t.Army += NormalProduction()
+					totalNormalProd += NormalProduction()
 					e.gs.ChangedTiles[tileIdx] = struct{}{}
 				}
 			}

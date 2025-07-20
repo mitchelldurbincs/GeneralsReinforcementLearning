@@ -1,0 +1,30 @@
+# Development environment configuration overrides
+# This file only contains values that differ from the base config.yaml
+
+# Development server configuration
+server:
+  game_server:
+    log_level: "debug"
+    log_format: "console"
+  
+  grpc_server:
+    log_level: "debug"
+    turn_timeout: 30000         # 30 seconds for development
+    enable_reflection: true     # Always enable for dev
+
+# Development UI configuration
+ui:
+  defaults:
+    ai_only: false              # Default to human player in dev
+
+# Development settings
+development:
+  verbose_logging: true
+  show_performance_stats: true  # Show performance metrics in dev
+
+# Development features
+features:
+  enable_ai: true
+  enable_multiplayer: true
+  enable_replay: false          # Disable experimental features
+  enable_spectator: false

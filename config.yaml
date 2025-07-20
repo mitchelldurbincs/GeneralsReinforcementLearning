@@ -1,0 +1,113 @@
+# Generals Reinforcement Learning Configuration
+# This is the base configuration file with all default values
+
+# Game mechanics configuration
+game:
+  # Map generation settings
+  map:
+    city_ratio: 20              # 1 city per N tiles (≈5% of map)
+    city_start_army: 40         # Initial army count for cities
+    min_general_spacing: 5      # Manhattan distance between generals
+    mountain_veins:
+      ratio: 50                 # 1 vein per N tiles
+      min_length: 3             # Minimum mountain vein length
+      max_length_ratio: 0.25    # Max vein length as ratio of map width
+  
+  # Production rates (armies per turn/interval)
+  production:
+    general: 1                  # Armies produced per turn by generals
+    city: 1                     # Armies produced per turn by owned cities
+    normal: 1                   # Armies produced per growth interval
+    normal_growth_interval: 25  # Turns between normal tile growth
+  
+  # Fog of war settings
+  fog_of_war:
+    enabled: true               # Enable fog of war
+    visibility_radius: 1        # Radius of visibility (3x3 area)
+    update_threshold: 0.1       # Update when 10% of tiles change
+
+# Server configuration
+server:
+  game_server:
+    log_level: "info"           # Log level (debug, info, warn, error)
+    log_format: "console"       # Log format (console, json)
+    demo:
+      board_width: 8
+      board_height: 8
+      max_turns: 50
+  
+  grpc_server:
+    host: "0.0.0.0"
+    port: 50051
+    log_level: "info"
+    turn_timeout: 0             # Turn timeout in ms (0 = no timeout)
+    max_games: 100              # Maximum concurrent games
+    enable_reflection: true     # Enable gRPC reflection
+    graceful_shutdown_delay: 5  # Seconds to wait before shutdown
+
+# UI/Client configuration
+ui:
+  window:
+    width: 800                  # Window width in pixels
+    height: 600                 # Window height in pixels
+    title: "Generals RL UI"
+  
+  game:
+    tile_size: 32               # Size of each tile in pixels
+    turn_interval: 30           # Frames per turn (30 = 0.5s at 60 FPS)
+    
+  # Default game settings
+  defaults:
+    human_player: 0             # Which player is human (0-3, -1 for all AI)
+    num_players: 2              # Number of players (2-4)
+    map_width: 20               # Default map width
+    map_height: 15              # Default map height
+    ai_only: false              # Run with all AI players
+
+# Color configuration (RGB values)
+colors:
+  players:
+    neutral: [120, 120, 120]
+    player_0: [200, 50, 50]     # Red
+    player_1: [50, 100, 200]    # Blue
+    player_2: [50, 200, 50]     # Green
+    player_3: [200, 200, 50]    # Yellow
+  
+  tiles:
+    mountain: [80, 80, 80]
+    city_hue_shift: 30
+    text:
+      general: [255, 255, 255]  # White
+      city: [255, 255, 255]     # White
+      army: [255, 255, 255]     # White
+      general_army: [0, 0, 0]   # Black
+  
+  ui:
+    background: [0, 0, 0]       # Black
+    grid_lines: [50, 50, 50]
+    fog_of_war: [0, 0, 0, 200]  # Black with alpha
+    fog_unknown: [25, 25, 25, 200]
+  
+  rendering:
+    city_marker_ratio: 0.5      # City marker size as ratio of tile
+    general_marker_ratio: 0.5   # General marker size as ratio of tile
+    owned_city_inner_ratio: 0.33
+
+# Performance/optimization settings
+performance:
+  preallocate_capacity: 50      # Pre-allocated capacity for owned tiles
+  incremental_updates: true     # Use incremental update optimizations
+
+# Development/debug settings
+development:
+  verbose_logging: false
+  show_all_tiles: false         # Debug: disable fog of war
+  show_coordinates: false       # Debug: show tile coordinates
+  show_performance_stats: false # Debug: show performance metrics
+
+# Feature flags
+features:
+  enable_ai: true
+  enable_multiplayer: true
+  enable_replay: false          # Future: game replay functionality
+  enable_spectator: false       # Future: spectator mode

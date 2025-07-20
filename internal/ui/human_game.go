@@ -80,8 +80,8 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 		accumulatedActions: make(map[int][]core.Action),
 	}
 	
-	g.boardRenderer = renderer.NewEnhancedBoardRenderer(TileSize, g.defaultFont)
-	g.inputHandler = input.NewHandler(TileSize)
+	g.boardRenderer = renderer.NewEnhancedBoardRenderer(TileSize(), g.defaultFont)
+	g.inputHandler = input.NewHandler(TileSize())
 	g.inputHandler.SetBoardOffset(0, 0) // Board is rendered at origin
 	
 	// Set up tile validator
@@ -328,7 +328,7 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 	}
 	
 	// Controls help
-	helpY := ScreenHeight - 80
+	helpY := ScreenHeight() - 80
 	text.Draw(screen, "Controls:", g.defaultFont, 5, helpY, color.White)
 	text.Draw(screen, "Click: Select/Move", g.defaultFont, 5, helpY+15, color.Gray{200})
 	text.Draw(screen, "Q/W: Full/Half army", g.defaultFont, 5, helpY+30, color.Gray{200})
@@ -341,17 +341,17 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 	} else {
 		modeStr += "Half Army"
 	}
-	text.Draw(screen, modeStr, g.defaultFont, ScreenWidth-150, 5, color.White)
+	text.Draw(screen, modeStr, g.defaultFont, ScreenWidth()-150, 5, color.White)
 	
 	// Status message
 	if g.messageTimer > 0 && g.statusMessage != "" {
-		msgX := ScreenWidth/2 - len(g.statusMessage)*3
-		msgY := ScreenHeight - 20
+		msgX := ScreenWidth()/2 - len(g.statusMessage)*3
+		msgY := ScreenHeight() - 20
 		text.Draw(screen, g.statusMessage, g.defaultFont, msgX, msgY, color.White)
 	}
 }
 
 func (g *HumanGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return ScreenWidth, ScreenHeight
+	return ScreenWidth(), ScreenHeight()
 }
 

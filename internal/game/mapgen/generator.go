@@ -3,6 +3,7 @@ package mapgen
 import (
 	"math/rand"
 
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/config"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 )
 
@@ -21,13 +22,14 @@ type MapConfig struct {
 
 // DefaultMapConfig returns a sensible default configuration
 func DefaultMapConfig(w, h, players int) MapConfig {
+	cfg := config.Get()
 	return MapConfig{
 		Width:             w,
 		Height:            h,
 		PlayerCount:       players,
-		CityRatio:         20,
-		CityStartArmy:     40,
-		MinGeneralSpacing: 5,
+		CityRatio:         cfg.Game.Map.CityRatio,
+		CityStartArmy:     cfg.Game.Map.CityStartArmy,
+		MinGeneralSpacing: cfg.Game.Map.MinGeneralSpacing,
 		NumMountainVeins:  (w * h) / 50, // Example: 1 vein per 100 tiles
 		MinVeinLength:     3,
 		MaxVeinLength:     w / 4,        // Example: Max vein length is a quarter of the width
