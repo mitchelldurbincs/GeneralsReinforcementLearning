@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
@@ -33,6 +34,13 @@ type gameInstance struct {
 	players []playerInfo
 	engine  *gameengine.Engine
 	mu      sync.Mutex // Per-game mutex for thread-safe engine operations
+	
+	// Action collection for turn-based processing
+	actionBuffer map[int32]core.Action // playerID -> action for current turn
+	actionMu     sync.Mutex            // Protects actionBuffer
+	currentTurn  int32                 // Current turn number
+	turnDeadline time.Time             // Deadline for current turn
+	turnTimer    *time.Timer           // Timer for turn timeout
 }
 
 type playerInfo struct {
@@ -146,6 +154,20 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		if game.engine == nil {
 			return nil, status.Error(codes.Internal, "failed to create game engine")
 		}
+		
+		// Initialize action collection
+		game.actionBuffer = make(map[int32]core.Action)
+		game.currentTurn = 0
+		
+		// Start turn timer if configured
+		if game.config.TurnTimeMs > 0 {
+			game.startTurnTimer(ctx, time.Duration(game.config.TurnTimeMs)*time.Millisecond)
+		}
+		
+		log.Info().
+			Str("game_id", req.GameId).
+			Int("players", len(game.players)).
+			Msg("Game started")
 	}
 
 	return &gamev1.JoinGameResponse{
@@ -157,7 +179,117 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 
 // SubmitAction submits a player action to the game
 func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionRequest) (*gamev1.SubmitActionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "SubmitAction not implemented")
+	log.Debug().
+		Str("game_id", req.GameId).
+		Int32("player_id", req.PlayerId).
+		Msg("Received action submission")
+	
+	// Validate game exists
+	s.mu.RLock()
+	game, exists := s.games[req.GameId]
+	s.mu.RUnlock()
+	
+	if !exists {
+		return &gamev1.SubmitActionResponse{
+			Success:      false,
+			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_GAME_NOT_FOUND,
+			ErrorMessage: "game not found",
+		}, nil
+	}
+	
+	// Check game status
+	if game.status != commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
+		return &gamev1.SubmitActionResponse{
+			Success:      false,
+			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_GAME_OVER,
+			ErrorMessage: "game is not in progress",
+		}, nil
+	}
+	
+	// Authenticate player
+	authenticated := false
+	for _, p := range game.players {
+		if p.id == req.PlayerId && p.token == req.PlayerToken {
+			authenticated = true
+			break
+		}
+	}
+	
+	if !authenticated {
+		return &gamev1.SubmitActionResponse{
+			Success:      false,
+			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_PLAYER,
+			ErrorMessage: "invalid player credentials",
+		}, nil
+	}
+	
+	// Validate turn number
+	game.actionMu.Lock()
+	currentTurn := game.currentTurn
+	game.actionMu.Unlock()
+	
+	if req.Action != nil && req.Action.TurnNumber != currentTurn {
+		return &gamev1.SubmitActionResponse{
+			Success:      false,
+			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
+			ErrorMessage: fmt.Sprintf("invalid turn number: expected %d, got %d", currentTurn, req.Action.TurnNumber),
+		}, nil
+	}
+	
+	// Convert protobuf action to core action
+	coreAction, err := s.convertProtoAction(req.Action, req.PlayerId)
+	if err != nil {
+		return &gamev1.SubmitActionResponse{
+			Success:      false,
+			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
+			ErrorMessage: err.Error(),
+		}, nil
+	}
+	
+	// Validate action with game engine if not nil
+	if coreAction != nil {
+		game.mu.Lock()
+		engineState := game.engine.GameState()
+		err = coreAction.Validate(engineState.Board, int(req.PlayerId))
+		game.mu.Unlock()
+		
+		if err != nil {
+			return &gamev1.SubmitActionResponse{
+				Success:      false,
+				ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
+				ErrorMessage: fmt.Sprintf("action validation failed: %v", err),
+			}, nil
+		}
+	}
+	
+	// Collect the action and check if all players have submitted
+	allSubmitted := game.collectAction(req.PlayerId, coreAction)
+	
+	// If all players have submitted, process the turn
+	if allSubmitted {
+		if err := game.processTurn(ctx); err != nil {
+			log.Error().Err(err).
+				Str("game_id", req.GameId).
+				Int32("turn", currentTurn).
+				Msg("Failed to process turn")
+			
+			return &gamev1.SubmitActionResponse{
+				Success:      false,
+				ErrorCode:    commonv1.ErrorCode_ERROR_CODE_UNSPECIFIED,
+				ErrorMessage: "failed to process turn",
+			}, nil
+		}
+		
+		// If turn time is configured and game is still active, start next turn timer
+		if game.config.TurnTimeMs > 0 && game.status == commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
+			game.startTurnTimer(ctx, time.Duration(game.config.TurnTimeMs)*time.Millisecond)
+		}
+	}
+	
+	return &gamev1.SubmitActionResponse{
+		Success:        true,
+		NextTurnNumber: currentTurn + 1,
+	}, nil
 }
 
 // GetGameState retrieves the current game state for a player
@@ -346,4 +478,141 @@ func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameeng
 		WinnerId:   winnerId,
 		ActionMask: actionMask,
 	}
+}
+
+// Helper methods for action collection and turn processing
+
+// convertProtoAction converts a protobuf action to a core game action
+func (s *Server) convertProtoAction(protoAction *gamev1.Action, playerID int32) (core.Action, error) {
+	if protoAction == nil {
+		return nil, nil // No action this turn
+	}
+	
+	switch protoAction.Type {
+	case commonv1.ActionType_ACTION_TYPE_MOVE:
+		if protoAction.From == nil || protoAction.To == nil {
+			return nil, status.Error(codes.InvalidArgument, "move action requires from and to coordinates")
+		}
+		
+		return &core.MoveAction{
+			PlayerID: int(playerID),
+			FromX:    int(protoAction.From.X),
+			FromY:    int(protoAction.From.Y),
+			ToX:      int(protoAction.To.X),
+			ToY:      int(protoAction.To.Y),
+			MoveAll:  !protoAction.Half, // In proto, half=true means move half; in core, MoveAll=true means move all
+		}, nil
+		
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "unsupported action type: %v", protoAction.Type)
+	}
+}
+
+// collectAction stores an action in the buffer and checks if all players have submitted
+func (game *gameInstance) collectAction(playerID int32, action core.Action) bool {
+	game.actionMu.Lock()
+	defer game.actionMu.Unlock()
+	
+	// Store the action (nil is valid for no action)
+	game.actionBuffer[playerID] = action
+	
+	// Check if all active players have submitted
+	activeCount := 0
+	for range game.players {
+		// Only count players that are still in the game
+		// TODO: Check player status once we track eliminations
+		activeCount++
+	}
+	
+	return len(game.actionBuffer) >= activeCount
+}
+
+// processTurn executes all collected actions and advances the game state
+func (game *gameInstance) processTurn(ctx context.Context) error {
+	game.actionMu.Lock()
+	
+	// Convert map to slice of actions
+	actions := make([]core.Action, 0, len(game.actionBuffer))
+	for _, action := range game.actionBuffer {
+		if action != nil {
+			actions = append(actions, action)
+		}
+	}
+	
+	// Clear the buffer for next turn
+	game.actionBuffer = make(map[int32]core.Action)
+	game.currentTurn++
+	
+	game.actionMu.Unlock()
+	
+	// Process the turn with the game engine
+	game.mu.Lock()
+	defer game.mu.Unlock()
+	
+	err := game.engine.Step(ctx, actions)
+	if err != nil {
+		return err
+	}
+	
+	// Check if game has ended
+	state := game.engine.GameState()
+	// Check how many players are still alive
+	aliveCount := 0
+	for _, player := range state.Players {
+		if player.Alive {
+			aliveCount++
+		}
+	}
+	
+	// Game ends when only one player remains
+	if aliveCount <= 1 {
+		game.status = commonv1.GameStatus_GAME_STATUS_FINISHED
+		// Cancel any pending turn timer
+		if game.turnTimer != nil {
+			game.turnTimer.Stop()
+		}
+	}
+	
+	return nil
+}
+
+// startTurnTimer begins a timer for the current turn
+func (game *gameInstance) startTurnTimer(ctx context.Context, duration time.Duration) {
+	game.actionMu.Lock()
+	game.turnDeadline = time.Now().Add(duration)
+	game.actionMu.Unlock()
+	
+	if game.turnTimer != nil {
+		game.turnTimer.Stop()
+	}
+	
+	game.turnTimer = time.AfterFunc(duration, func() {
+		// Turn timeout - submit nil actions for players who haven't acted
+		game.actionMu.Lock()
+		
+		// Fill in nil actions for missing players
+		for _, player := range game.players {
+			if _, exists := game.actionBuffer[player.id]; !exists {
+				game.actionBuffer[player.id] = nil
+			}
+		}
+		
+		allSubmitted := len(game.actionBuffer) >= len(game.players)
+		game.actionMu.Unlock()
+		
+		if allSubmitted {
+			// Process the turn with whatever actions we have
+			if err := game.processTurn(ctx); err != nil {
+				log.Error().Err(err).
+					Str("game_id", game.id).
+					Int32("turn", game.currentTurn).
+					Msg("Failed to process turn after timeout")
+			}
+			
+			// Start timer for next turn if game is still active
+			if game.status == commonv1.GameStatus_GAME_STATUS_IN_PROGRESS && duration > 0 {
+				game.startTurnTimer(ctx, duration)
+			}
+		}
+	})
 }
