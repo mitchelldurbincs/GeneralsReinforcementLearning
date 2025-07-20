@@ -191,9 +191,101 @@ var (
 	v   *viper.Viper
 )
 
+// setViperDefaults sets all default values using Viper's SetDefault
+func setViperDefaults(v *viper.Viper) {
+	// Game defaults
+	v.SetDefault("game.map.city_ratio", 20)
+	v.SetDefault("game.map.city_start_army", 40)
+	v.SetDefault("game.map.min_general_spacing", 5)
+	v.SetDefault("game.map.mountain_veins.ratio", 50)
+	v.SetDefault("game.map.mountain_veins.min_length", 3)
+	v.SetDefault("game.map.mountain_veins.max_length_ratio", 0.25)
+	
+	// Production defaults
+	v.SetDefault("game.production.general", 1)
+	v.SetDefault("game.production.city", 1)
+	v.SetDefault("game.production.normal", 1)
+	v.SetDefault("game.production.normal_growth_interval", 25)
+	
+	// Fog of war defaults
+	v.SetDefault("game.fog_of_war.enabled", true)
+	v.SetDefault("game.fog_of_war.visibility_radius", 1)
+	v.SetDefault("game.fog_of_war.update_threshold", 0.1)
+	
+	// Server defaults
+	v.SetDefault("server.game_server.log_level", "info")
+	v.SetDefault("server.game_server.log_format", "console")
+	v.SetDefault("server.game_server.demo.board_width", 8)
+	v.SetDefault("server.game_server.demo.board_height", 8)
+	v.SetDefault("server.game_server.demo.max_turns", 50)
+	
+	// gRPC server defaults
+	v.SetDefault("server.grpc_server.host", "0.0.0.0")
+	v.SetDefault("server.grpc_server.port", 50051)
+	v.SetDefault("server.grpc_server.log_level", "info")
+	v.SetDefault("server.grpc_server.turn_timeout", 0)
+	v.SetDefault("server.grpc_server.max_games", 100)
+	v.SetDefault("server.grpc_server.enable_reflection", true)
+	v.SetDefault("server.grpc_server.graceful_shutdown_delay", 5)
+	
+	// UI defaults
+	v.SetDefault("ui.window.width", 800)
+	v.SetDefault("ui.window.height", 600)
+	v.SetDefault("ui.window.title", "Generals RL UI")
+	v.SetDefault("ui.game.tile_size", 32)
+	v.SetDefault("ui.game.turn_interval", 30)
+	v.SetDefault("ui.defaults.human_player", 0)
+	v.SetDefault("ui.defaults.num_players", 2)
+	v.SetDefault("ui.defaults.map_width", 20)
+	v.SetDefault("ui.defaults.map_height", 15)
+	v.SetDefault("ui.defaults.ai_only", false)
+	
+	// Color defaults
+	v.SetDefault("colors.players.neutral", []int{120, 120, 120})
+	v.SetDefault("colors.players.player_0", []int{200, 50, 50})
+	v.SetDefault("colors.players.player_1", []int{50, 100, 200})
+	v.SetDefault("colors.players.player_2", []int{50, 200, 50})
+	v.SetDefault("colors.players.player_3", []int{200, 200, 50})
+	
+	v.SetDefault("colors.tiles.mountain", []int{80, 80, 80})
+	v.SetDefault("colors.tiles.city_hue_shift", 30)
+	v.SetDefault("colors.tiles.text.general", []int{255, 255, 255})
+	v.SetDefault("colors.tiles.text.city", []int{255, 255, 255})
+	v.SetDefault("colors.tiles.text.army", []int{255, 255, 255})
+	v.SetDefault("colors.tiles.text.general_army", []int{0, 0, 0})
+	
+	v.SetDefault("colors.ui.background", []int{0, 0, 0})
+	v.SetDefault("colors.ui.grid_lines", []int{50, 50, 50})
+	v.SetDefault("colors.ui.fog_of_war", []int{0, 0, 0, 200})
+	v.SetDefault("colors.ui.fog_unknown", []int{25, 25, 25, 200})
+	
+	v.SetDefault("colors.rendering.city_marker_ratio", 0.5)
+	v.SetDefault("colors.rendering.general_marker_ratio", 0.5)
+	v.SetDefault("colors.rendering.owned_city_inner_ratio", 0.33)
+	
+	// Performance defaults
+	v.SetDefault("performance.preallocate_capacity", 50)
+	v.SetDefault("performance.incremental_updates", true)
+	
+	// Development defaults
+	v.SetDefault("development.verbose_logging", false)
+	v.SetDefault("development.show_all_tiles", false)
+	v.SetDefault("development.show_coordinates", false)
+	v.SetDefault("development.show_performance_stats", false)
+	
+	// Feature flags
+	v.SetDefault("features.enable_ai", true)
+	v.SetDefault("features.enable_multiplayer", true)
+	v.SetDefault("features.enable_replay", false)
+	v.SetDefault("features.enable_spectator", false)
+}
+
 // Init initializes the configuration
 func Init(configPath string) error {
 	v = viper.New()
+	
+	// Set defaults before loading any config
+	setViperDefaults(v)
 	
 	// Set config file
 	if configPath != "" {
@@ -214,7 +306,11 @@ func Init(configPath string) error {
 	
 	// Read config file
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		// If we have a specific config path and it doesn't exist, that's ok - use defaults
+		if configPath != "" {
+			// Specific file requested but not found - that's ok, use defaults
+		} else if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			// For default locations, only ignore ConfigFileNotFoundError
 			return fmt.Errorf("error reading config file: %w", err)
 		}
 		// Config file not found; use defaults

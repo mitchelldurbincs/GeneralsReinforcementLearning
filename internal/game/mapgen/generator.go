@@ -1,6 +1,7 @@
 package mapgen
 
 import (
+	"fmt"
 	"math/rand"
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/config"
@@ -51,14 +52,17 @@ func NewGenerator(config MapConfig, rng *rand.Rand) *Generator {
 }
 
 // GenerateMap creates a new board with mountains, cities, and generals placed
-func (g *Generator) GenerateMap() *core.Board {
+func (g *Generator) GenerateMap() (*core.Board, error) {
 	board := core.NewBoard(g.config.Width, g.config.Height)
 
 	g.placeMountains(board) // Place mountains first
 	g.placeCities(board)
-	g.placeGenerals(board)
+	_, err := g.placeGenerals(board)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate map: %w", err)
+	}
 
-	return board
+	return board, nil
 }
 
 func (g *Generator) placeMountains(b *core.Board) {
@@ -151,11 +155,14 @@ func (g *Generator) placeCities(b *core.Board) {
 	}
 }
 
-func (g *Generator) placeGenerals(b *core.Board) []GeneralPlacement {
+func (g *Generator) placeGenerals(b *core.Board) ([]GeneralPlacement, error) {
 	placements := make([]GeneralPlacement, g.config.PlayerCount)
 
 	for pid := range g.config.PlayerCount {
-		placement := g.findGeneralLocation(b, placements[:pid])
+		placement, err := g.findGeneralLocation(b, placements[:pid])
+		if err != nil {
+			return nil, fmt.Errorf("failed to place general for player %d: %w", pid, err)
+		}
 
 		t := &b.T[placement.Idx]
 		t.Owner = pid
@@ -165,10 +172,10 @@ func (g *Generator) placeGenerals(b *core.Board) []GeneralPlacement {
 		placements[pid] = placement
 	}
 
-	return placements
+	return placements, nil
 }
 
-func (g *Generator) findGeneralLocation(b *core.Board, existing []GeneralPlacement) GeneralPlacement {
+func (g *Generator) findGeneralLocation(b *core.Board, existing []GeneralPlacement) (GeneralPlacement, error) {
 	maxAttempts := b.W * b.H 
 
 	for range maxAttempts {
@@ -199,7 +206,7 @@ func (g *Generator) findGeneralLocation(b *core.Board, existing []GeneralPlaceme
 				Idx:      idx,
 				X:        x,
 				Y:        y,
-			}
+			}, nil
 		}
 	}
 
@@ -229,12 +236,12 @@ func (g *Generator) findGeneralLocation(b *core.Board, existing []GeneralPlaceme
 					Idx:      idx,
 					X:        x,
 					Y:        y,
-				}
+				}, nil
 			}
 		}
 	}
 	// If even the fallback fails, it's a critical issue with map gen parameters or logic
-	panic("Unable to place general - no valid locations found even in fallback")
+	return GeneralPlacement{}, fmt.Errorf("unable to place general - no valid locations found even in fallback")
 }
 
 // GeneralPlacement tracks where a general was placed

@@ -60,7 +60,10 @@ func createTestEngine(boardSize, numPlayers int) *Engine {
 	gen := mapgen.NewGenerator(mapConfig, rng)
 	
 	// Generate board
-	board := gen.GenerateMap()
+	board, err := gen.GenerateMap()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to generate map: %v", err))
+	}
 	
 	// Find general positions
 	playerStartPos := make([]struct{ X, Y int }, 0)

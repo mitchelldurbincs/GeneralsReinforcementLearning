@@ -62,9 +62,9 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 	// Generate the map
 	mapCfg := mapgen.DefaultMapConfig(cfg.Width, cfg.Height, cfg.Players)
 	generator := mapgen.NewGenerator(mapCfg, cfg.Rng)
-	board := generator.GenerateMap()
-	if board == nil {
-		engineLogger.Error().Msg("Map generation failed")
+	board, err := generator.GenerateMap()
+	if err != nil {
+		engineLogger.Error().Err(err).Msg("Map generation failed")
 		return nil
 	}
 

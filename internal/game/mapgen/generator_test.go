@@ -236,10 +236,8 @@ func TestPlaceGenerals(t *testing.T) {
 		generator := NewGenerator(config, rng)
 		board := core.NewBoard(config.Width, config.Height)
 
-		var placements []GeneralPlacement
-		assert.NotPanics(t, func() {
-			placements = generator.placeGenerals(board)
-		}, "placeGenerals should not panic")
+		placements, err := generator.placeGenerals(board)
+		assert.NoError(t, err, "placeGenerals should not return error")
 
 		require.Len(t, placements, config.PlayerCount, "Should have one placement per player")
 
@@ -277,7 +275,8 @@ func TestPlaceGenerals(t *testing.T) {
 		generator := NewGenerator(config, rng)
 		board := core.NewBoard(config.Width, config.Height)
 
-		placements := generator.placeGenerals(board)
+		placements, err := generator.placeGenerals(board)
+		assert.NoError(t, err)
 		assert.Empty(t, placements, "No generals should be placed if PlayerCount is 0")
 	})
 
@@ -287,7 +286,8 @@ func TestPlaceGenerals(t *testing.T) {
 		generator := NewGenerator(config, rng)
 		board := core.NewBoard(config.Width, config.Height)
 
-		placements := generator.placeGenerals(board)
+		placements, err := generator.placeGenerals(board)
+		assert.NoError(t, err)
 		require.Len(t, placements, 1, "Expected one general placement")
 		tile := board.T[placements[0].Idx]
 		assert.Equal(t, core.TileGeneral, tile.Type)
@@ -307,7 +307,8 @@ func TestPlaceGenerals(t *testing.T) {
 		board.T[cityIdx].Type = core.TileCity
 		board.T[cityIdx].Army = 10 // Cities usually have army
 
-		placements := generator.placeGenerals(board)
+		placements, err := generator.placeGenerals(board)
+		assert.NoError(t, err)
 		require.Len(t, placements, config.PlayerCount)
 
 		for _, p := range placements {
@@ -325,10 +326,10 @@ func TestPlaceGenerals(t *testing.T) {
 		board := core.NewBoard(config.Width, config.Height)
 
 		// The current fallback in findGeneralLocation re-checks spacing.
-		// If spacing is impossible even for the fallback, it should panic.
-		assert.PanicsWithValue(t, "Unable to place general - no valid locations found even in fallback", func() {
-			generator.placeGenerals(board)
-		}, "Should panic when general placement is impossible due to spacing constraints")
+		// If spacing is impossible even for the fallback, it should return error.
+		_, err := generator.placeGenerals(board)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unable to place general")
 	})
 
     t.Run("FallbackGeneralPlacementWhenInitialAttemptsFail", func(t *testing.T) {
@@ -357,10 +358,8 @@ func TestPlaceGenerals(t *testing.T) {
         // If MinGeneralSpacing was, e.g., 5, this test setup would panic.
         config.MinGeneralSpacing = 4 // This is exactly the distance.
 
-        var placements []GeneralPlacement
-        assert.NotPanics(t, func() {
-             placements = generator.placeGenerals(board)
-        }, "placeGenerals should not panic if fallback can find spots")
+        placements, err := generator.placeGenerals(board)
+        assert.NoError(t, err, "placeGenerals should not return error if fallback can find spots")
         require.Len(t, placements, 2, "Should place two generals")
 
         foundSpot1 := false
@@ -387,10 +386,8 @@ func TestGenerateMap_FullIntegration(t *testing.T) {
 	rng := newTestRNG() // Use a fixed seed for deterministic output
 	generator := NewGenerator(config, rng)
 
-	var board *core.Board
-	assert.NotPanics(t, func() {
-		board = generator.GenerateMap()
-	}, "GenerateMap should not panic during full generation")
+	board, err := generator.GenerateMap()
+	assert.NoError(t, err, "GenerateMap should not return error during full generation")
 
 	require.NotNil(t, board, "Generated board should not be nil")
 	assert.Equal(t, config.Width, board.W, "Board width mismatch")
