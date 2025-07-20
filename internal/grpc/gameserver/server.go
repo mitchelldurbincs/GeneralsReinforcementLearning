@@ -10,6 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	gameengine "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	commonv1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/common/v1"
 	gamev1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/game/v1"
 )
@@ -29,6 +31,8 @@ type gameInstance struct {
 	config  *gamev1.GameConfig
 	status  commonv1.GameStatus
 	players []playerInfo
+	engine  *gameengine.Engine
+	mu      sync.Mutex // Per-game mutex for thread-safe engine operations
 }
 
 type playerInfo struct {
@@ -129,6 +133,19 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 	// Start game if we have enough players
 	if len(game.players) == int(game.config.MaxPlayers) {
 		game.status = commonv1.GameStatus_GAME_STATUS_IN_PROGRESS
+		
+		// Create the game engine
+		engineConfig := gameengine.GameConfig{
+			Width:   int(game.config.Width),
+			Height:  int(game.config.Height),
+			Players: int(game.config.MaxPlayers),
+			Logger:  log.Logger,
+		}
+		game.engine = gameengine.NewEngine(ctx, engineConfig)
+		
+		if game.engine == nil {
+			return nil, status.Error(codes.Internal, "failed to create game engine")
+		}
 	}
 
 	return &gamev1.JoinGameResponse{
@@ -177,7 +194,15 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 
 // createGameState creates a GameState message for the given game and player
 func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.GameState {
-	// Create player states
+	// If engine exists, use it
+	if game.engine != nil {
+		game.mu.Lock()
+		engineState := game.engine.GameState()
+		game.mu.Unlock()
+		return s.convertGameStateToProto(game, engineState, playerID)
+	}
+	
+	// Otherwise create placeholder state for waiting games
 	players := make([]*gamev1.PlayerState, len(game.players))
 	for i, p := range game.players {
 		players[i] = &gamev1.PlayerState{
@@ -213,6 +238,7 @@ func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.Gam
 		},
 		Players:  players,
 		WinnerId: -1,
+		ActionMask: make([]bool, 0), // Empty mask for waiting games
 	}
 }
 
@@ -221,4 +247,103 @@ func (s *Server) GetActiveGames() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.games)
+}
+
+// convertTileType converts from core tile type (int) to protobuf TileType
+func convertTileType(t int) commonv1.TileType {
+	switch t {
+	case core.TileNormal:
+		return commonv1.TileType_TILE_TYPE_NORMAL
+	case core.TileGeneral:
+		return commonv1.TileType_TILE_TYPE_GENERAL
+	case core.TileCity:
+		return commonv1.TileType_TILE_TYPE_CITY
+	case core.TileMountain:
+		return commonv1.TileType_TILE_TYPE_MOUNTAIN
+	default:
+		return commonv1.TileType_TILE_TYPE_UNSPECIFIED
+	}
+}
+
+// convertGameStateToProto converts the game engine state to protobuf format
+func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameengine.GameState, playerID int32) *gamev1.GameState {
+	// Create player states from engine data
+	players := make([]*gamev1.PlayerState, len(engineState.Players))
+	for i, p := range engineState.Players {
+		playerState := &gamev1.PlayerState{
+			Id:        int32(p.ID),
+			Name:      game.players[i].name,
+			Status:    commonv1.PlayerStatus_PLAYER_STATUS_ACTIVE,
+			ArmyCount: int32(p.ArmyCount),
+			TileCount: int32(len(p.OwnedTiles)),
+			Color:     fmt.Sprintf("#%06X", i*0x333333),
+		}
+		
+		if !p.Alive {
+			playerState.Status = commonv1.PlayerStatus_PLAYER_STATUS_ELIMINATED
+		}
+		
+		// Show general position if discovered or eliminated
+		if p.GeneralIdx >= 0 && (!p.Alive || engineState.Board.T[p.GeneralIdx].Owner == int(playerID)) {
+			x := p.GeneralIdx % engineState.Board.W
+			y := p.GeneralIdx / engineState.Board.W
+			playerState.GeneralPosition = &commonv1.Coordinate{
+				X: int32(x),
+				Y: int32(y),
+			}
+		}
+		
+		players[i] = playerState
+	}
+	
+	// Convert board tiles with fog of war
+	tiles := make([]*gamev1.Tile, len(engineState.Board.T))
+	visibility := game.engine.ComputePlayerVisibility(int(playerID))
+	
+	for i, tile := range engineState.Board.T {
+		protoTile := &gamev1.Tile{
+			Type:      convertTileType(tile.Type),
+			OwnerId:   int32(tile.Owner),
+			ArmyCount: int32(tile.Army),
+			Visible:   visibility.VisibleTiles[i],
+			FogOfWar:  visibility.FogTiles[i],
+		}
+		
+		// Apply fog of war rules
+		if !protoTile.Visible && !protoTile.FogOfWar {
+			// Completely hidden tile
+			protoTile.Type = commonv1.TileType_TILE_TYPE_NORMAL
+			protoTile.OwnerId = -1
+			protoTile.ArmyCount = 0
+		} else if protoTile.FogOfWar && !protoTile.Visible {
+			// In fog - show type but not current state
+			protoTile.OwnerId = -1
+			protoTile.ArmyCount = 0
+		}
+		
+		tiles[i] = protoTile
+	}
+	
+	// Determine winner
+	winnerId := int32(-1)
+	if game.engine.IsGameOver() {
+		winnerId = int32(game.engine.GetWinner())
+	}
+	
+	// Generate action mask for the requesting player
+	actionMask := game.engine.GetLegalActionMask(int(playerID))
+	
+	return &gamev1.GameState{
+		GameId:     game.id,
+		Status:     game.status,
+		Turn:       int32(engineState.Turn),
+		Board: &gamev1.Board{
+			Width:  int32(engineState.Board.W),
+			Height: int32(engineState.Board.H),
+			Tiles:  tiles,
+		},
+		Players:    players,
+		WinnerId:   winnerId,
+		ActionMask: actionMask,
+	}
 }

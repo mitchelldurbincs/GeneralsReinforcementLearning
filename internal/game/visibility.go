@@ -1,5 +1,7 @@
 package game
 
+import "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
+
 // This file contains all fog of war and visibility-related functionality for the game engine.
 
 // updateFogOfWar updates the fog of war visibility for all players
@@ -117,4 +119,44 @@ func (e *Engine) clearVisibilityAround(tileIdx int) {
 			}
 		}
 	}
+}
+
+// PlayerVisibility contains visibility information for a specific player
+type PlayerVisibility struct {
+	VisibleTiles []bool // Currently visible tiles
+	FogTiles     []bool // Previously seen but not currently visible tiles
+}
+
+// ComputePlayerVisibility computes visibility information for a specific player
+func (e *Engine) ComputePlayerVisibility(playerID int) PlayerVisibility {
+	numTiles := len(e.gs.Board.T)
+	vis := PlayerVisibility{
+		VisibleTiles: make([]bool, numTiles),
+		FogTiles:     make([]bool, numTiles),
+	}
+	
+	// If fog of war is disabled, all tiles are visible
+	if !e.gs.FogOfWarEnabled {
+		for i := range vis.VisibleTiles {
+			vis.VisibleTiles[i] = true
+		}
+		return vis
+	}
+	
+	// Copy current visibility from tiles
+	for i, tile := range e.gs.Board.T {
+		vis.VisibleTiles[i] = tile.Visible[playerID]
+		
+		// A tile is in fog if it was previously discovered (has a type or we've seen it before)
+		// but is not currently visible
+		if !vis.VisibleTiles[i] {
+			// Check if we've discovered this tile before
+			// For now, we'll mark as fog if it's a special tile type we would have seen
+			if tile.Type != core.TileNormal {
+				vis.FogTiles[i] = true
+			}
+		}
+	}
+	
+	return vis
 }

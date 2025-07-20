@@ -125,6 +125,13 @@ message GameState {
   int32 winner_id = 6; // -1 if no winner yet
   google.protobuf.Timestamp started_at = 7;
   google.protobuf.Timestamp updated_at = 8;
+  // Flattened mask of legal actions for the viewing player.
+  // For a board of width W and height H:
+  // - Total actions = W * H * 4 (4 directions per tile)
+  // - Index = (y * W + x) * 4 + direction
+  // - Directions: 0=up, 1=right, 2=down, 3=left
+  // - true = legal move, false = illegal move
+  repeated bool action_mask = 9;
 }
 
 // Board represents the game board
