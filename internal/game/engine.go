@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors" 
 	"math/rand"
-	"sort"
 	"time"
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/mapgen"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/processor"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/rules"
 	"github.com/rs/zerolog"
 )
 
@@ -17,6 +18,11 @@ type Engine struct {
 	rng      *rand.Rand
 	gameOver bool
 	logger   zerolog.Logger
+	
+	// Extracted components
+	actionProcessor *processor.ActionProcessor
+	winCondition    *rules.WinConditionChecker
+	legalMoves      *rules.LegalMoveCalculator
 	
 	// Reusable temporary maps to avoid allocations
 	tempTileOwnership   map[int]int        // Used in performIncrementalStatsUpdate
@@ -97,6 +103,9 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 		rng:      cfg.Rng,
 		gameOver: false,
 		logger:   engineLogger,
+		actionProcessor: processor.NewActionProcessor(engineLogger),
+		winCondition:    rules.NewWinConditionChecker(engineLogger, cfg.Players),
+		legalMoves:      rules.NewLegalMoveCalculator(),
 		tempTileOwnership:   make(map[int]int),
 		tempAffectedPlayers: make(map[int]struct{}),
 	}
@@ -177,69 +186,26 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	return nil
 }
 
-// processActions handles all actions for this turn.
-// It now accepts a context to check for cancellation during its loop.
+// processActions handles all actions for this turn using the ActionProcessor.
 func (e *Engine) processActions(ctx context.Context, actions []core.Action, l zerolog.Logger) error {
-	l.Debug().Msg("Sorting actions for deterministic processing")
-	// Sort actions by player ID for deterministic processing
-	sort.Slice(actions, func(i, j int) bool {
-		return actions[i].GetPlayerID() < actions[j].GetPlayerID()
-	})
-
-	var encounteredError error
-	var allCaptureDetailsThisTurn []core.CaptureDetails
-
-	for _, action := range actions {
-		// Check context before processing each action
-		select {
-		case <-ctx.Done():
-			l.Warn().Err(ctx.Err()).Msg("Action processing interrupted by context cancellation")
-			return ctx.Err()
-		default:
-		}
-
-		playerID := action.GetPlayerID()
-		if playerID < 0 || playerID >= len(e.gs.Players) || !e.gs.Players[playerID].Alive {
-			l.Warn().Int("player_id", playerID).Bool("alive", playerID >= 0 && playerID < len(e.gs.Players) && e.gs.Players[playerID].Alive).Msg("Ignoring action from invalid or dead player")
-			continue
-		}
-
-		l.Debug().Int("player_id", playerID).Interface("action", action).Msg("Applying action")
-		switch act := action.(type) {
-		case *core.MoveAction:
-			// Assuming ApplyMoveAction itself doesn't need context for internal long computations.
-			// If ApplyMoveAction also called action.Validate(..., logger), that logger could be actionLogger.
-			// And if action.Validate took context, it would be passed there too.
-			// For now, ApplyMoveAction doesn't take context in its signature.
-			captureDetail, err := core.ApplyMoveAction(e.gs.Board, act, e.gs.ChangedTiles)
-			if err != nil {
-				l.Error().Err(err).
-					Int("player_id", playerID).
-					Interface("action_details", act).
-					Msg("Failed to apply move action")
-				if encounteredError == nil {
-					encounteredError = err
-				}
-				continue
-			}
-			if captureDetail != nil {
-				l.Debug().
-					Int("player_id", playerID).
-					Interface("capture_details", *captureDetail).
-					Msg("Move resulted in capture")
-				allCaptureDetailsThisTurn = append(allCaptureDetailsThisTurn, *captureDetail)
-				// Mark tile for visibility update since ownership changed
-				capturedTileIdx := e.gs.Board.Idx(captureDetail.X, captureDetail.Y)
-				e.gs.VisibilityChangedTiles[capturedTileIdx] = struct{}{}
-			}
-		default:
-			l.Warn().Int("player_id", playerID).Str("action_type", core.GetActionType(action)).Msg("Unhandled action type in processActions")
-		}
+	// Create a slice of PlayerInfo interfaces from our Players
+	playerInfos := make([]processor.PlayerInfo, len(e.gs.Players))
+	for i := range e.gs.Players {
+		playerInfos[i] = &e.gs.Players[i]
 	}
-
-	if len(allCaptureDetailsThisTurn) > 0 {
-		l.Debug().Int("num_captures_this_turn", len(allCaptureDetailsThisTurn)).Msg("Processing captures for eliminations")
-		eliminationOrders := core.ProcessCaptures(allCaptureDetailsThisTurn)
+	
+	// Use the ActionProcessor to handle all action processing
+	captureDetails, visibilityChangedTiles, err := e.actionProcessor.ProcessActions(ctx, e.gs.Board, playerInfos, actions, e.gs.ChangedTiles)
+	
+	// Merge visibility changed tiles
+	for tileIdx := range visibilityChangedTiles {
+		e.gs.VisibilityChangedTiles[tileIdx] = struct{}{}
+	}
+	
+	// Handle eliminations if there were captures
+	if len(captureDetails) > 0 {
+		l.Debug().Int("num_captures_this_turn", len(captureDetails)).Msg("Processing captures for eliminations")
+		eliminationOrders := core.ProcessCaptures(captureDetails)
 		if len(eliminationOrders) > 0 {
 			e.handleEliminationsAndTileTurnover(eliminationOrders, l)
 			// Update player stats immediately after eliminations so production is applied correctly
@@ -247,7 +213,7 @@ func (e *Engine) processActions(ctx context.Context, actions []core.Action, l ze
 		}
 	}
 
-	return encounteredError
+	return err
 }
 
 // handleEliminationsAndTileTurnover processes player eliminations and transfers tiles.
@@ -327,35 +293,24 @@ func (e *Engine) processTurnProduction(l zerolog.Logger) {
 		Msg("Turn production complete")
 }
 
-// checkGameOver determines if the game is over based on the number of alive players.
+// checkGameOver determines if the game is over using the WinConditionChecker.
 func (e *Engine) checkGameOver(l zerolog.Logger) {
-	l.Debug().Msg("Checking game over conditions")
-	aliveCount := 0
-	var alivePlayers []int
-	for _, p := range e.gs.Players {
-		if p.Alive {
-			aliveCount++
-			alivePlayers = append(alivePlayers, p.ID)
-		}
+	// Create a slice of Player interfaces for the win condition checker
+	players := make([]rules.Player, len(e.gs.Players))
+	for i := range e.gs.Players {
+		players[i] = &e.gs.Players[i]
 	}
-
+	
 	wasGameOver := e.gameOver
-	// Game is over only if:
-	// - 0 players alive (draw)
-	// - 1 player alive AND there were originally more than 1 player
-	if len(e.gs.Players) > 1 {
-		e.gameOver = aliveCount <= 1
-	} else {
-		e.gameOver = aliveCount == 0
-	}
-
+	gameOver, _ := e.winCondition.CheckGameOver(players)
+	e.gameOver = gameOver
+	
 	if !wasGameOver && e.gameOver {
-		l.Info().Int("alive_player_count", aliveCount).Interface("alive_players_ids", alivePlayers).Msg("Game over condition met")
+		l.Info().Msg("Game over condition met")
 	} else if wasGameOver && !e.gameOver {
 		// This would be highly unusual
-		l.Error().Int("alive_player_count", aliveCount).Msg("Game was over, but is no longer over. This is unexpected!")
+		l.Error().Msg("Game was over, but is no longer over. This is unexpected!")
 	}
-	l.Debug().Bool("is_game_over", e.gameOver).Int("alive_player_count", aliveCount).Msg("Game over check complete")
 }
 
 // Public accessors
@@ -367,18 +322,17 @@ func (e *Engine) GetWinner() int {
 	e.logger.Debug().Bool("is_game_over_state", e.gameOver).Msg("GetWinner called")
 	if !e.gameOver {
 		e.logger.Warn().Msg("GetWinner called but game is not actually over according to internal state.")
-		// It's debatable whether to return -1 or re-check. For now, trust e.gameOver.
-		// If there's a possibility of e.gameOver being stale, one might call checkGameOver here.
 		return -1
 	}
-	for _, p := range e.gs.Players {
-		if p.Alive {
-			e.logger.Info().Int("winner_player_id", p.ID).Msg("Winner determined")
-			return p.ID
-		}
+	
+	// Create a slice of Player interfaces for the win condition checker
+	players := make([]rules.Player, len(e.gs.Players))
+	for i := range e.gs.Players {
+		players[i] = &e.gs.Players[i]
 	}
-	e.logger.Info().Msg("No winner found (draw, or all players eliminated simultaneously)")
-	return -1 // Draw or no winner if all eliminated somehow
+	
+	_, winnerID := e.winCondition.CheckGameOver(players)
+	return winnerID
 }
 
 // GetLegalActionMask returns a flattened boolean mask indicating which actions are legal for the given player.
@@ -388,56 +342,12 @@ func (e *Engine) GetWinner() int {
 // - Directions: 0=up, 1=right, 2=down, 3=left
 // - true = legal move, false = illegal move
 func (e *Engine) GetLegalActionMask(playerID int) []bool {
-	board := e.gs.Board
-	width := board.W
-	height := board.H
-	maskSize := width * height * 4
-	mask := make([]bool, maskSize)
-	
-	// If player is not alive or invalid, return all false
-	if playerID < 0 || playerID >= len(e.gs.Players) || !e.gs.Players[playerID].Alive {
-		return mask
+	// If player is not alive or invalid, return empty mask
+	if playerID < 0 || playerID >= len(e.gs.Players) {
+		maskSize := e.gs.Board.W * e.gs.Board.H * 4
+		return make([]bool, maskSize)
 	}
 	
-	// Direction offsets: up, right, down, left
-	dx := []int{0, 1, 0, -1}
-	dy := []int{-1, 0, 1, 0}
-	
-	// Check each tile the player owns
-	for _, tileIdx := range e.gs.Players[playerID].OwnedTiles {
-		tile := &board.T[tileIdx]
-		
-		// Can only move if we own the tile and have more than 1 army
-		if tile.Owner != playerID || tile.Army <= 1 {
-			continue
-		}
-		
-		// Get x,y coordinates from tile index
-		x := tileIdx % width
-		y := tileIdx / width
-		
-		// Check each direction
-		for dir := 0; dir < 4; dir++ {
-			newX := x + dx[dir]
-			newY := y + dy[dir]
-			
-			// Create a move action to validate
-			moveAction := &core.MoveAction{
-				PlayerID: playerID,
-				FromX:    x,
-				FromY:    y,
-				ToX:      newX,
-				ToY:      newY,
-			}
-			
-			// Use the existing validation logic
-			if err := moveAction.Validate(board, playerID); err == nil {
-				// This is a legal move
-				actionIdx := (y*width + x)*4 + dir
-				mask[actionIdx] = true
-			}
-		}
-	}
-	
-	return mask
+	player := &e.gs.Players[playerID]
+	return e.legalMoves.GetLegalActionMask(e.gs.Board, player, player.OwnedTiles)
 }

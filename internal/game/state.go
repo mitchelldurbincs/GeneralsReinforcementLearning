@@ -12,6 +12,16 @@ type Player struct {
 	OwnedTiles []int // indices of tiles owned by this player
 }
 
+// GetID returns the player's ID
+func (p *Player) GetID() int {
+	return p.ID
+}
+
+// IsAlive returns whether the player is still alive
+func (p *Player) IsAlive() bool {
+	return p.Alive
+}
+
 type GameState struct {
 	Turn            int
 	Board           *core.Board

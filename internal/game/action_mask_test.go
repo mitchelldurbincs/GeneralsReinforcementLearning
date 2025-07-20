@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/processor"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/rules"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,6 +44,9 @@ func createTestEngineForActionMask(width, height, players int) *Engine {
 		rng:                 rand.New(rand.NewSource(42)),
 		gameOver:            false,
 		logger:              zerolog.Nop(),
+		actionProcessor:     processor.NewActionProcessor(zerolog.Nop()),
+		winCondition:        rules.NewWinConditionChecker(zerolog.Nop(), players),
+		legalMoves:          rules.NewLegalMoveCalculator(),
 		tempTileOwnership:   make(map[int]int),
 		tempAffectedPlayers: make(map[int]struct{}),
 	}
