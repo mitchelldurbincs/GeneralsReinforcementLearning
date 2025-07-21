@@ -108,7 +108,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 
 	game, exists := s.games[req.GameId]
 	if !exists {
-		return nil, status.Errorf(codes.NotFound, "game %s not found", req.GameId)
+		return nil, status.Errorf(codes.NotFound, "game %s not found: request from player %s", req.GameId, req.PlayerName)
 	}
 
 	// Check if player already in game
@@ -125,7 +125,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 
 	// Check if game is full
 	if len(game.players) >= int(game.config.MaxPlayers) {
-		return nil, status.Error(codes.ResourceExhausted, "game is full")
+		return nil, status.Errorf(codes.ResourceExhausted, "game %s is full: %d/%d players", req.GameId, len(game.players), game.config.MaxPlayers)
 	}
 
 	// Add new player
@@ -152,7 +152,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		game.engine = gameengine.NewEngine(ctx, engineConfig)
 		
 		if game.engine == nil {
-			return nil, status.Error(codes.Internal, "failed to create game engine")
+			return nil, status.Errorf(codes.Internal, "failed to create game engine for game %s: config %dx%d with %d players", req.GameId, game.config.Width, game.config.Height, game.config.MaxPlayers)
 		}
 		
 		// Initialize action collection
@@ -193,7 +193,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		return &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_GAME_NOT_FOUND,
-			ErrorMessage: "game not found",
+			ErrorMessage: fmt.Sprintf("game %s not found", req.GameId),
 		}, nil
 	}
 	
@@ -202,7 +202,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		return &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_GAME_OVER,
-			ErrorMessage: "game is not in progress",
+			ErrorMessage: fmt.Sprintf("game %s is not in progress (status: %s)", req.GameId, game.status),
 		}, nil
 	}
 	
@@ -219,7 +219,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		return &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_PLAYER,
-			ErrorMessage: "invalid player credentials",
+			ErrorMessage: fmt.Sprintf("invalid player credentials for game %s: player %d", req.GameId, req.PlayerId),
 		}, nil
 	}
 	
@@ -232,7 +232,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		return &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
-			ErrorMessage: fmt.Sprintf("invalid turn number: expected %d, got %d", currentTurn, req.Action.TurnNumber),
+			ErrorMessage: fmt.Sprintf("invalid turn number for game %s: expected %d, got %d", req.GameId, currentTurn, req.Action.TurnNumber),
 		}, nil
 	}
 	
@@ -242,7 +242,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		return &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
-			ErrorMessage: err.Error(),
+			ErrorMessage: fmt.Sprintf("invalid action for game %s player %d: %v", req.GameId, req.PlayerId, err),
 		}, nil
 	}
 	
@@ -257,7 +257,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			return &gamev1.SubmitActionResponse{
 				Success:      false,
 				ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
-				ErrorMessage: fmt.Sprintf("action validation failed: %v", err),
+				ErrorMessage: fmt.Sprintf("action validation failed for game %s player %d turn %d: %v", req.GameId, req.PlayerId, currentTurn, err),
 			}, nil
 		}
 	}
@@ -276,7 +276,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			return &gamev1.SubmitActionResponse{
 				Success:      false,
 				ErrorCode:    commonv1.ErrorCode_ERROR_CODE_UNSPECIFIED,
-				ErrorMessage: "failed to process turn",
+				ErrorMessage: fmt.Sprintf("failed to process turn %d for game %s", currentTurn, req.GameId),
 			}, nil
 		}
 		
@@ -299,7 +299,7 @@ func (s *Server) GetGameState(ctx context.Context, req *gamev1.GetGameStateReque
 
 	game, exists := s.games[req.GameId]
 	if !exists {
-		return nil, status.Errorf(codes.NotFound, "game %s not found", req.GameId)
+		return nil, status.Errorf(codes.NotFound, "game %s not found: requested by player %d", req.GameId, req.PlayerId)
 	}
 
 	// Validate player token
@@ -311,7 +311,7 @@ func (s *Server) GetGameState(ctx context.Context, req *gamev1.GetGameStateReque
 		}
 	}
 	if !valid {
-		return nil, status.Error(codes.PermissionDenied, "invalid player credentials")
+		return nil, status.Errorf(codes.PermissionDenied, "invalid player credentials for game %s: player %d", req.GameId, req.PlayerId)
 	}
 
 	return &gamev1.GetGameStateResponse{
@@ -491,7 +491,7 @@ func (s *Server) convertProtoAction(protoAction *gamev1.Action, playerID int32) 
 	switch protoAction.Type {
 	case commonv1.ActionType_ACTION_TYPE_MOVE:
 		if protoAction.From == nil || protoAction.To == nil {
-			return nil, status.Error(codes.InvalidArgument, "move action requires from and to coordinates")
+			return nil, status.Errorf(codes.InvalidArgument, "move action for player %d requires from and to coordinates", playerID)
 		}
 		
 		return &core.MoveAction{
@@ -504,7 +504,7 @@ func (s *Server) convertProtoAction(protoAction *gamev1.Action, playerID int32) 
 		}, nil
 		
 	default:
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported action type: %v", protoAction.Type)
+		return nil, status.Errorf(codes.InvalidArgument, "unsupported action type %v for player %d", protoAction.Type, playerID)
 	}
 }
 
@@ -551,7 +551,7 @@ func (game *gameInstance) processTurn(ctx context.Context) error {
 	
 	err := game.engine.Step(ctx, actions)
 	if err != nil {
-		return err
+		return fmt.Errorf("game %s turn %d: failed to process %d actions: %w", game.id, game.currentTurn-1, len(actions), err)
 	}
 	
 	// Check if game has ended

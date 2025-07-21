@@ -41,17 +41,17 @@ This document outlines a comprehensive plan to improve error handling throughout
 
 ## Phase 3: Systematic Updates
 
-- [ ] **Update gRPC server errors** in `internal/grpc/gameserver/server.go`
+- [x] **Update gRPC server errors** in `internal/grpc/gameserver/server.go`
   - Add game ID and request context to all error returns
   - Ensure gRPC status codes include detailed messages
 
-- [ ] **Enhance mapgen error context** (already good, but can be improved)
+- [x] **Enhance mapgen error context** (already good, but can be improved)
   - Add map dimensions and generation parameters to errors
 
-- [ ] **Review and update all error returns** in:
-  - `internal/game/state.go`
-  - `internal/game/visibility.go`
-  - `internal/game/stats.go`
+- [x] **Review and update all error returns** in:
+  - `internal/game/state.go` (no errors returned - state management only)
+  - `internal/game/visibility.go` (no errors returned - visibility updates only)
+  - `internal/game/stats.go` (no errors returned - stats calculations only)
 
 ## Phase 4: Logging and Monitoring
 
@@ -102,3 +102,23 @@ This approach maintains sentinel errors for programmatic checks while adding hum
 2. **Error Tracing**: Can trace errors through the call stack with `errors.Is()` and `errors.As()`
 3. **Consistency**: Standardized error messages across the codebase
 4. **Monitoring**: Easier to identify and track error patterns in production
+
+## Completed Work Summary
+
+### Phase 1 ✅ (Completed in previous commits)
+- Updated action validation errors in `internal/game/core/action.go`
+- Enhanced engine error handling in `internal/game/engine.go`
+- Improved movement validation in `internal/game/core/movement.go`
+
+### Phase 2 ✅ (Completed in previous commits)
+- Created error wrapping utilities in `internal/game/core/errors.go`
+- Added structured error types for complex scenarios
+
+### Phase 3 ✅ (Completed in this session)
+- **gRPC Server**: Enhanced all error messages with game ID, player ID, and turn context
+  - JoinGame: Added player name and game capacity details
+  - SubmitAction: Added detailed context for each error type
+  - GetGameState: Added requester information
+  - Helper methods: Added player and action context
+- **Map Generation**: Added map dimensions and generation parameters to all errors
+- **State/Visibility/Stats**: Confirmed these don't return errors (internal state management only)

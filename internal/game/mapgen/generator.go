@@ -59,7 +59,7 @@ func (g *Generator) GenerateMap() (*core.Board, error) {
 	g.placeCities(board)
 	_, err := g.placeGenerals(board)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate map: %w", err)
+		return nil, fmt.Errorf("failed to generate map (%dx%d, %d players): %w", g.config.Width, g.config.Height, g.config.PlayerCount, err)
 	}
 
 	return board, nil
@@ -161,7 +161,7 @@ func (g *Generator) placeGenerals(b *core.Board) ([]GeneralPlacement, error) {
 	for pid := range g.config.PlayerCount {
 		placement, err := g.findGeneralLocation(b, placements[:pid])
 		if err != nil {
-			return nil, fmt.Errorf("failed to place general for player %d: %w", pid, err)
+			return nil, fmt.Errorf("failed to place general for player %d on %dx%d map (spacing: %d): %w", pid, g.config.Width, g.config.Height, g.config.MinGeneralSpacing, err)
 		}
 
 		t := &b.T[placement.Idx]
@@ -241,7 +241,7 @@ func (g *Generator) findGeneralLocation(b *core.Board, existing []GeneralPlaceme
 		}
 	}
 	// If even the fallback fails, it's a critical issue with map gen parameters or logic
-	return GeneralPlacement{}, fmt.Errorf("unable to place general - no valid locations found even in fallback")
+	return GeneralPlacement{}, fmt.Errorf("unable to place general for player %d: no valid locations found on %dx%d map with %d existing generals (min spacing: %d)", len(existing), b.W, b.H, len(existing), g.config.MinGeneralSpacing)
 }
 
 // GeneralPlacement tracks where a general was placed
