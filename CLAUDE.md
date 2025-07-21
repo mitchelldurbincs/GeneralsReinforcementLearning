@@ -4,7 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Go-based implementation of a Generals.io-style strategic territory control game with reinforcement learning capabilities. The game features army movement, territory capture, fog of war, and multiplayer support.
+This is a Go-based implementation of a Generals.io-style strategic territory control game designed specifically for reinforcement learning research and training. The game features army movement, territory capture, and fog of war mechanics. 
+
+**Important Note**: This is NOT a multiplayer game server. While the codebase includes networking infrastructure (gRPC), it's intended for:
+- Training reinforcement learning agents through self-play
+- Running distributed RL training across multiple machines
+- Occasional human play for testing agent performance
+- Bot vs bot competitions in controlled environments
+
+The project prioritizes RL training efficiency over production multiplayer features like security, authentication, or public-facing APIs.
 
 ## Development Commands
 

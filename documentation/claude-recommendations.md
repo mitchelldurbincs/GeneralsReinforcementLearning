@@ -6,11 +6,6 @@
 - [x] Replace panic in map generation with proper error handling ✓ No panics found in mapgen code, already uses proper error handling
 - [x] Fix mapgen tests that are currently failing ✓ Fixed testutil package and all tests now pass
 
-## Security Issues
-
-- [ ] Replace predictable player tokens with cryptographically secure random tokens
-- [ ] Add comprehensive input validation to gRPC handlers (player names, board dimensions, coordinates)
-
 ## Core Feature Implementation
 
 - [ ] Implement gRPC StreamGame method for real-time game state updates
