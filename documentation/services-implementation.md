@@ -15,83 +15,85 @@ The services architecture provides a network API layer on top of the existing Go
 ### Prerequisites & Missing Components
 
 1. **gRPC Dependencies**
-   - Add gRPC and protobuf dependencies to go.mod
-   - Install protoc compiler and Go plugins
-   - Set up proto generation scripts
+   - [x] Add gRPC and protobuf dependencies to go.mod
+   - [x] Install protoc compiler and Go plugins
+   - [x] Set up proto generation scripts
 
 2. **Project Structure**
-   - Create `proto/` directory for .proto files
-   - Create `internal/grpc/` for gRPC server implementations
-   - Create `pkg/api/` for generated proto code
+   - [x] Create `proto/` directory for .proto files
+   - [x] Create `internal/grpc/` for gRPC server implementations
+   - [x] Create `pkg/api/` for generated proto code
 
 ### Implementation Steps
 
 #### Phase 1: Proto Definition & Setup
 
 1. Create `proto/game/v1/game.proto` with:
-   - Service definition (CreateGame, JoinGame, SubmitAction, GetGameState, StreamGame)
-   - Message types (GameState, PlayerState, Action, etc.)
-   - Enums (GameStatus, PlayerStatus, ActionError)
+   - [x] Service definition (CreateGame, JoinGame, SubmitAction, GetGameState, StreamGame)
+   - [x] Message types (GameState, PlayerState, Action, etc.)
+   - [x] Enums (GameStatus, PlayerStatus, ActionError)
    
-2. Create `proto/common/v1/common.proto` for shared types
+2. [x] Create `proto/common/v1/common.proto` for shared types
 
 3. Set up proto generation:
-   - Create `scripts/generate-protos.sh`
-   - Add `//go:generate` directives
-   - Configure import paths
+   - [x] Create `scripts/generate-protos.sh`
+   - [x] Add `//go:generate` directives
+   - [x] Configure import paths
 
 #### Phase 2: gRPC Server Implementation
 
 1. Create `internal/grpc/gameserver/server.go`:
-   - Implement GameServiceServer interface
-   - Wrap existing game.Engine
-   - Handle game lifecycle (create, join, play)
+   - [x] Implement GameServiceServer interface
+   - [x] Wrap existing game.Engine
+   - [x] Handle game lifecycle (create, join, play)
 
 2. Implement key methods:
-   - `CreateGame`: Initialize new game.Engine instance
-   - `JoinGame`: Add players to game
-   - `SubmitAction`: Validate and execute moves
-   - `GetGameState`: Return current state with fog of war
-   - `StreamGame`: Server-side streaming of game updates
+   - [x] `CreateGame`: Initialize new game.Engine instance
+   - [x] `JoinGame`: Add players to game
+   - [x] `SubmitAction`: Validate and execute moves
+   - [x] `GetGameState`: Return current state with fog of war
+   - [ ] `StreamGame`: Server-side streaming of game updates (returns Unimplemented)
 
 3. Add game session management:
-   - In-memory game registry (map[gameID]*game.Engine)
-   - Concurrent access protection (mutexes)
-   - Game cleanup/expiration
+   - [x] In-memory game registry (map[gameID]*game.Engine)
+   - [x] Concurrent access protection (mutexes)
+   - [ ] Game cleanup/expiration
 
 #### Phase 3: Integration & Adapters
 
 1. Create adapters to convert between:
-   - Proto Action ↔ game.Action
-   - Proto GameState ↔ game.GameState
-   - Handle fog of war in state conversion
+   - [x] Proto Action ↔ game.Action
+   - [x] Proto GameState ↔ game.GameState
+   - [x] Handle fog of war in state conversion
+   - [x] Legal action mask generation (flattened boolean array)
 
 2. Add authentication/session management:
-   - Player ID validation
-   - Turn validation (expected_turn_number)
-   - Idempotency key handling
+   - [x] Player ID validation
+   - [ ] Turn validation (expected_turn_number)
+   - [ ] Idempotency key handling
+   - [x] Player token generation and validation
 
 #### Phase 4: Testing Strategy
 
 1. **Unit Tests**:
-   - Test each gRPC method independently
-   - Mock game.Engine for isolated testing
-   - Test error cases and edge conditions
+   - [x] Test each gRPC method independently
+   - [ ] Mock game.Engine for isolated testing
+   - [x] Test error cases and edge conditions
 
 2. **Integration Tests**:
-   - Full game flow (create → join → play → finish)
-   - Concurrent player actions
-   - Network error handling
+   - [ ] Full game flow (create → join → play → finish)
+   - [ ] Concurrent player actions
+   - [ ] Network error handling
 
 3. **Client Examples**:
-   - Create `examples/grpc-client/` with Go client
-   - Simple bot that plays random moves
-   - Performance testing client
+   - [ ] Create `examples/grpc-client/` with Go client
+   - [ ] Simple bot that plays random moves
+   - [ ] Performance testing client
 
 4. **Manual Testing Tools**:
-   - gRPC reflection for API exploration
-   - grpcurl scripts for debugging
-   - Simple CLI client for interactive testing
+   - [x] gRPC reflection for API exploration
+   - [ ] grpcurl scripts for debugging
+   - [ ] Simple CLI client for interactive testing
 
 ### Additional Considerations
 
@@ -103,10 +105,73 @@ The services architecture provides a network API layer on top of the existing Go
 
 ### Estimated Timeline
 
-- Phase 1: 2-3 hours (proto setup)
-- Phase 2: 4-6 hours (server implementation)
-- Phase 3: 2-3 hours (adapters)
+- Phase 1: ✅ COMPLETED (proto setup)
+- Phase 2: ✅ MOSTLY COMPLETED (server implementation) 
+- Phase 3: ✅ MOSTLY COMPLETED (adapters)
 - Phase 4: 3-4 hours (testing)
+
+## RL Training Integration Tasks
+
+### Phase 5: Python Client Library
+
+1. **Create Python gRPC Client** (`python/generals_client/`):
+   - [ ] Generate Python protobuf bindings
+   - [ ] Create `GeneralsClient` wrapper class
+   - [ ] Implement async/sync game interaction methods
+   - [ ] Add connection pooling for multiple games
+   - [ ] Create numpy-based state representation converters
+
+2. **OpenAI Gym Environment** (`python/generals_gym/`):
+   - [ ] Implement `GeneralsEnv` following gym.Env interface
+   - [ ] Define observation space (board state as numpy array)
+   - [ ] Define action space (flattened move indices)
+   - [ ] Add reward shaping options
+   - [ ] Support multiple agent training (self-play)
+   - [ ] Add env wrappers for common RL preprocessing
+
+3. **Example RL Agents** (`python/examples/`):
+   - [ ] Random agent baseline
+   - [ ] Simple DQN implementation
+   - [ ] PPO self-play example
+   - [ ] A2C distributed training example
+   - [ ] Model checkpointing and loading
+
+### Phase 6: Training Infrastructure
+
+1. **Distributed Training Support**:
+   - [ ] Create `TrainingCoordinator` service for managing distributed actors
+   - [ ] Implement actor-learner architecture pattern
+   - [ ] Add experience buffer with prioritized replay
+   - [ ] Support for multiple game servers (horizontal scaling)
+
+2. **Monitoring & Metrics**:
+   - [ ] Add RL-specific metrics (win rate, episode length, etc.)
+   - [ ] TensorBoard integration for training curves
+   - [ ] Game replay visualization tools
+   - [ ] Performance profiling for bottleneck identification
+
+3. **Model Management**:
+   - [ ] Model versioning system
+   - [ ] Hot-swapping models during training
+   - [ ] Model evaluation pipeline
+   - [ ] ELO rating system for model comparison
+
+### Phase 7: Advanced Features
+
+1. **Curriculum Learning**:
+   - [ ] Start with smaller boards, increase complexity
+   - [ ] Opponent skill progression
+   - [ ] Map difficulty progression
+
+2. **League Play**:
+   - [ ] Historical model pool for training diversity
+   - [ ] Automated tournaments
+   - [ ] Matchmaking based on skill level
+
+3. **Human Play Interface**:
+   - [ ] Web UI for playing against trained agents
+   - [ ] Analysis tools for understanding agent behavior
+   - [ ] Training data collection from human games
 
 ## Future Services
 
@@ -165,6 +230,30 @@ The services architecture provides a network API layer on top of the existing Go
    
    # Run compatibility checks
    make proto-breaking-check
+   ```
+
+4. **Python Client Development**:
+   ```bash
+   # Generate Python protobuf files
+   python -m grpc_tools.protoc -I./proto --python_out=./python/generals_client/proto --grpc_python_out=./python/generals_client/proto ./proto/game/v1/*.proto
+   
+   # Install Python client
+   cd python && pip install -e .
+   
+   # Run example agent
+   python examples/random_agent.py
+   ```
+
+5. **RL Training Workflow**:
+   ```bash
+   # Start multiple game servers
+   docker-compose up --scale game-server=4
+   
+   # Run distributed training
+   python train_ppo.py --num-actors 16 --num-learners 2
+   
+   # Monitor with TensorBoard
+   tensorboard --logdir ./logs
    ```
 
 ## Migration Strategy
