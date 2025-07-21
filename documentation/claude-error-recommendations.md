@@ -21,7 +21,7 @@ This document outlines a comprehensive plan to improve error handling throughout
 
 ## Phase 2: Error Helper Utilities
 
-- [ ] **Create error wrapping utilities** in `internal/game/core/errors.go`
+- [x] **Create error wrapping utilities** in `internal/game/core/errors.go`
   ```go
   // Helper functions for consistent error wrapping
   func WrapActionError(action Action, err error) error
@@ -29,7 +29,7 @@ This document outlines a comprehensive plan to improve error handling throughout
   func WrapPlayerError(playerID int, operation string, err error) error
   ```
 
-- [ ] **Add structured error types** for complex scenarios
+- [x] **Add structured error types** for complex scenarios
   ```go
   type GameError struct {
       Turn      int
