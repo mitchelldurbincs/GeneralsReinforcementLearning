@@ -2,7 +2,8 @@ package game
 
 import (
 	"context"
-	"errors" 
+	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -132,7 +133,7 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 
 	if e.gameOver {
 		e.logger.Warn().Int("turn", e.gs.Turn).Msg("Attempted to step game that is already over")
-		return core.ErrGameOver
+		return fmt.Errorf("game turn %d: %w", e.gs.Turn, core.ErrGameOver)
 	}
 
 	e.gs.Turn++
@@ -157,10 +158,10 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	if err := e.processActions(ctx, actions, turnLogger); err != nil {
 		// Check if the error is due to context cancellation, which might have already been logged by processActions
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err // Already logged, just propagate
+			return fmt.Errorf("game turn %d: context cancelled during action processing: %w", e.gs.Turn, err)
 		}
 		// Other errors from processActions would have been logged there.
-		return err
+		return fmt.Errorf("game turn %d: action processing failed: %w", e.gs.Turn, err)
 	}
 	turnLogger.Debug().Msg("Finished processing actions")
 
@@ -168,7 +169,7 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	select {
 	case <-ctx.Done():
 		turnLogger.Warn().Err(ctx.Err()).Msg("Game step cancelled or timed out before production")
-		return ctx.Err()
+		return fmt.Errorf("game turn %d: cancelled before production phase: %w", e.gs.Turn, ctx.Err())
 	default:
 	}
 	e.processTurnProduction(turnLogger)
@@ -176,7 +177,7 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	select {
 	case <-ctx.Done():
 		turnLogger.Warn().Err(ctx.Err()).Msg("Game step cancelled or timed out before updating/checking stats")
-		return ctx.Err()
+		return fmt.Errorf("game turn %d: cancelled before stats update: %w", e.gs.Turn, ctx.Err())
 	default:
 	}
 	e.updatePlayerStats()
@@ -213,7 +214,10 @@ func (e *Engine) processActions(ctx context.Context, actions []core.Action, l ze
 		}
 	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("game turn %d: %w", e.gs.Turn, err)
+	}
+	return nil
 }
 
 // handleEliminationsAndTileTurnover processes player eliminations and transfers tiles.

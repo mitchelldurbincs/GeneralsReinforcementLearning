@@ -1,6 +1,10 @@
 package core
 
-import "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/common"
+import (
+	"fmt"
+
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/common"
+)
 
 // ActionType represents the type of action
 type ActionType int
@@ -34,21 +38,21 @@ func (m *MoveAction) GetType() ActionType { return ActionMove }
 func (m *MoveAction) Validate(b *Board, playerID int) error {
 	// Check bounds for From coordinates
 	if !b.InBounds(m.FromX, m.FromY) {
-		return ErrInvalidCoordinates
+		return fmt.Errorf("player %d: move from (%d,%d) out of bounds: %w", m.PlayerID, m.FromX, m.FromY, ErrInvalidCoordinates)
 	}
 	// Check bounds for To coordinates
 	if !b.InBounds(m.ToX, m.ToY) {
-		return ErrInvalidCoordinates
+		return fmt.Errorf("player %d: move to (%d,%d) out of bounds: %w", m.PlayerID, m.ToX, m.ToY, ErrInvalidCoordinates)
 	}
 
 	// Check if From and To are the same tile
 	if m.FromX == m.ToX && m.FromY == m.ToY {
-		return ErrMoveToSelf
+		return fmt.Errorf("player %d: move from/to same tile (%d,%d): %w", m.PlayerID, m.FromX, m.FromY, ErrMoveToSelf)
 	}
 
 	// Check adjacency (only orthogonal moves allowed)
 	if !common.IsAdjacent(m.FromX, m.FromY, m.ToX, m.ToY) {
-		return ErrNotAdjacent
+		return fmt.Errorf("player %d: move from (%d,%d) to (%d,%d) not adjacent: %w", m.PlayerID, m.FromX, m.FromY, m.ToX, m.ToY, ErrNotAdjacent)
 	}
 
 	fromIdx := b.Idx(m.FromX, m.FromY)
@@ -56,12 +60,12 @@ func (m *MoveAction) Validate(b *Board, playerID int) error {
 
 	// Check ownership of the FromTile
 	if fromTile.Owner != playerID {
-		return ErrNotOwned
+		return fmt.Errorf("player %d: tile at (%d,%d) owned by player %d: %w", m.PlayerID, m.FromX, m.FromY, fromTile.Owner, ErrNotOwned)
 	}
 
 	// Check if FromTile has armies to move
 	if fromTile.Army <= 1 {
-		return ErrInsufficientArmy
+		return fmt.Errorf("player %d: tile at (%d,%d) has only %d army: %w", m.PlayerID, m.FromX, m.FromY, fromTile.Army, ErrInsufficientArmy)
 	}
 
 	// Check properties of the ToTile
@@ -70,7 +74,7 @@ func (m *MoveAction) Validate(b *Board, playerID int) error {
 
 	// Check if ToTile is a mountain
 	if toTile.IsMountain() { // Assumes Tile struct has IsMountain() method
-		return ErrTargetIsMountain
+		return fmt.Errorf("player %d: cannot move to mountain at (%d,%d): %w", m.PlayerID, m.ToX, m.ToY, ErrTargetIsMountain)
 	}
 
 	// Add any other ToTile validations here if needed in the future

@@ -1,5 +1,7 @@
 package core
 
+import "fmt"
+
 // CaptureDetails provides rich information about a capture event.
 // It is returned by ApplyMoveAction if a tile changes ownership.
 type CaptureDetails struct {
@@ -18,7 +20,7 @@ type CaptureDetails struct {
 func ApplyMoveAction(b *Board, action *MoveAction, changedTiles map[int]struct{}) (*CaptureDetails, error) {
 	// Validate the action first (this now includes checks for target tile type like mountains)
 	if err := action.Validate(b, action.PlayerID); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("move validation failed: %w", err)
 	}
 
 	fromIdx := b.Idx(action.FromX, action.FromY)
