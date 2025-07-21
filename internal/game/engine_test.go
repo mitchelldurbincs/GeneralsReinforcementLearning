@@ -79,7 +79,7 @@ func TestEngine_Step_BasicTurn(t *testing.T) {
 
 	assert.Equal(t, initialTurn+1, engine.gs.Turn, "Turn should increment")
 	// Assuming GeneralProduction = 1 (defined in engine.go or core)
-	assert.Equal(t, initialArmy+GeneralProduction, engine.gs.Players[0].ArmyCount, "Player army should increase due to general production")
+	assert.Equal(t, initialArmy+GeneralProduction(), engine.gs.Players[0].ArmyCount, "Player army should increase due to general production")
 	assert.False(t, engine.IsGameOver(), "Game should not be over with 1 player and no actions")
 }
 
