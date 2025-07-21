@@ -279,7 +279,7 @@ func setViperDefaults(v *viper.Viper) {
 	v.SetDefault("features.enable_multiplayer", true)
 	v.SetDefault("features.enable_replay", false)
 	v.SetDefault("features.enable_spectator", false)
-	v.SetDefault("features.use_optimized_visibility", false) // Start with false for safe rollout
+	v.SetDefault("features.use_optimized_visibility", true) // Enable optimized visibility
 }
 
 // Init initializes the configuration

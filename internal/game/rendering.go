@@ -91,7 +91,7 @@ func (e *Engine) getTileDisplayDirect(sb *strings.Builder, t core.Tile, playerID
 		PlayerSymbols  = "ABCDEFGH"
 	)
 
-	visible := playerID < 0 || !e.gs.FogOfWarEnabled || t.Visible[playerID]
+	visible := playerID < 0 || !e.gs.FogOfWarEnabled || t.IsVisibleTo(playerID)
 
 	// Write color first
 	if !visible {
@@ -152,7 +152,7 @@ func (e *Engine) getTileDisplay(t core.Tile, playerID int) (string, string) {
 		PlayerSymbols  = "ABCDEFGH"
 	)
 
-	visible := playerID < 0 || !e.gs.FogOfWarEnabled || t.Visible[playerID]
+	visible := playerID < 0 || !e.gs.FogOfWarEnabled || t.IsVisibleTo(playerID)
 
 	if !visible {
 		return ColorGray, " "

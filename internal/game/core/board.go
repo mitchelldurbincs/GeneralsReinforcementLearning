@@ -8,8 +8,7 @@ type Tile struct {
     Owner   int
     Army    int
     Type    int
-    Visible map[int]bool // PlayerID -> is visible (DEPRECATED: will be removed in Phase 3)
-    VisibleBitfield uint32 // New: Bit i = 1 if player i can see this tile (supports up to 32 players)
+    VisibleBitfield uint32 // Bit i = 1 if player i can see this tile (supports up to 32 players)
 }
 
 type Board struct {
@@ -50,33 +49,6 @@ func (t *Tile) SetVisible(playerID int, visible bool) {
     }
 }
 
-// Compatibility layer methods (temporary - will be removed in Phase 3)
-func (t *Tile) SyncVisibilityToMap() {
-    if t.Visible == nil {
-        t.Visible = make(map[int]bool)
-    }
-    // Clear existing map
-    for k := range t.Visible {
-        delete(t.Visible, k)
-    }
-    // Copy from bitfield
-    for i := 0; i < 32; i++ {
-        if t.IsVisibleTo(i) {
-            t.Visible[i] = true
-        }
-    }
-}
-
-func (t *Tile) SyncVisibilityFromMap() {
-    t.VisibleBitfield = 0
-    if t.Visible != nil {
-        for playerID, isVisible := range t.Visible {
-            if isVisible {
-                t.SetVisible(playerID, true)
-            }
-        }
-    }
-}
 
 func NewBoard(w, h int) *Board {
 	b := &Board{W: w, H: h, T: make([]Tile, w*h)}
@@ -84,7 +56,7 @@ func NewBoard(w, h int) *Board {
 		// All tiles start neural and normal
 		b.T[i].Owner = -1
 		b.T[i].Type = TileNormal
-		b.T[i].Visible = make(map[int]bool)
+		// Visibility is handled by VisibleBitfield, initialized to 0
 	}
 	return b
 }

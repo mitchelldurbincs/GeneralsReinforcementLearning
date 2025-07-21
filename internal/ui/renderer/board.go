@@ -40,7 +40,7 @@ func (br *BoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players [
 		screenY := float64(gridY * br.tileSize)
 
 		// ---------------------------------------------------------------------
-		visible := playerID < 0 || tile.Visible[playerID]
+		visible := playerID < 0 || tile.IsVisibleTo(playerID)
 
 		cell := ebiten.NewImage(br.tileSize, br.tileSize)
 

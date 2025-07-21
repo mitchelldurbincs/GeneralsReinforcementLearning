@@ -36,7 +36,7 @@ func (e *Engine) performFullVisibilityUpdate() {
 	// Clear all visibility
 	for i := range e.gs.Board.T {
 		for pid := range e.gs.Players {
-			e.gs.Board.T[i].Visible[pid] = false
+			e.gs.Board.T[i].SetVisible(pid, false)
 		}
 	}
 
@@ -109,7 +109,7 @@ func (e *Engine) setVisibilityAround(tileIdx int, playerID int) {
 			nx, ny := x+dx, y+dy
 			if nx >= 0 && nx < e.gs.Board.W && ny >= 0 && ny < e.gs.Board.H {
 				visIdx := e.gs.Board.Idx(nx, ny)
-				e.gs.Board.T[visIdx].Visible[playerID] = true
+				e.gs.Board.T[visIdx].SetVisible(playerID, true)
 			}
 		}
 	}
@@ -124,7 +124,7 @@ func (e *Engine) clearVisibilityAround(tileIdx int) {
 			if nx >= 0 && nx < e.gs.Board.W && ny >= 0 && ny < e.gs.Board.H {
 				visIdx := e.gs.Board.Idx(nx, ny)
 				for pid := range e.gs.Players {
-					e.gs.Board.T[visIdx].Visible[pid] = false
+					e.gs.Board.T[visIdx].SetVisible(pid, false)
 				}
 			}
 		}
@@ -161,7 +161,7 @@ func (e *Engine) ComputePlayerVisibility(playerID int) PlayerVisibility {
 	
 	// Copy current visibility from tiles
 	for i, tile := range e.gs.Board.T {
-		vis.VisibleTiles[i] = tile.Visible[playerID]
+		vis.VisibleTiles[i] = tile.IsVisibleTo(playerID)
 		
 		// A tile is in fog if it was previously discovered (has a type or we've seen it before)
 		// but is not currently visible

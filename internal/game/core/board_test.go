@@ -32,7 +32,7 @@ func TestNewBoard(t *testing.T) {
 				assert.Equal(t, NeutralID, tile.Owner, "tile %d should be neutral", i)
 				assert.Equal(t, TileNormal, tile.Type, "tile %d should be normal type", i)
 				assert.Equal(t, 0, tile.Army, "tile %d should have 0 army", i)
-				assert.NotNil(t, tile.Visible, "tile %d should have visible map initialized", i)
+				assert.Equal(t, uint32(0), tile.VisibleBitfield, "tile %d should have empty visibility", i)
 			}
 		})
 	}
@@ -284,18 +284,18 @@ func TestBoard_VisibilityMap(t *testing.T) {
 	
 	// Set visibility for some tiles
 	tile := board.GetTile(1, 1)
-	tile.Visible[0] = true
-	tile.Visible[1] = false
+	tile.SetVisible(0, true)
+	tile.SetVisible(1, false)
 	
 	// Verify visibility settings
-	assert.True(t, tile.Visible[0])
-	assert.False(t, tile.Visible[1])
-	assert.False(t, tile.Visible[2]) // unset defaults to false
+	assert.True(t, tile.IsVisibleTo(0))
+	assert.False(t, tile.IsVisibleTo(1))
+	assert.False(t, tile.IsVisibleTo(2)) // unset defaults to false
 }
 
 func TestTileBitfieldVisibility(t *testing.T) {
 	t.Run("BasicVisibilityOperations", func(t *testing.T) {
-		tile := &Tile{VisibleBitfield: 0, Visible: make(map[int]bool)}
+		tile := &Tile{VisibleBitfield: 0}
 		
 		// Test setting visibility
 		tile.SetVisible(0, true)
@@ -353,39 +353,6 @@ func TestTileBitfieldVisibility(t *testing.T) {
 		assert.True(t, tile.IsVisibleTo(16))
 	})
 
-	t.Run("CompatibilityLayer", func(t *testing.T) {
-		tile := &Tile{
-			VisibleBitfield: 0,
-			Visible: make(map[int]bool),
-		}
-		
-		// Test sync from map to bitfield
-		tile.Visible[0] = true
-		tile.Visible[5] = true
-		tile.Visible[10] = true
-		tile.SyncVisibilityFromMap()
-		
-		assert.True(t, tile.IsVisibleTo(0))
-		assert.True(t, tile.IsVisibleTo(5))
-		assert.True(t, tile.IsVisibleTo(10))
-		assert.False(t, tile.IsVisibleTo(1))
-		
-		// Test sync from bitfield to map
-		tile.SetVisible(15, true)
-		tile.SetVisible(20, true)
-		tile.SyncVisibilityToMap()
-		
-		assert.True(t, tile.Visible[0])
-		assert.True(t, tile.Visible[5])
-		assert.True(t, tile.Visible[10])
-		assert.True(t, tile.Visible[15])
-		assert.True(t, tile.Visible[20])
-		assert.False(t, tile.Visible[1])
-		
-		// Verify map doesn't have entries for false values
-		_, exists := tile.Visible[1]
-		assert.False(t, exists)
-	})
 
 	t.Run("BitfieldDirectManipulation", func(t *testing.T) {
 		tile := &Tile{VisibleBitfield: 0}

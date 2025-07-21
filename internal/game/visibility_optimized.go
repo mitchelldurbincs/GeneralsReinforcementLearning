@@ -47,10 +47,7 @@ func (e *Engine) performFullVisibilityUpdateOptimized() {
 		}
 	}
 
-	// Sync to map for compatibility
-	for i := range e.gs.Board.T {
-		e.gs.Board.T[i].SyncVisibilityToMap()
-	}
+	// No need to sync - using bitfield directly
 	
 	e.logger.Debug().Msg("Performed full visibility update (optimized)")
 }
@@ -102,10 +99,7 @@ func (e *Engine) performIncrementalVisibilityUpdateOptimized() {
 		}
 	}
 
-	// Sync only affected tiles to map for compatibility
-	for tileIdx := range tilesToSync {
-		e.gs.Board.T[tileIdx].SyncVisibilityToMap()
-	}
+	// No need to sync - using bitfield directly
 	
 	e.logger.Debug().Int("changed_tiles", len(e.gs.VisibilityChangedTiles)).Msg("Performed incremental visibility update (optimized)")
 }
