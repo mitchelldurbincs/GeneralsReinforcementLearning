@@ -6,58 +6,58 @@ The current visibility system uses `map[int]bool` for each tile (128+ bytes over
 ## Phase 1: Data Structure Changes (Day 1)
 
 ### 1. Update Tile Structure
-- Change `Visible map[int]bool` to `Visible uint32` in `core/tile.go`
-- Add helper methods: `IsVisibleTo(playerID)`, `SetVisible(playerID, bool)`
-- Support up to 32 players (current max is 4, so plenty of headroom)
+- [x] Change `Visible map[int]bool` to `Visible uint32` in `core/tile.go`
+- [x] Add helper methods: `IsVisibleTo(playerID)`, `SetVisible(playerID, bool)`
+- [x] Support up to 32 players (current max is 4, so plenty of headroom)
 
 ### 2. Add Compatibility Layer
-- Temporary methods to convert between map and bitfield representations
-- Allows gradual migration without breaking existing code
+- [x] Temporary methods to convert between map and bitfield representations
+- [x] Allows gradual migration without breaking existing code
 
 ## Phase 2: Algorithm Optimizations (Day 2-3)
 
 ### 1. Precompute Visibility Patterns
-- Create lookup table for 3x3 visibility offsets
-- Eliminate repeated coordinate calculations
+- [x] Create lookup table for 3x3 visibility offsets
+- [x] Eliminate repeated coordinate calculations
 
 ### 2. Implement Delta Tracking
-- Track only tiles where ownership changed
-- Maintain `previousOwners` map for efficient removal
-- Skip visibility updates for unchanged areas
+- [x] Track only tiles where ownership changed
+- [x] Maintain `previousOwners` map for efficient removal
+- [x] Skip visibility updates for unchanged areas
 
 ### 3. Optimize Update Operations
-- Replace nested loops with bitwise operations
-- Use single pass updates instead of clear-then-add pattern
-- Batch visibility changes before applying
+- [x] Replace nested loops with bitwise operations
+- [x] Use single pass updates instead of clear-then-add pattern
+- [x] Batch visibility changes before applying
 
 ## Phase 3: Integration (Day 4)
 
 ### 1. Update All Consumers
-- `rendering.go`: Use `IsVisibleTo()` instead of map access
-- `grpc/gameserver`: Update visibility checks
-- `ui/renderer`: Update fog of war rendering
+- [ ] `rendering.go`: Use `IsVisibleTo()` instead of map access
+- [ ] `grpc/gameserver`: Update visibility checks
+- [ ] `ui/renderer`: Update fog of war rendering
 
 ### 2. Remove Old Code
-- Delete map-based visibility code
-- Remove compatibility layer
-- Clean up unused imports
+- [ ] Delete map-based visibility code
+- [ ] Remove compatibility layer
+- [ ] Clean up unused imports
 
 ## Phase 4: Testing & Validation (Day 5)
 
 ### 1. Unit Tests
-- Bitfield operations correctness
-- Boundary conditions
-- Multi-player scenarios
+- [x] Bitfield operations correctness
+- [x] Boundary conditions
+- [x] Multi-player scenarios
 
 ### 2. Integration Tests
-- Compare output with original implementation
-- Verify fog of war behavior unchanged
-- Test with various player counts and map sizes
+- [ ] Compare output with original implementation
+- [ ] Verify fog of war behavior unchanged
+- [ ] Test with various player counts and map sizes
 
 ### 3. Performance Benchmarks
-- Memory allocation reduction
-- CPU time improvement
-- GC pressure analysis
+- [ ] Memory allocation reduction
+- [ ] CPU time improvement
+- [ ] GC pressure analysis
 
 ## Implementation Details
 
@@ -125,10 +125,10 @@ func addVisibilityAround(visibility []uint32, tileIdx int, playerID int) {
 - ✓ No visual differences in game
 
 ## Rollback Plan
-- Keep original implementation behind feature flag
-- A/B test with subset of games
-- Monitor performance metrics
-- One-line config change to revert
+- [x] Keep original implementation behind feature flag
+- [ ] A/B test with subset of games
+- [ ] Monitor performance metrics
+- [x] One-line config change to revert
 
 ## Risk Assessment
 
@@ -143,18 +143,18 @@ func addVisibilityAround(visibility []uint32, tileIdx int, playerID int) {
 - Performance characteristics may change for small player counts
 
 ### Mitigation Strategies
-1. **Feature Flag**: Add `UseOptimizedVisibility` flag to switch between implementations
-2. **Extensive Testing**: Full test coverage before deployment
-3. **Gradual Rollout**: Test with small games first, then larger ones
-4. **Monitoring**: Add metrics for visibility update performance
-5. **Rollback Plan**: Keep old implementation available for quick revert
+1. **Feature Flag**: [x] Add `UseOptimizedVisibility` flag to switch between implementations
+2. **Extensive Testing**: [ ] Full test coverage before deployment
+3. **Gradual Rollout**: [ ] Test with small games first, then larger ones
+4. **Monitoring**: [ ] Add metrics for visibility update performance
+5. **Rollback Plan**: [x] Keep old implementation available for quick revert
 
 ## Validation Checklist
-- [ ] All unit tests pass
+- [x] All unit tests pass
 - [ ] Integration tests show identical behavior
 - [ ] Benchmarks show improved performance
 - [ ] Memory usage is reduced
 - [ ] No regression in game functionality
 - [ ] UI rendering works correctly
-- [ ] Fog of war toggle still works
-- [ ] Edge cases (board boundaries, dead players) handled
+- [x] Fog of war toggle still works
+- [x] Edge cases (board boundaries, dead players) handled
