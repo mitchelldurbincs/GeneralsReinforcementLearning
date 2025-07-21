@@ -2,9 +2,9 @@
 
 ## Critical Fixes (Blocking Build/Tests)
 
-- [ ] Fix config validation failures by adding sensible defaults when config file is missing
-- [ ] Replace panic in map generation with proper error handling
-- [ ] Fix mapgen tests that are currently failing
+- [x] Fix config validation failures by adding sensible defaults when config file is missing ✓ Config already handles missing files gracefully
+- [x] Replace panic in map generation with proper error handling ✓ No panics found in mapgen code, already uses proper error handling
+- [x] Fix mapgen tests that are currently failing ✓ Fixed testutil package and all tests now pass
 
 ## Security Issues
 
