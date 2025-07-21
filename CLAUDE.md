@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Important Note 1:** 
+- If you are working from an implementation markdown file, using - [ ] to signify new tasks and mark your tasks completed with - [x] once you are done please. 
+
 ## Project Overview
 
 This is a Go-based implementation of a Generals.io-style strategic territory control game designed specifically for reinforcement learning research and training. The game features army movement, territory capture, and fog of war mechanics. 
