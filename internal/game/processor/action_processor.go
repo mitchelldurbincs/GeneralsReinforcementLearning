@@ -53,12 +53,14 @@ func (ap *ActionProcessor) ProcessActions(ctx context.Context, board *core.Board
 		case *core.MoveAction:
 			captureDetail, err := core.ApplyMoveAction(board, act, changedTiles)
 			if err != nil {
-				ap.logger.Error().Err(err).
+				// Wrap the error with action context for better debugging
+				wrappedErr := core.WrapActionError(act, err)
+				ap.logger.Error().Err(wrappedErr).
 					Int("player_id", playerID).
 					Interface("action_details", act).
 					Msg("Failed to apply move action")
 				if encounteredError == nil {
-					encounteredError = err
+					encounteredError = wrappedErr
 				}
 				continue
 			}
@@ -77,7 +79,12 @@ func (ap *ActionProcessor) ProcessActions(ctx context.Context, board *core.Board
 		}
 	}
 
-	return allCaptureDetailsThisTurn, visibilityChangedTiles, encounteredError
+	// If there was an error, wrap it with additional context
+	if encounteredError != nil {
+		// Note: encounteredError already has action context from WrapActionError above
+		return allCaptureDetailsThisTurn, visibilityChangedTiles, encounteredError
+	}
+	return allCaptureDetailsThisTurn, visibilityChangedTiles, nil
 }
 
 // PlayerInfo interface - matches the Player struct from game package
