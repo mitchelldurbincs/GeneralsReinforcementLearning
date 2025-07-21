@@ -1,11 +1,5 @@
 # Claude's Project Recommendations
 
-## Critical Fixes (Blocking Build/Tests)
-
-- [x] Fix config validation failures by adding sensible defaults when config file is missing ✓ Config already handles missing files gracefully
-- [x] Replace panic in map generation with proper error handling ✓ No panics found in mapgen code, already uses proper error handling
-- [x] Fix mapgen tests that are currently failing ✓ Fixed testutil package and all tests now pass
-
 ## Core Feature Implementation
 
 - [ ] Implement gRPC StreamGame method for real-time game state updates
@@ -49,3 +43,10 @@
 - [ ] Document game mechanics and rules comprehensively
 - [ ] Add architecture decision records (ADRs)
 - [ ] Create deployment guide for production environments
+
+# Completed
+## Critical Fixes (Blocking Build/Tests)
+
+- [x] Fix config validation failures by adding sensible defaults when config file is missing ✓ Config already handles missing files gracefully
+- [x] Replace panic in map generation with proper error handling ✓ No panics found in mapgen code, already uses proper error handling
+- [x] Fix mapgen tests that are currently failing ✓ Fixed testutil package and all tests now pass
