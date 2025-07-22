@@ -3,6 +3,7 @@ package input
 import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/rs/zerolog/log"
 )
 
 type SelectionState int
@@ -81,10 +82,16 @@ func (h *Handler) Update() {
 
 func (h *Handler) handleLeftClick() {
 	if !h.isPlayerTurn {
+		log.Debug().Msg("Click ignored - not player turn")
 		return
 	}
 	
 	tileX, tileY := h.screenToTile(h.mouseX, h.mouseY)
+	log.Debug().
+		Int("tileX", tileX).Int("tileY", tileY).
+		Int("mouseX", h.mouseX).Int("mouseY", h.mouseY).
+		Int("selectionState", int(h.selectionState)).
+		Msg("Left click detected")
 	
 	switch h.selectionState {
 	case SelectionNone:
@@ -108,16 +115,24 @@ func (h *Handler) handleLeftClick() {
 	case SelectionTileSelected:
 		// If clicking the same tile, deselect
 		if tileX == h.selectedTileX && tileY == h.selectedTileY {
+			log.Debug().Msg("Deselecting tile - clicked same tile")
 			h.selectionState = SelectionNone
 		} else {
 			// Otherwise, try to move
-			h.pendingMoves = append(h.pendingMoves, PendingMove{
+			move := PendingMove{
 				FromX:    h.selectedTileX,
 				FromY:    h.selectedTileY,
 				ToX:      tileX,
 				ToY:      tileY,
 				MoveHalf: h.moveMode == MoveHalf,
-			})
+			}
+			h.pendingMoves = append(h.pendingMoves, move)
+			log.Debug().
+				Int("fromX", move.FromX).Int("fromY", move.FromY).
+				Int("toX", move.ToX).Int("toY", move.ToY).
+				Bool("moveHalf", move.MoveHalf).
+				Int("pendingCount", len(h.pendingMoves)).
+				Msg("Created pending move")
 			h.selectionState = SelectionNone
 		}
 	}

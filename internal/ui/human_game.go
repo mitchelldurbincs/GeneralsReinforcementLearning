@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/rs/zerolog/log"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font"
@@ -76,7 +77,7 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 		humanPlayerID: humanPlayerID,
 		currentTurnPlayer: 0,
 		framesSinceStep: 0,
-		stepsPerSecond: 10, // Ten game steps per second for responsive gameplay
+		stepsPerSecond: 2, // Two game steps per second for comfortable gameplay
 		accumulatedActions: make(map[int][]core.Action),
 	}
 	
@@ -94,6 +95,10 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 		idx := gs.Board.Idx(x, y)
 		tile := gs.Board.T[idx]
 		
+		// Check visibility if fog of war is enabled
+		if gs.FogOfWarEnabled && !tile.IsVisibleTo(g.humanPlayerID) {
+			return false, "Tile not visible"
+		}
 		
 		// Check if tile belongs to the human player
 		if tile.Owner != g.humanPlayerID {
@@ -152,14 +157,23 @@ func (g *HumanGame) Update() error {
 		
 		// Collect all accumulated actions
 		allActions := []core.Action{}
-		for _, actions := range g.accumulatedActions {
+		for playerID, actions := range g.accumulatedActions {
 			allActions = append(allActions, actions...)
+			if len(actions) > 0 {
+				log.Debug().
+					Int("playerID", playerID).
+					Int("actionCount", len(actions)).
+					Msg("Submitting player actions")
+			}
 		}
 		
 		// Clear accumulated actions
 		g.accumulatedActions = make(map[int][]core.Action)
 		
 		// Step the game
+		if len(allActions) > 0 {
+			log.Debug().Int("totalActions", len(allActions)).Msg("Stepping game with actions")
+		}
 		g.engine.Step(context.Background(), allActions)
 		
 		// Update turn counter display
@@ -182,7 +196,16 @@ func (g *HumanGame) handleHumanInput() {
 	// Check for tile selection and movement
 	pendingMoves := g.inputHandler.GetPendingMoves()
 	
+	if len(pendingMoves) > 0 {
+		log.Debug().Int("count", len(pendingMoves)).Msg("Processing pending moves")
+	}
+	
 	for _, move := range pendingMoves {
+		log.Debug().
+			Int("fromX", move.FromX).Int("fromY", move.FromY).
+			Int("toX", move.ToX).Int("toY", move.ToY).
+			Bool("moveHalf", move.MoveHalf).
+			Msg("Processing move")
 		// Validate the move
 		fromIdx := gs.Board.Idx(move.FromX, move.FromY)
 		tile := gs.Board.T[fromIdx]
@@ -207,7 +230,15 @@ func (g *HumanGame) handleHumanInput() {
 		
 		// Check if destination is not a mountain
 		toIdx := gs.Board.Idx(move.ToX, move.ToY)
-		if gs.Board.T[toIdx].IsMountain() {
+		toTile := gs.Board.T[toIdx]
+		
+		// Check visibility of destination if fog of war is enabled
+		if gs.FogOfWarEnabled && !toTile.IsVisibleTo(g.humanPlayerID) {
+			g.showMessage("Cannot move to unseen tiles", 60)
+			continue
+		}
+		
+		if toTile.IsMountain() {
 			g.showMessage("Cannot move to mountains", 60)
 			continue
 		}
@@ -223,6 +254,10 @@ func (g *HumanGame) handleHumanInput() {
 		
 		// Add to accumulated actions
 		g.accumulatedActions[g.humanPlayerID] = append(g.accumulatedActions[g.humanPlayerID], action)
+		log.Debug().
+			Int("playerID", g.humanPlayerID).
+			Int("totalActions", len(g.accumulatedActions[g.humanPlayerID])).
+			Msg("Added move action to accumulated actions")
 	}
 	
 	g.inputHandler.ClearPendingMoves()

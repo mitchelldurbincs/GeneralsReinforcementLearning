@@ -30,6 +30,10 @@ type EnhancedBoardRenderer struct {
 	
 	// Valid moves cache
 	validMoves          map[struct{X, Y int}]bool
+	
+	// Current board and player for visibility checks
+	board    *core.Board
+	playerID int
 }
 
 func NewEnhancedBoardRenderer(tileSize int, f font.Face) *EnhancedBoardRenderer {
@@ -71,6 +75,8 @@ func (ebr *EnhancedBoardRenderer) updateValidMoves() {
 	for _, d := range directions {
 		x := ebr.selectedX + d.dx
 		y := ebr.selectedY + d.dy
+		// For now, just mark all adjacent tiles as valid moves
+		// The actual validation happens when the move is attempted
 		ebr.validMoves[struct{X, Y int}{x, y}] = true
 	}
 }
@@ -78,6 +84,10 @@ func (ebr *EnhancedBoardRenderer) updateValidMoves() {
 func (ebr *EnhancedBoardRenderer) Draw(screen *ebiten.Image, board *core.Board, players []game.Player, playerID int) {
 	// First draw the base board
 	ebr.BoardRenderer.Draw(screen, board, players, playerID)
+	
+	// Store the board for visibility checks
+	ebr.board = board
+	ebr.playerID = playerID
 	
 	// Then draw overlays
 	ebr.drawOverlays(screen, board, playerID)
