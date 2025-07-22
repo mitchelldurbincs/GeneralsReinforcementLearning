@@ -182,7 +182,7 @@ func (h *Handler) SetPlayerTurn(isTurn bool) {
 	h.isPlayerTurn = isTurn
 	if isTurn {
 		h.turnEnded = false
-		h.pendingMoves = h.pendingMoves[:0] // Clear pending moves
+		// Don't clear pending moves here - they should be cleared after processing
 	}
 }
 

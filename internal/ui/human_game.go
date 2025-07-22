@@ -68,6 +68,11 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 		}
 	}
 	
+	log.Debug().
+		Int("humanPlayerID", humanPlayerID).
+		Int("numPlayers", len(playerConfigs)).
+		Msg("HumanGame initialization")
+	
 	g := &HumanGame{
 		engine:        engine,
 		rng:           rand.New(rand.NewSource(time.Now().UnixNano())),
@@ -84,6 +89,7 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 	g.boardRenderer = renderer.NewEnhancedBoardRenderer(TileSize(), g.defaultFont)
 	g.inputHandler = input.NewHandler(TileSize())
 	g.inputHandler.SetBoardOffset(0, 0) // Board is rendered at origin
+	g.inputHandler.SetPlayerTurn(true) // Human player can always make moves
 	
 	// Set up tile validator
 	g.inputHandler.SetTileValidator(func(x, y int) (bool, string) {
@@ -143,6 +149,11 @@ func (g *HumanGame) Update() error {
 	// Handle continuous input from human player
 	if g.humanPlayerID >= 0 && g.playerConfigs[g.humanPlayerID].Type == PlayerTypeHuman {
 		g.handleHumanInput()
+	} else {
+		log.Debug().
+			Int("humanPlayerID", g.humanPlayerID).
+			Bool("validID", g.humanPlayerID >= 0 && g.humanPlayerID < len(g.playerConfigs)).
+			Msg("Not handling human input")
 	}
 	
 	// Handle AI players continuously
