@@ -374,11 +374,12 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 	}
 	
 	// Controls help
-	helpY := ScreenHeight() - 80
+	helpY := ScreenHeight() - 95
 	text.Draw(screen, "Controls:", g.defaultFont, 5, helpY, color.White)
-	text.Draw(screen, "Click: Select/Move", g.defaultFont, 5, helpY+15, color.Gray{200})
-	text.Draw(screen, "Q/W: Full/Half army", g.defaultFont, 5, helpY+30, color.Gray{200})
-	text.Draw(screen, "ESC: Deselect", g.defaultFont, 5, helpY+45, color.Gray{200})
+	text.Draw(screen, "Click: Select tile", g.defaultFont, 5, helpY+15, color.Gray{200})
+	text.Draw(screen, "WASD/Arrows: Move army", g.defaultFont, 5, helpY+30, color.Gray{200})
+	text.Draw(screen, "Shift+WASD: Half army", g.defaultFont, 5, helpY+45, color.Gray{200})
+	text.Draw(screen, "ESC: Deselect", g.defaultFont, 5, helpY+60, color.Gray{200})
 	
 	// Move mode indicator
 	modeStr := "Move Mode: "
@@ -388,6 +389,12 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 		modeStr += "Half Army"
 	}
 	text.Draw(screen, modeStr, g.defaultFont, ScreenWidth()-150, 5, color.White)
+	
+	// Show selected tile info
+	if selX, selY, hasSel := g.inputHandler.GetSelectedTile(); hasSel {
+		selStr := fmt.Sprintf("Selected: (%d, %d)", selX, selY)
+		text.Draw(screen, selStr, g.defaultFont, ScreenWidth()-150, 25, color.Yellow)
+	}
 	
 	// Status message
 	if g.messageTimer > 0 && g.statusMessage != "" {

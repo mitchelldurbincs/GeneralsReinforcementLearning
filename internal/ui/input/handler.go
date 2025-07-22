@@ -144,14 +144,9 @@ func (h *Handler) handleRightClick() {
 }
 
 func (h *Handler) handleKeyboard() {
-	// Q for full army movement
+	// Q for full army movement mode
 	if inpututil.IsKeyJustPressed(ebiten.KeyQ) {
 		h.moveMode = MoveFull
-	}
-	
-	// W for half army movement
-	if inpututil.IsKeyJustPressed(ebiten.KeyW) {
-		h.moveMode = MoveHalf
 	}
 	
 	// Escape to deselect
@@ -159,11 +154,61 @@ func (h *Handler) handleKeyboard() {
 		h.selectionState = SelectionNone
 	}
 	
-	// Shift modifier for half army movement
+	// Check for WASD movement if a tile is selected
+	if h.selectionState == SelectionTileSelected {
+		h.handleMovementKeys()
+	}
+	
+	// Shift modifier for half army movement (works with WASD too)
 	if ebiten.IsKeyPressed(ebiten.KeyShift) {
 		h.moveMode = MoveHalf
-	} else if !inpututil.IsKeyJustPressed(ebiten.KeyW) {
+	} else {
 		h.moveMode = MoveFull
+	}
+}
+
+func (h *Handler) handleMovementKeys() {
+	// Direction mapping for WASD and arrow keys
+	var dx, dy int
+	moved := false
+	
+	// WASD keys
+	if inpututil.IsKeyJustPressed(ebiten.KeyW) || inpututil.IsKeyJustPressed(ebiten.KeyUp) {
+		dx, dy = 0, -1 // North
+		moved = true
+	} else if inpututil.IsKeyJustPressed(ebiten.KeyA) || inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
+		dx, dy = -1, 0 // West
+		moved = true
+	} else if inpututil.IsKeyJustPressed(ebiten.KeyS) || inpututil.IsKeyJustPressed(ebiten.KeyDown) {
+		dx, dy = 0, 1 // South
+		moved = true
+	} else if inpututil.IsKeyJustPressed(ebiten.KeyD) || inpututil.IsKeyJustPressed(ebiten.KeyRight) {
+		dx, dy = 1, 0 // East
+		moved = true
+	}
+	
+	if moved {
+		// Create a pending move from selected tile to destination
+		toX := h.selectedTileX + dx
+		toY := h.selectedTileY + dy
+		
+		h.pendingMoves = append(h.pendingMoves, PendingMove{
+			FromX:    h.selectedTileX,
+			FromY:    h.selectedTileY,
+			ToX:      toX,
+			ToY:      toY,
+			MoveHalf: h.moveMode == MoveHalf,
+		})
+		
+		log.Debug().
+			Str("key", "WASD").
+			Int("fromX", h.selectedTileX).Int("fromY", h.selectedTileY).
+			Int("toX", toX).Int("toY", toY).
+			Bool("moveHalf", h.moveMode == MoveHalf).
+			Msg("Created keyboard move")
+		
+		// Keep selection on original tile (Generals.io behavior)
+		// Don't change h.selectionState or selected coordinates
 	}
 }
 
