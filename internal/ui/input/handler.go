@@ -29,6 +29,7 @@ type Handler struct {
 	selectionState SelectionState
 	selectedTileX  int
 	selectedTileY  int
+	keyboardSelection bool // Track if selection was made via keyboard
 	
 	// Movement state
 	moveMode       MoveMode
@@ -101,6 +102,7 @@ func (h *Handler) handleLeftClick() {
 				h.selectedTileX = tileX
 				h.selectedTileY = tileY
 				h.selectionState = SelectionTileSelected
+				h.keyboardSelection = false // This is a mouse selection
 				h.lastValidationMessage = ""
 			} else {
 				h.lastValidationMessage = msg
@@ -110,6 +112,7 @@ func (h *Handler) handleLeftClick() {
 			h.selectedTileX = tileX
 			h.selectedTileY = tileY
 			h.selectionState = SelectionTileSelected
+			h.keyboardSelection = false
 		}
 		
 	case SelectionTileSelected:
@@ -207,8 +210,12 @@ func (h *Handler) handleMovementKeys() {
 			Bool("moveHalf", h.moveMode == MoveHalf).
 			Msg("Created keyboard move")
 		
-		// Keep selection on original tile (Generals.io behavior)
-		// Don't change h.selectionState or selected coordinates
+		// Move selection to the destination tile (actual Generals.io behavior)
+		// This allows continuous movement by pressing the same key repeatedly
+		h.selectedTileX = toX
+		h.selectedTileY = toY
+		h.keyboardSelection = true // Mark this as a keyboard-initiated selection
+		// Keep selection state active
 	}
 }
 
@@ -266,4 +273,8 @@ func (h *Handler) GetLastValidationMessage() string {
 	msg := h.lastValidationMessage
 	h.lastValidationMessage = "" // Clear after reading
 	return msg
+}
+
+func (h *Handler) IsKeyboardSelection() bool {
+	return h.keyboardSelection
 }
