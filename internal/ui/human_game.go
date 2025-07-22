@@ -393,7 +393,7 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 	// Show selected tile info
 	if selX, selY, hasSel := g.inputHandler.GetSelectedTile(); hasSel {
 		selStr := fmt.Sprintf("Selected: (%d, %d)", selX, selY)
-		text.Draw(screen, selStr, g.defaultFont, ScreenWidth()-150, 25, color.Yellow)
+		text.Draw(screen, selStr, g.defaultFont, ScreenWidth()-150, 25, color.RGBA{255, 255, 0, 255})
 	}
 	
 	// Status message
