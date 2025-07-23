@@ -24,10 +24,6 @@
 	* GetReplayResponse
 		* string game_id
 		* GameState initial_state
-* StreamGame
-	* StreamGameRequest
-	* stream GameState?
-	* tbd
 * Entities 
 	* GameState
 		* string game_id

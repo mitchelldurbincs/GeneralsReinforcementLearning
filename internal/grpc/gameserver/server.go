@@ -41,6 +41,14 @@ type gameInstance struct {
 	currentTurn  int32                 // Current turn number
 	turnDeadline time.Time             // Deadline for current turn
 	turnTimer    *time.Timer           // Timer for turn timeout
+	
+	// Activity tracking for cleanup
+	createdAt    time.Time
+	lastActivity time.Time
+	
+	// Idempotency tracking
+	idempotencyCache map[string]*gamev1.SubmitActionResponse
+	idempotencyMu    sync.RWMutex
 }
 
 type playerInfo struct {
@@ -49,11 +57,24 @@ type playerInfo struct {
 	token string
 }
 
+// Server configuration constants
+const (
+	// Cleanup configuration
+	cleanupInterval      = 5 * time.Minute  // How often to run cleanup
+	finishedGameTTL      = 10 * time.Minute // Keep finished games for 10 minutes
+	abandonedGameTimeout = 30 * time.Minute // Consider game abandoned after 30 minutes of inactivity
+)
+
 // NewServer creates a new game server
 func NewServer() *Server {
-	return &Server{
+	s := &Server{
 		games: make(map[string]*gameInstance),
 	}
+	
+	// Start cleanup goroutine
+	go s.runCleanup()
+	
+	return s
 }
 
 // CreateGame creates a new game instance
@@ -81,11 +102,15 @@ func (s *Server) CreateGame(ctx context.Context, req *gamev1.CreateGameRequest) 
 	}
 
 	// Create new game instance
+	now := time.Now()
 	game := &gameInstance{
-		id:      gameID,
-		config:  config,
-		status:  commonv1.GameStatus_GAME_STATUS_WAITING,
-		players: make([]playerInfo, 0, config.MaxPlayers),
+		id:               gameID,
+		config:           config,
+		status:           commonv1.GameStatus_GAME_STATUS_WAITING,
+		players:          make([]playerInfo, 0, config.MaxPlayers),
+		createdAt:        now,
+		lastActivity:     now,
+		idempotencyCache: make(map[string]*gamev1.SubmitActionResponse),
 	}
 
 	s.games[gameID] = game
@@ -137,6 +162,9 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		name:  req.PlayerName,
 		token: playerToken,
 	})
+	
+	// Update last activity time
+	game.lastActivity = time.Now()
 
 	// Start game if we have enough players
 	if len(game.players) == int(game.config.MaxPlayers) {
@@ -182,6 +210,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 	log.Debug().
 		Str("game_id", req.GameId).
 		Int32("player_id", req.PlayerId).
+		Str("idempotency_key", req.IdempotencyKey).
 		Msg("Received action submission")
 	
 	// Validate game exists
@@ -197,13 +226,28 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		}, nil
 	}
 	
+	// Check idempotency cache if key provided
+	if req.IdempotencyKey != "" {
+		if cached := game.checkIdempotency(req.IdempotencyKey); cached != nil {
+			log.Debug().
+				Str("game_id", req.GameId).
+				Str("idempotency_key", req.IdempotencyKey).
+				Msg("Returning cached response for idempotent request")
+			return cached, nil
+		}
+	}
+	
 	// Check game status
 	if game.status != commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
-		return &gamev1.SubmitActionResponse{
+		resp := &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_GAME_OVER,
 			ErrorMessage: fmt.Sprintf("game %s is not in progress (status: %s)", req.GameId, game.status),
-		}, nil
+		}
+		if req.IdempotencyKey != "" {
+			game.storeIdempotency(req.IdempotencyKey, resp)
+		}
+		return resp, nil
 	}
 	
 	// Authenticate player
@@ -216,11 +260,15 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 	}
 	
 	if !authenticated {
-		return &gamev1.SubmitActionResponse{
+		resp := &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_PLAYER,
 			ErrorMessage: fmt.Sprintf("invalid player credentials for game %s: player %d", req.GameId, req.PlayerId),
-		}, nil
+		}
+		if req.IdempotencyKey != "" {
+			game.storeIdempotency(req.IdempotencyKey, resp)
+		}
+		return resp, nil
 	}
 	
 	// Validate turn number
@@ -229,21 +277,29 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 	game.actionMu.Unlock()
 	
 	if req.Action != nil && req.Action.TurnNumber != currentTurn {
-		return &gamev1.SubmitActionResponse{
+		resp := &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
 			ErrorMessage: fmt.Sprintf("invalid turn number for game %s: expected %d, got %d", req.GameId, currentTurn, req.Action.TurnNumber),
-		}, nil
+		}
+		if req.IdempotencyKey != "" {
+			game.storeIdempotency(req.IdempotencyKey, resp)
+		}
+		return resp, nil
 	}
 	
 	// Convert protobuf action to core action
 	coreAction, err := s.convertProtoAction(req.Action, req.PlayerId)
 	if err != nil {
-		return &gamev1.SubmitActionResponse{
+		resp := &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
 			ErrorMessage: fmt.Sprintf("invalid action for game %s player %d: %v", req.GameId, req.PlayerId, err),
-		}, nil
+		}
+		if req.IdempotencyKey != "" {
+			game.storeIdempotency(req.IdempotencyKey, resp)
+		}
+		return resp, nil
 	}
 	
 	// Validate action with game engine if not nil
@@ -254,11 +310,15 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		game.mu.Unlock()
 		
 		if err != nil {
-			return &gamev1.SubmitActionResponse{
+			resp := &gamev1.SubmitActionResponse{
 				Success:      false,
 				ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
 				ErrorMessage: fmt.Sprintf("action validation failed for game %s player %d turn %d: %v", req.GameId, req.PlayerId, currentTurn, err),
-			}, nil
+			}
+			if req.IdempotencyKey != "" {
+				game.storeIdempotency(req.IdempotencyKey, resp)
+			}
+			return resp, nil
 		}
 	}
 	
@@ -273,11 +333,15 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 				Int32("turn", currentTurn).
 				Msg("Failed to process turn")
 			
-			return &gamev1.SubmitActionResponse{
+			resp := &gamev1.SubmitActionResponse{
 				Success:      false,
 				ErrorCode:    commonv1.ErrorCode_ERROR_CODE_UNSPECIFIED,
 				ErrorMessage: fmt.Sprintf("failed to process turn %d for game %s", currentTurn, req.GameId),
-			}, nil
+			}
+			if req.IdempotencyKey != "" {
+				game.storeIdempotency(req.IdempotencyKey, resp)
+			}
+			return resp, nil
 		}
 		
 		// If turn time is configured and game is still active, start next turn timer
@@ -286,10 +350,14 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		}
 	}
 	
-	return &gamev1.SubmitActionResponse{
+	resp := &gamev1.SubmitActionResponse{
 		Success:        true,
 		NextTurnNumber: currentTurn + 1,
-	}, nil
+	}
+	if req.IdempotencyKey != "" {
+		game.storeIdempotency(req.IdempotencyKey, resp)
+	}
+	return resp, nil
 }
 
 // GetGameState retrieves the current game state for a player
@@ -503,6 +571,10 @@ func (s *Server) convertProtoAction(protoAction *gamev1.Action, playerID int32) 
 			MoveAll:  !protoAction.Half, // In proto, half=true means move half; in core, MoveAll=true means move all
 		}, nil
 		
+	case commonv1.ActionType_ACTION_TYPE_UNSPECIFIED:
+		// No action this turn (wait/skip)
+		return nil, nil
+		
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported action type %v for player %d", protoAction.Type, playerID)
 	}
@@ -515,6 +587,9 @@ func (game *gameInstance) collectAction(playerID int32, action core.Action) bool
 	
 	// Store the action (nil is valid for no action)
 	game.actionBuffer[playerID] = action
+	
+	// Update last activity time
+	game.lastActivity = time.Now()
 	
 	// Check if all active players have submitted
 	activeCount := 0
@@ -615,4 +690,90 @@ func (game *gameInstance) startTurnTimer(ctx context.Context, duration time.Dura
 			}
 		}
 	})
+}
+
+// runCleanup periodically removes finished and abandoned games
+func (s *Server) runCleanup() {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		s.cleanupGames()
+	}
+}
+
+// cleanupGames removes finished and abandoned games from memory
+func (s *Server) cleanupGames() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	now := time.Now()
+	var toDelete []string
+	
+	for gameID, game := range s.games {
+		game.mu.Lock()
+		
+		// Check if game should be cleaned up
+		shouldCleanup := false
+		reason := ""
+		
+		// Remove finished games after TTL
+		if game.status == commonv1.GameStatus_GAME_STATUS_FINISHED {
+			if now.Sub(game.lastActivity) > finishedGameTTL {
+				shouldCleanup = true
+				reason = "finished game TTL expired"
+			}
+		} else if now.Sub(game.lastActivity) > abandonedGameTimeout {
+			// Remove abandoned games
+			shouldCleanup = true
+			reason = "game abandoned (no activity)"
+		}
+		
+		game.mu.Unlock()
+		
+		if shouldCleanup {
+			toDelete = append(toDelete, gameID)
+			log.Info().
+				Str("game_id", gameID).
+				Str("reason", reason).
+				Dur("age", now.Sub(game.createdAt)).
+				Dur("inactive", now.Sub(game.lastActivity)).
+				Msg("Cleaning up game")
+		}
+	}
+	
+	// Delete games marked for cleanup
+	for _, gameID := range toDelete {
+		game := s.games[gameID]
+		
+		// Cancel any active turn timer
+		game.mu.Lock()
+		if game.turnTimer != nil {
+			game.turnTimer.Stop()
+		}
+		game.mu.Unlock()
+		
+		delete(s.games, gameID)
+	}
+	
+	if len(toDelete) > 0 {
+		log.Info().
+			Int("cleaned", len(toDelete)).
+			Int("remaining", len(s.games)).
+			Msg("Game cleanup completed")
+	}
+}
+
+// checkIdempotency returns a cached response if the idempotency key exists
+func (g *gameInstance) checkIdempotency(key string) *gamev1.SubmitActionResponse {
+	g.idempotencyMu.RLock()
+	defer g.idempotencyMu.RUnlock()
+	return g.idempotencyCache[key]
+}
+
+// storeIdempotency caches a response for the given idempotency key
+func (g *gameInstance) storeIdempotency(key string, resp *gamev1.SubmitActionResponse) {
+	g.idempotencyMu.Lock()
+	defer g.idempotencyMu.Unlock()
+	g.idempotencyCache[key] = resp
 }

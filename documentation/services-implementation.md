@@ -29,7 +29,7 @@ The services architecture provides a network API layer on top of the existing Go
 #### Phase 1: Proto Definition & Setup
 
 1. Create `proto/game/v1/game.proto` with:
-   - [x] Service definition (CreateGame, JoinGame, SubmitAction, GetGameState, StreamGame)
+   - [x] Service definition (CreateGame, JoinGame, SubmitAction, GetGameState)
    - [x] Message types (GameState, PlayerState, Action, etc.)
    - [x] Enums (GameStatus, PlayerStatus, ActionError)
    
@@ -52,12 +52,11 @@ The services architecture provides a network API layer on top of the existing Go
    - [x] `JoinGame`: Add players to game
    - [x] `SubmitAction`: Validate and execute moves
    - [x] `GetGameState`: Return current state with fog of war
-   - [ ] `StreamGame`: Server-side streaming of game updates (returns Unimplemented)
 
 3. Add game session management:
    - [x] In-memory game registry (map[gameID]*game.Engine)
    - [x] Concurrent access protection (mutexes)
-   - [ ] Game cleanup/expiration
+   - [x] Game cleanup/expiration
 
 #### Phase 3: Integration & Adapters
 
@@ -69,8 +68,8 @@ The services architecture provides a network API layer on top of the existing Go
 
 2. Add authentication/session management:
    - [x] Player ID validation
-   - [ ] Turn validation (expected_turn_number)
-   - [ ] Idempotency key handling
+   - [x] Turn validation (expected_turn_number)
+   - [x] Idempotency key handling
    - [x] Player token generation and validation
 
 #### Phase 4: Testing Strategy
