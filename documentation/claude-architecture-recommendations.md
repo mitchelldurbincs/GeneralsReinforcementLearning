@@ -78,6 +78,7 @@ Formalize game flow with a proper state machine to prevent invalid operations an
   - [ ] PhaseEnding - Winner determination, cleanup
   - [ ] PhaseEnded - Final state
   - [ ] PhaseError - Error recovery state
+  - [ ] PhaseReset - Reset the current game without full teardown
 
 - [ ] Implement transition logic
   - [ ] Lobby → Starting (all players ready)
