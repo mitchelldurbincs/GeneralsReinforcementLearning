@@ -2,6 +2,7 @@ package subscribers
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/events"
 	"github.com/rs/zerolog"
 )
@@ -103,12 +104,12 @@ func (ls *LoggerSubscriber) HandleEvent(event events.Event) {
 	case *events.ActionSubmittedEvent:
 		logEvent.
 			Int("player_id", e.PlayerID).
-			Str("action_type", e.Action.Type())
+			Str("action_type", fmt.Sprintf("%v", e.Action.GetType()))
 			
 	case *events.ActionProcessedEvent:
 		logEvent.
 			Int("player_id", e.PlayerID).
-			Str("action_type", e.Action.Type()).
+			Str("action_type", fmt.Sprintf("%v", e.Action.GetType())).
 			Str("result", e.Result)
 			
 	case *events.MoveExecutedEvent:

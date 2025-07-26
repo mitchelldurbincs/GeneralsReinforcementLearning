@@ -127,8 +127,9 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 		tempAffectedPlayers: make(map[int]struct{}),
 	}
 	
-	// Set the event publisher on the action processor
-	actionProc.SetEventPublisher(e.eventBus)
+	// Set the event publisher on the action processor using an adapter
+	eventAdapter := events.NewEventPublisherAdapter(e.eventBus)
+	actionProc.SetEventPublisher(eventAdapter)
 
 	// Initial update of player stats to populate OwnedTiles
 	e.updatePlayerStats()
@@ -221,7 +222,7 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 func (e *Engine) processActions(ctx context.Context, actions []core.Action, l zerolog.Logger) error {
 	// Publish ActionSubmitted events for each action
 	for _, action := range actions {
-		e.eventBus.Publish(events.NewActionSubmittedEvent(e.gameID, action.PlayerID, action, e.gs.Turn))
+		e.eventBus.Publish(events.NewActionSubmittedEvent(e.gameID, action.GetPlayerID(), action, e.gs.Turn))
 	}
 
 	// Create a slice of PlayerInfo interfaces from our Players
