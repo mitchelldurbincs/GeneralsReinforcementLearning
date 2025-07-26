@@ -74,6 +74,8 @@ func (ls *LoggerSubscriber) HandleEvent(event events.Event) {
 		logEvent = eventLogger.Info()
 	case zerolog.WarnLevel:
 		logEvent = eventLogger.Warn()
+	case zerolog.ErrorLevel:
+		logEvent = eventLogger.Error()
 	default:
 		logEvent = eventLogger.Info()
 	}
@@ -115,10 +117,10 @@ func (ls *LoggerSubscriber) HandleEvent(event events.Event) {
 	case *events.MoveExecutedEvent:
 		logEvent.
 			Int("player_id", e.PlayerID).
-			Int("from_x", e.FromX).
-			Int("from_y", e.FromY).
-			Int("to_x", e.ToX).
-			Int("to_y", e.ToY).
+			Int("from_x", e.From.X).
+			Int("from_y", e.From.Y).
+			Int("to_x", e.To.X).
+			Int("to_y", e.To.Y).
 			Int("armies_moved", e.ArmiesMoved).
 			Bool("half", e.Half)
 			
@@ -126,8 +128,8 @@ func (ls *LoggerSubscriber) HandleEvent(event events.Event) {
 		logEvent.
 			Int("attacker_id", e.AttackerID).
 			Int("defender_id", e.DefenderID).
-			Int("location_x", e.LocationX).
-			Int("location_y", e.LocationY).
+			Int("location_x", e.Location.X).
+			Int("location_y", e.Location.Y).
 			Int("attacker_armies", e.AttackerArmies).
 			Int("defender_armies", e.DefenderArmies).
 			Int("attacker_losses", e.AttackerLosses).

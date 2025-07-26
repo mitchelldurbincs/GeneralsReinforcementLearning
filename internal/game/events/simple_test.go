@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/events"
 )
 
@@ -125,10 +126,8 @@ func TestEventBusFunctionHandlers(t *testing.T) {
 			Game:      "game3",
 		},
 		PlayerID:    0,
-		FromX:       5,
-		FromY:       5,
-		ToX:         6,
-		ToY:         5,
+		From:        core.NewCoordinate(5, 5),
+		To:          core.NewCoordinate(6, 5),
 		ArmiesMoved: 10,
 	}
 	bus.Publish(moveEvent)

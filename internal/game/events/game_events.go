@@ -180,12 +180,30 @@ type MoveExecutedEvent struct {
 	BaseEvent
 	Metadata    EventMetadata
 	PlayerID    int
-	FromX       int
-	FromY       int
-	ToX         int
-	ToY         int
+	From        core.Coordinate
+	To          core.Coordinate
 	ArmiesMoved int
 	Half        bool
+}
+
+// GetFromX returns the X coordinate of the From position (backward compatibility)
+func (e *MoveExecutedEvent) GetFromX() int {
+	return e.From.X
+}
+
+// GetFromY returns the Y coordinate of the From position (backward compatibility)
+func (e *MoveExecutedEvent) GetFromY() int {
+	return e.From.Y
+}
+
+// GetToX returns the X coordinate of the To position (backward compatibility)
+func (e *MoveExecutedEvent) GetToX() int {
+	return e.To.X
+}
+
+// GetToY returns the Y coordinate of the To position (backward compatibility)
+func (e *MoveExecutedEvent) GetToY() int {
+	return e.To.Y
 }
 
 // NewMoveExecutedEvent creates a new MoveExecutedEvent
@@ -201,10 +219,8 @@ func NewMoveExecutedEvent(gameID string, playerID int, fromX, fromY, toX, toY in
 			Turn:     turn,
 		},
 		PlayerID:    playerID,
-		FromX:       fromX,
-		FromY:       fromY,
-		ToX:         toX,
-		ToY:         toY,
+		From:        core.NewCoordinate(fromX, fromY),
+		To:          core.NewCoordinate(toX, toY),
 		ArmiesMoved: armies,
 		Half:        half,
 	}
@@ -216,13 +232,22 @@ type CombatResolvedEvent struct {
 	Metadata        EventMetadata
 	AttackerID      int
 	DefenderID      int
-	LocationX       int
-	LocationY       int
+	Location        core.Coordinate
 	AttackerArmies  int
 	DefenderArmies  int
 	AttackerLosses  int
 	DefenderLosses  int
 	TileCaptured    bool
+}
+
+// GetLocationX returns the X coordinate of the combat location (backward compatibility)
+func (e *CombatResolvedEvent) GetLocationX() int {
+	return e.Location.X
+}
+
+// GetLocationY returns the Y coordinate of the combat location (backward compatibility)
+func (e *CombatResolvedEvent) GetLocationY() int {
+	return e.Location.Y
 }
 
 // NewCombatResolvedEvent creates a new CombatResolvedEvent
@@ -240,8 +265,7 @@ func NewCombatResolvedEvent(gameID string, attacker, defender int, locationX, lo
 		},
 		AttackerID:      attacker,
 		DefenderID:      defender,
-		LocationX:       locationX,
-		LocationY:       locationY,
+		Location:        core.NewCoordinate(locationX, locationY),
 		AttackerArmies:  attackerArmies,
 		DefenderArmies:  defenderArmies,
 		AttackerLosses:  attackerLosses,
