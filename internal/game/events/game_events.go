@@ -27,6 +27,7 @@ const (
 	TypeProductionApplied = "production.applied"
 	TypeCityProduced     = "city.produced"
 	TypeGeneralProduced  = "general.produced"
+	TypeStateTransition  = "state.transition"
 )
 
 // GameStartedEvent is published when a new game begins
@@ -324,5 +325,27 @@ func NewProductionAppliedEvent(gameID string, tiles, cities, generals int, turn 
 		TilesProduced:    tiles,
 		CitiesProduced:   cities,
 		GeneralsProduced: generals,
+	}
+}
+
+// StateTransitionEvent is published when the game state machine transitions between phases
+type StateTransitionEvent struct {
+	BaseEvent
+	FromPhase string
+	ToPhase   string
+	Reason    string
+}
+
+// NewStateTransitionEvent creates a new StateTransitionEvent
+func NewStateTransitionEvent(gameID, fromPhase, toPhase, reason string) *StateTransitionEvent {
+	return &StateTransitionEvent{
+		BaseEvent: BaseEvent{
+			EventType: TypeStateTransition,
+			Time:      time.Now(),
+			Game:      gameID,
+		},
+		FromPhase: fromPhase,
+		ToPhase:   toPhase,
+		Reason:    reason,
 	}
 }
