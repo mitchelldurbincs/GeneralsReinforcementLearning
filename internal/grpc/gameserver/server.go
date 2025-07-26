@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	gameengine "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
@@ -47,8 +48,27 @@ type gameInstance struct {
 	lastActivity time.Time
 	
 	// Idempotency tracking
-	idempotencyCache map[string]*gamev1.SubmitActionResponse
+	idempotencyCache map[string]*idempotencyEntry
 	idempotencyMu    sync.RWMutex
+	
+	// Stream management
+	streamClients   map[int32]*streamClient // playerID -> stream client
+	streamClientsMu sync.RWMutex            // Protects streamClients map
+}
+
+// streamClient represents a connected stream for a player
+type streamClient struct {
+	playerID   int32
+	stream     gamev1.GameService_StreamGameServer
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+	updateChan chan *gamev1.GameUpdate
+}
+
+// idempotencyEntry stores a cached response with timestamp
+type idempotencyEntry struct {
+	response  *gamev1.SubmitActionResponse
+	createdAt time.Time
 }
 
 type playerInfo struct {
@@ -110,7 +130,8 @@ func (s *Server) CreateGame(ctx context.Context, req *gamev1.CreateGameRequest) 
 		players:          make([]playerInfo, 0, config.MaxPlayers),
 		createdAt:        now,
 		lastActivity:     now,
-		idempotencyCache: make(map[string]*gamev1.SubmitActionResponse),
+		idempotencyCache: make(map[string]*idempotencyEntry),
+		streamClients:    make(map[int32]*streamClient),
 	}
 
 	s.games[gameID] = game
@@ -196,6 +217,9 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 			Str("game_id", req.GameId).
 			Int("players", len(game.players)).
 			Msg("Game started")
+		
+		// Broadcast game started event
+		game.broadcastGameStarted()
 	}
 
 	return &gamev1.JoinGameResponse{
@@ -344,6 +368,9 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			return resp, nil
 		}
 		
+		// Broadcast updates to all connected stream clients
+		game.broadcastUpdates(s)
+		
 		// If turn time is configured and game is still active, start next turn timer
 		if game.config.TurnTimeMs > 0 && game.status == commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
 			game.startTurnTimer(ctx, time.Duration(game.config.TurnTimeMs)*time.Millisecond)
@@ -389,7 +416,94 @@ func (s *Server) GetGameState(ctx context.Context, req *gamev1.GetGameStateReque
 
 // StreamGame streams real-time game updates to connected players
 func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameService_StreamGameServer) error {
-	return status.Error(codes.Unimplemented, "StreamGame not implemented")
+	log.Info().
+		Str("game_id", req.GameId).
+		Int32("player_id", req.PlayerId).
+		Msg("Player connecting to game stream")
+		
+	// Validate game exists
+	s.mu.RLock()
+	game, exists := s.games[req.GameId]
+	s.mu.RUnlock()
+	
+	if !exists {
+		return status.Errorf(codes.NotFound, "game %s not found", req.GameId)
+	}
+	
+	// Validate player credentials
+	authenticated := false
+	for _, p := range game.players {
+		if p.id == req.PlayerId && p.token == req.PlayerToken {
+			authenticated = true
+			break
+		}
+	}
+	
+	if !authenticated {
+		return status.Errorf(codes.PermissionDenied, "invalid player credentials for game %s: player %d", req.GameId, req.PlayerId)
+	}
+	
+	// Create stream client with cancellable context
+	ctx, cancel := context.WithCancel(stream.Context())
+	client := &streamClient{
+		playerID:   req.PlayerId,
+		stream:     stream,
+		ctx:        ctx,
+		cancelFunc: cancel,
+		updateChan: make(chan *gamev1.GameUpdate, 10), // Buffered channel
+	}
+	
+	// Register the stream
+	game.registerStreamClient(client)
+	defer game.unregisterStreamClient(req.PlayerId)
+	
+	// Send initial game state
+	initialUpdate := &gamev1.GameUpdate{
+		Update: &gamev1.GameUpdate_FullState{
+			FullState: s.createGameState(game, req.PlayerId),
+		},
+		Timestamp: timestamppb.Now(),
+	}
+	
+	if err := stream.Send(initialUpdate); err != nil {
+		log.Error().Err(err).
+			Str("game_id", req.GameId).
+			Int32("player_id", req.PlayerId).
+			Msg("Failed to send initial game state")
+		return err
+	}
+	
+	// Start goroutine to handle updates
+	errChan := make(chan error, 1)
+	go func() {
+		for {
+			select {
+			case update := <-client.updateChan:
+				if err := stream.Send(update); err != nil {
+					errChan <- err
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	
+	// Wait for stream to close or error
+	select {
+	case err := <-errChan:
+		log.Error().Err(err).
+			Str("game_id", req.GameId).
+			Int32("player_id", req.PlayerId).
+			Msg("Stream error")
+		return err
+	case <-stream.Context().Done():
+		log.Info().
+			Str("game_id", req.GameId).
+			Int32("player_id", req.PlayerId).
+			Msg("Stream closed by client")
+		return nil
+	}
 }
 
 // createGameState creates a GameState message for the given game and player
@@ -463,6 +577,11 @@ func convertTileType(t int) commonv1.TileType {
 	default:
 		return commonv1.TileType_TILE_TYPE_UNSPECIFIED
 	}
+}
+
+// computePlayerVisibilityFromEngine is a helper to get player visibility from the engine
+func (s *Server) computePlayerVisibilityFromEngine(engine *gameengine.Engine, playerID int) gameengine.PlayerVisibility {
+	return engine.ComputePlayerVisibility(playerID)
 }
 
 // convertGameStateToProto converts the game engine state to protobuf format
@@ -624,28 +743,43 @@ func (game *gameInstance) processTurn(ctx context.Context) error {
 	game.mu.Lock()
 	defer game.mu.Unlock()
 	
+	// Track player states before processing
+	prevAliveStatus := make(map[int]bool)
+	prevState := game.engine.GameState()
+	for _, player := range prevState.Players {
+		prevAliveStatus[player.ID] = player.Alive
+	}
+	
 	err := game.engine.Step(ctx, actions)
 	if err != nil {
 		return fmt.Errorf("game %s turn %d: failed to process %d actions: %w", game.id, game.currentTurn-1, len(actions), err)
 	}
 	
-	// Check if game has ended
+	// Check for player eliminations and game ending
 	state := game.engine.GameState()
-	// Check how many players are still alive
 	aliveCount := 0
+	var winnerId int = -1
+	
 	for _, player := range state.Players {
 		if player.Alive {
 			aliveCount++
+			winnerId = player.ID
+		} else if prevAliveStatus[player.ID] && !player.Alive {
+			// Player was just eliminated
+			game.broadcastPlayerEliminated(int32(player.ID), -1) // TODO: track who eliminated the player
 		}
 	}
 	
 	// Game ends when only one player remains
-	if aliveCount <= 1 {
+	if aliveCount <= 1 && game.status == commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
 		game.status = commonv1.GameStatus_GAME_STATUS_FINISHED
 		// Cancel any pending turn timer
 		if game.turnTimer != nil {
 			game.turnTimer.Stop()
 		}
+		
+		// Broadcast game ended event
+		game.broadcastGameEnded(int32(winnerId))
 	}
 	
 	return nil
@@ -682,6 +816,14 @@ func (game *gameInstance) startTurnTimer(ctx context.Context, duration time.Dura
 					Str("game_id", game.id).
 					Int32("turn", game.currentTurn).
 					Msg("Failed to process turn after timeout")
+			} else {
+				// Broadcast updates to stream clients after timeout-triggered turn
+				// Note: We need access to the server instance here
+				// For now, we'll skip broadcasting on timeout - this would require refactoring
+				// to pass the server instance to the timer function
+				log.Debug().
+					Str("game_id", game.id).
+					Msg("Turn processed after timeout (broadcasting not implemented for timer)")
 			}
 			
 			// Start timer for next turn if game is still active
@@ -753,6 +895,15 @@ func (s *Server) cleanupGames() {
 		}
 		game.mu.Unlock()
 		
+		// Close all stream clients
+		game.streamClientsMu.Lock()
+		for playerID, client := range game.streamClients {
+			client.cancelFunc()
+			close(client.updateChan)
+			delete(game.streamClients, playerID)
+		}
+		game.streamClientsMu.Unlock()
+		
 		delete(s.games, gameID)
 	}
 	
@@ -768,12 +919,362 @@ func (s *Server) cleanupGames() {
 func (g *gameInstance) checkIdempotency(key string) *gamev1.SubmitActionResponse {
 	g.idempotencyMu.RLock()
 	defer g.idempotencyMu.RUnlock()
-	return g.idempotencyCache[key]
+	
+	entry, exists := g.idempotencyCache[key]
+	if !exists {
+		return nil
+	}
+	
+	// Check if entry is still valid (24 hours)
+	if time.Since(entry.createdAt) > 24*time.Hour {
+		return nil
+	}
+	
+	return entry.response
 }
 
 // storeIdempotency caches a response for the given idempotency key
 func (g *gameInstance) storeIdempotency(key string, resp *gamev1.SubmitActionResponse) {
 	g.idempotencyMu.Lock()
 	defer g.idempotencyMu.Unlock()
-	g.idempotencyCache[key] = resp
+	
+	g.idempotencyCache[key] = &idempotencyEntry{
+		response:  resp,
+		createdAt: time.Now(),
+	}
+	
+	// Clean up old entries if cache is getting large
+	if len(g.idempotencyCache) > 1000 {
+		g.cleanupIdempotencyCache()
+	}
+}
+
+// cleanupIdempotencyCache removes old entries from the cache
+// Must be called with idempotencyMu held
+func (g *gameInstance) cleanupIdempotencyCache() {
+	now := time.Now()
+	cutoff := now.Add(-24 * time.Hour)
+	
+	for key, entry := range g.idempotencyCache {
+		if entry.createdAt.Before(cutoff) {
+			delete(g.idempotencyCache, key)
+		}
+	}
+}
+
+// registerStreamClient adds a new stream client for a player
+func (g *gameInstance) registerStreamClient(client *streamClient) {
+	g.streamClientsMu.Lock()
+	defer g.streamClientsMu.Unlock()
+	
+	// Close any existing stream for this player
+	if existing, exists := g.streamClients[client.playerID]; exists {
+		existing.cancelFunc()
+		close(existing.updateChan)
+	}
+	
+	g.streamClients[client.playerID] = client
+	
+	log.Debug().
+		Str("game_id", g.id).
+		Int32("player_id", client.playerID).
+		Int("total_streams", len(g.streamClients)).
+		Msg("Stream client registered")
+}
+
+// unregisterStreamClient removes a stream client for a player
+func (g *gameInstance) unregisterStreamClient(playerID int32) {
+	g.streamClientsMu.Lock()
+	defer g.streamClientsMu.Unlock()
+	
+	if client, exists := g.streamClients[playerID]; exists {
+		client.cancelFunc()
+		close(client.updateChan)
+		delete(g.streamClients, playerID)
+		
+		log.Debug().
+			Str("game_id", g.id).
+			Int32("player_id", playerID).
+			Int("remaining_streams", len(g.streamClients)).
+			Msg("Stream client unregistered")
+	}
+}
+
+// broadcastUpdates sends game updates to all connected stream clients
+func (g *gameInstance) broadcastUpdates(server *Server) {
+	g.streamClientsMu.RLock()
+	defer g.streamClientsMu.RUnlock()
+	
+	if len(g.streamClients) == 0 {
+		return // No streams to update
+	}
+	
+	log.Debug().
+		Str("game_id", g.id).
+		Int("stream_count", len(g.streamClients)).
+		Msg("Broadcasting updates to stream clients")
+	
+	// Get current engine state
+	g.mu.Lock()
+	engineState := g.engine.GameState()
+	changedTiles := g.engine.GetChangedTiles()
+	visibilityChangedTiles := g.engine.GetVisibilityChangedTiles()
+	g.mu.Unlock()
+	
+	// Send updates to each connected player
+	for playerID, client := range g.streamClients {
+		update := g.createStreamUpdate(server, engineState, playerID, changedTiles, visibilityChangedTiles)
+		
+		// Non-blocking send to avoid blocking the game
+		select {
+		case client.updateChan <- update:
+			// Successfully queued update
+		default:
+			// Channel full, log warning
+			log.Warn().
+				Str("game_id", g.id).
+				Int32("player_id", playerID).
+				Msg("Stream update channel full, dropping update")
+		}
+	}
+}
+
+// createStreamUpdate creates an appropriate update for a player based on changed tiles
+func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine.GameState, playerID int32, changedTiles, visibilityChangedTiles map[int]bool) *gamev1.GameUpdate {
+	// If there are few changes, send a delta update; otherwise send full state
+	totalChanges := len(changedTiles) + len(visibilityChangedTiles)
+	boardSize := engineState.Board.W * engineState.Board.H
+	
+	// Use delta updates if less than 20% of the board changed
+	if totalChanges > 0 && totalChanges < boardSize/5 {
+		// Create delta update
+		delta := &gamev1.GameStateDelta{
+			Turn: int32(engineState.Turn),
+			TileUpdates: make([]*gamev1.TileUpdate, 0, totalChanges),
+		}
+		
+		// Get player visibility for applying fog of war
+		visibility := server.computePlayerVisibilityFromEngine(g.engine, int(playerID))
+		
+		// Add changed tiles
+		processedTiles := make(map[int]bool)
+		for tileIdx := range changedTiles {
+			if processedTiles[tileIdx] {
+				continue
+			}
+			processedTiles[tileIdx] = true
+			
+			tile := &engineState.Board.T[tileIdx]
+			x := tileIdx % engineState.Board.W
+			y := tileIdx / engineState.Board.W
+			
+			tileUpdate := &gamev1.TileUpdate{
+				Position: &commonv1.Coordinate{X: int32(x), Y: int32(y)},
+				Tile: &gamev1.Tile{
+					Type:      convertTileType(tile.Type),
+					OwnerId:   int32(tile.Owner),
+					ArmyCount: int32(tile.Army),
+					Visible:   visibility.VisibleTiles[tileIdx],
+					FogOfWar:  visibility.FogTiles[tileIdx],
+				},
+			}
+			
+			// Apply fog of war rules
+			if !tileUpdate.Tile.Visible && !tileUpdate.Tile.FogOfWar {
+				// Completely hidden tile
+				tileUpdate.Tile.Type = commonv1.TileType_TILE_TYPE_NORMAL
+				tileUpdate.Tile.OwnerId = -1
+				tileUpdate.Tile.ArmyCount = 0
+			} else if tileUpdate.Tile.FogOfWar && !tileUpdate.Tile.Visible {
+				// In fog - show type but not current state
+				tileUpdate.Tile.OwnerId = -1
+				tileUpdate.Tile.ArmyCount = 0
+			}
+			
+			delta.TileUpdates = append(delta.TileUpdates, tileUpdate)
+		}
+		
+		// Add visibility changed tiles that weren't already processed
+		for tileIdx := range visibilityChangedTiles {
+			if processedTiles[tileIdx] {
+				continue
+			}
+			
+			tile := &engineState.Board.T[tileIdx]
+			x := tileIdx % engineState.Board.W
+			y := tileIdx / engineState.Board.W
+			
+			tileUpdate := &gamev1.TileUpdate{
+				Position: &commonv1.Coordinate{X: int32(x), Y: int32(y)},
+				Tile: &gamev1.Tile{
+					Type:      convertTileType(tile.Type),
+					OwnerId:   int32(tile.Owner),
+					ArmyCount: int32(tile.Army),
+					Visible:   visibility.VisibleTiles[tileIdx],
+					FogOfWar:  visibility.FogTiles[tileIdx],
+				},
+			}
+			
+			// Apply fog of war rules
+			if !tileUpdate.Tile.Visible && !tileUpdate.Tile.FogOfWar {
+				// Completely hidden tile
+				tileUpdate.Tile.Type = commonv1.TileType_TILE_TYPE_NORMAL
+				tileUpdate.Tile.OwnerId = -1
+				tileUpdate.Tile.ArmyCount = 0
+			} else if tileUpdate.Tile.FogOfWar && !tileUpdate.Tile.Visible {
+				// In fog - show type but not current state
+				tileUpdate.Tile.OwnerId = -1
+				tileUpdate.Tile.ArmyCount = 0
+			}
+			
+			delta.TileUpdates = append(delta.TileUpdates, tileUpdate)
+		}
+		
+		// Add player updates
+		delta.PlayerUpdates = make([]*gamev1.PlayerUpdate, 0, len(engineState.Players))
+		for i, p := range engineState.Players {
+			playerState := &gamev1.PlayerState{
+				Id:        int32(p.ID),
+				Name:      g.players[i].name,
+				Status:    commonv1.PlayerStatus_PLAYER_STATUS_ACTIVE,
+				ArmyCount: int32(p.ArmyCount),
+				TileCount: int32(len(p.OwnedTiles)),
+				Color:     fmt.Sprintf("#%06X", i*0x333333),
+			}
+			
+			// Update status if player was eliminated
+			if !p.Alive {
+				playerState.Status = commonv1.PlayerStatus_PLAYER_STATUS_ELIMINATED
+				
+				// Show general position when eliminated
+				if p.GeneralIdx >= 0 {
+					x := p.GeneralIdx % engineState.Board.W
+					y := p.GeneralIdx / engineState.Board.W
+					playerState.GeneralPosition = &commonv1.Coordinate{
+						X: int32(x),
+						Y: int32(y),
+					}
+				}
+			}
+			
+			playerUpdate := &gamev1.PlayerUpdate{
+				PlayerId: int32(p.ID),
+				State:    playerState,
+			}
+			delta.PlayerUpdates = append(delta.PlayerUpdates, playerUpdate)
+		}
+		
+		return &gamev1.GameUpdate{
+			Update: &gamev1.GameUpdate_Delta{
+				Delta: delta,
+			},
+			Timestamp: timestamppb.Now(),
+		}
+	}
+	
+	// Fall back to full state update for large changes
+	return &gamev1.GameUpdate{
+		Update: &gamev1.GameUpdate_FullState{
+			FullState: server.convertGameStateToProto(g, engineState, playerID),
+		},
+		Timestamp: timestamppb.Now(),
+	}
+}
+
+// broadcastGameStarted sends a game started event to all connected stream clients
+func (g *gameInstance) broadcastGameStarted() {
+	g.streamClientsMu.RLock()
+	defer g.streamClientsMu.RUnlock()
+	
+	if len(g.streamClients) == 0 {
+		return
+	}
+	
+	event := &gamev1.GameEvent{
+		Event: &gamev1.GameEvent_GameStarted{
+			GameStarted: &gamev1.GameStartedEvent{
+				StartedAt: timestamppb.Now(),
+			},
+		},
+	}
+	
+	update := &gamev1.GameUpdate{
+		Update: &gamev1.GameUpdate_Event{
+			Event: event,
+		},
+		Timestamp: timestamppb.Now(),
+	}
+	
+	g.sendEventToAllClients(update)
+}
+
+// broadcastPlayerEliminated sends a player eliminated event to all connected stream clients
+func (g *gameInstance) broadcastPlayerEliminated(playerID int32, eliminatedBy int32) {
+	g.streamClientsMu.RLock()
+	defer g.streamClientsMu.RUnlock()
+	
+	if len(g.streamClients) == 0 {
+		return
+	}
+	
+	event := &gamev1.GameEvent{
+		Event: &gamev1.GameEvent_PlayerEliminated{
+			PlayerEliminated: &gamev1.PlayerEliminatedEvent{
+				PlayerId:     playerID,
+				EliminatedBy: eliminatedBy,
+			},
+		},
+	}
+	
+	update := &gamev1.GameUpdate{
+		Update: &gamev1.GameUpdate_Event{
+			Event: event,
+		},
+		Timestamp: timestamppb.Now(),
+	}
+	
+	g.sendEventToAllClients(update)
+}
+
+// broadcastGameEnded sends a game ended event to all connected stream clients
+func (g *gameInstance) broadcastGameEnded(winnerId int32) {
+	g.streamClientsMu.RLock()
+	defer g.streamClientsMu.RUnlock()
+	
+	if len(g.streamClients) == 0 {
+		return
+	}
+	
+	event := &gamev1.GameEvent{
+		Event: &gamev1.GameEvent_GameEnded{
+			GameEnded: &gamev1.GameEndedEvent{
+				WinnerId: winnerId,
+				EndedAt:  timestamppb.Now(),
+			},
+		},
+	}
+	
+	update := &gamev1.GameUpdate{
+		Update: &gamev1.GameUpdate_Event{
+			Event: event,
+		},
+		Timestamp: timestamppb.Now(),
+	}
+	
+	g.sendEventToAllClients(update)
+}
+
+// sendEventToAllClients is a helper to send an update to all connected stream clients
+func (g *gameInstance) sendEventToAllClients(update *gamev1.GameUpdate) {
+	for playerID, client := range g.streamClients {
+		select {
+		case client.updateChan <- update:
+			// Successfully queued event
+		default:
+			log.Warn().
+				Str("game_id", g.id).
+				Int32("player_id", playerID).
+				Msg("Stream event channel full, dropping event")
+		}
+	}
 }

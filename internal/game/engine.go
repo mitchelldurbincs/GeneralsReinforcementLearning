@@ -355,3 +355,21 @@ func (e *Engine) GetLegalActionMask(playerID int) []bool {
 	player := &e.gs.Players[playerID]
 	return e.legalMoves.GetLegalActionMask(e.gs.Board, player, player.OwnedTiles)
 }
+
+// GetChangedTiles returns the set of tiles that changed in the last turn
+func (e *Engine) GetChangedTiles() map[int]bool {
+	result := make(map[int]bool, len(e.gs.ChangedTiles))
+	for tileIdx := range e.gs.ChangedTiles {
+		result[tileIdx] = true
+	}
+	return result
+}
+
+// GetVisibilityChangedTiles returns the set of tiles whose visibility changed in the last turn
+func (e *Engine) GetVisibilityChangedTiles() map[int]bool {
+	result := make(map[int]bool, len(e.gs.VisibilityChangedTiles))
+	for tileIdx := range e.gs.VisibilityChangedTiles {
+		result[tileIdx] = true
+	}
+	return result
+}
