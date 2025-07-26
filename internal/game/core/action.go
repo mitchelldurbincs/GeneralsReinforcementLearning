@@ -2,8 +2,6 @@ package core
 
 import (
 	"fmt"
-
-	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/common"
 )
 
 // ActionType represents the type of action
@@ -71,7 +69,9 @@ func (m *MoveAction) Validate(b *Board, playerID int) error {
 	}
 
 	// Check adjacency (only orthogonal moves allowed)
-	if !common.IsAdjacent(m.FromX, m.FromY, m.ToX, m.ToY) {
+	from := m.GetFrom()
+	to := m.GetTo()
+	if !from.IsAdjacentTo(to) {
 		return fmt.Errorf("player %d: move from (%d,%d) to (%d,%d) not adjacent: %w", m.PlayerID, m.FromX, m.FromY, m.ToX, m.ToY, ErrNotAdjacent)
 	}
 

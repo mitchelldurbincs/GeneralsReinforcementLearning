@@ -1,8 +1,15 @@
 package common
 
+import "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
+
 // IsValidCoordinate checks if the given coordinates are within the bounds of the board
 func IsValidCoordinate(x, y, width, height int) bool {
 	return x >= 0 && x < width && y >= 0 && y < height
+}
+
+// IsValidCoordinateStruct checks if the given coordinate struct is within the bounds of the board
+func IsValidCoordinateStruct(c core.Coordinate, width, height int) bool {
+	return c.IsValid(width, height)
 }
 
 // IsAdjacent checks if two positions are orthogonally adjacent (not diagonally)

@@ -21,10 +21,17 @@ The current codebase uses separate integer parameters for coordinates, leading t
 ## Implementation Status
 
 ### Summary
-**Phase 1 is now complete!** The Coordinate struct has been created, fully tested, and integrated into the core game components:
-- ✅ `Board` now has coordinate-based methods (InBoundsCoord, GetTileCoord, SetTile, IdxCoord)
-- ✅ `MoveAction` now supports Coordinate fields with backward compatibility
-- ✅ `CaptureDetails` now includes a Location coordinate field
+**Phase 1, 2, and 3 are now complete!** The Coordinate struct has been created, fully tested, and integrated into multiple game components:
+- ✅ **Phase 1**: Core implementation complete
+  - `Board` has coordinate-based methods (InBoundsCoord, GetTileCoord, SetTile, IdxCoord)
+  - `MoveAction` supports Coordinate fields with backward compatibility
+  - `CaptureDetails` includes a Location coordinate field
+- ✅ **Phase 2**: Common utilities updated
+  - Added coordinate-based validation and math functions
+  - Fixed import cycles
+- ✅ **Phase 3**: Event system already migrated!
+  - `MoveExecutedEvent` uses From/To Coordinates
+  - `CombatResolvedEvent` uses Location Coordinate
 
 The implementation maintains full backward compatibility - existing code continues to work while new code can use the cleaner Coordinate-based APIs.
 
@@ -43,12 +50,19 @@ The implementation maintains full backward compatibility - existing code continu
 - [x] **Phase 1 Complete**: Updated MoveAction with From/To Coordinate fields and GetFrom()/GetTo() helper methods
 - [x] **Phase 1 Complete**: Updated CaptureDetails with Location Coordinate field
 - [x] Created integration tests to verify all new functionality works correctly
+- [x] **Phase 2 Complete**: Updated common utilities
+  - Added `IsValidCoordinateStruct()` to `validation.go`
+  - Added `DistanceCoord()` and `IsAdjacentCoord()` to `math.go`
+  - Fixed import cycle by updating `core/action.go` to use Coordinate methods instead of common package
+- [x] **Phase 3 Complete**: Event system already using Coordinates!
+  - `MoveExecutedEvent` uses `From` and `To` Coordinate fields with backward compatibility
+  - `CombatResolvedEvent` uses `Location` Coordinate field with backward compatibility
 
 ### Next Steps
-The Coordinate type is ready to use. When you're ready to continue:
-1. Start by updating the event system to use Coordinate (easiest migration)
-2. Add coordinate-based methods to Board while keeping old ones
-3. Gradually migrate other systems as you work on them
+**Phase 1, 2, and 3 are now complete!** The Coordinate type, common utilities, and event system have all been successfully implemented. When you're ready to continue:
+1. **Phase 4**: Update game state with Coordinate fields (Priority: Medium)
+2. **Phase 5**: Update UI system to use Coordinate types (Priority: Medium)
+3. **Phase 6**: Update test utilities and fixtures (Priority: Low)
 
 ### Implementation Plan
 
@@ -110,41 +124,34 @@ func (m *MoveAction) GetFrom() Coordinate
 func (m *MoveAction) GetTo() Coordinate
 ```
 
-### Phase 2: Common Utilities Update (Priority: High)
+### Phase 2: Common Utilities Update (Priority: High) ✅ COMPLETE
 
-#### 2.1 Update Validation Functions
+#### 2.1 Update Validation Functions ✅ COMPLETE
 **File**: `internal/common/validation.go`
-- Add coordinate-based versions:
-  - `IsValidCoordinateStruct(c Coordinate, width, height int) bool`
-  - Keep existing functions for compatibility
+- [x] Added coordinate-based versions:
+  - `IsValidCoordinateStruct(c Coordinate, width, height int) bool` - delegates to Coordinate.IsValid()
+  - Kept existing functions for backward compatibility
 
-#### 2.2 Update Math Utilities
+#### 2.2 Update Math Utilities ✅ COMPLETE
 **File**: `internal/common/math.go`
-- Add coordinate-based distance calculation:
-  - `DistanceCoord(from, to Coordinate) int`
-  - `IsAdjacentCoord(from, to Coordinate) bool`
+- [x] Added coordinate-based distance calculation:
+  - `DistanceCoord(from, to Coordinate) int` - delegates to Coordinate.DistanceTo()
+  - `IsAdjacentCoord(from, to Coordinate) bool` - delegates to Coordinate.IsAdjacentTo()
 
-### Phase 3: Event System Integration (Priority: High)
+**Implementation Note**: To avoid import cycles, we removed the dependency on `common.IsAdjacent()` from `core/action.go` and replaced it with the Coordinate's built-in `IsAdjacentTo()` method.
 
-#### 3.1 Update Event Types
+### Phase 3: Event System Integration (Priority: High) ✅ COMPLETE
+
+#### 3.1 Update Event Types ✅ COMPLETE
 **File**: `internal/game/events/game_events.go`
 
-Replace individual coordinate fields with Coordinate structs:
-```go
-type MoveExecutedEvent struct {
-    BaseEvent
-    PlayerID    int
-    From        Coordinate  // Instead of FromX, FromY
-    To          Coordinate  // Instead of ToX, ToY
-    ArmiesMoved int
-}
-
-type CombatResolvedEvent struct {
-    BaseEvent
-    Location       Coordinate  // Instead of LocationX, LocationY
-    // ... other fields
-}
-```
+**Already implemented!** The event types now use Coordinate structs:
+- [x] `MoveExecutedEvent` uses `From` and `To` Coordinate fields
+  - Includes backward compatibility methods: `GetFromX()`, `GetFromY()`, `GetToX()`, `GetToY()`
+  - Constructor creates Coordinates from x,y parameters
+- [x] `CombatResolvedEvent` uses `Location` Coordinate field
+  - Includes backward compatibility methods: `GetLocationX()`, `GetLocationY()`
+  - Constructor creates Coordinate from x,y parameters
 
 ### Phase 4: Game State Updates (Priority: Medium)
 
