@@ -113,3 +113,6 @@ tensorboard/
 
 # Git directory (already excluded by git itself, but for clarity)
 .git/
+
+# python venv
+generalsrl/

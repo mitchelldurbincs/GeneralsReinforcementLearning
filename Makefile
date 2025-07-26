@@ -22,6 +22,11 @@ test-verbose:
 generate-protos:
 	./scripts/generate-protos.sh
 
+generate-python-protos:
+	./scripts/generate-python-protos.sh
+
+generate-all-protos: generate-protos generate-python-protos
+
 # Install required tools
 install-tools:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
@@ -29,10 +34,15 @@ install-tools:
 	@echo "Note: You also need to install protoc compiler manually"
 	@echo "Visit: https://grpc.io/docs/protoc-installation/"
 
+install-python-tools:
+	python3 -m venv generalsrl
+	./generalsrl/bin/pip install grpcio-tools grpcio protobuf	
+
 # Clean build artifacts
 clean:
 	rm -rf bin/
 	rm -rf pkg/api/
+	rm -rf python/generals_pb/
 
 # Development helpers
 run-server:
