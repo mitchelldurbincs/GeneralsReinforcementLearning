@@ -5,8 +5,11 @@ import "fmt"
 // CaptureDetails provides rich information about a capture event.
 // It is returned by ApplyMoveAction if a tile changes ownership.
 type CaptureDetails struct {
+	// Keep existing fields for backward compatibility
 	X                 int // X coordinate of the captured tile
 	Y                 int // Y coordinate of the captured tile
+	// New coordinate field
+	Location          Coordinate // Coordinate of the captured tile
 	TileType          int // Type of the tile that was captured (e.g., TileNormal, TileCity, TileGeneral)
 	CapturingPlayerID int // ID of the player who made the capture and now owns the tile
 	PreviousOwnerID   int // ID of the player who owned the tile before capture (can be NeutralID)
@@ -72,6 +75,7 @@ func ApplyMoveAction(b *Board, action *MoveAction, changedTiles map[int]struct{}
 		captureDetails = &CaptureDetails{
 			X:                 action.ToX,
 			Y:                 action.ToY,
+			Location:          Coordinate{X: action.ToX, Y: action.ToY},
 			TileType:          toTile.Type,
 			CapturingPlayerID: action.PlayerID,
 			PreviousOwnerID:   originalToTileOwner,

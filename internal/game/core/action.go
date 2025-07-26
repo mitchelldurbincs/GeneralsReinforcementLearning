@@ -24,16 +24,36 @@ type Action interface {
 // MoveAction represents moving armies from one tile to another
 type MoveAction struct {
 	PlayerID int
+	// Keep existing fields for backward compatibility
 	FromX    int
 	FromY    int
 	ToX      int
 	ToY      int
+	// New coordinate fields
+	From     Coordinate
+	To       Coordinate
 	// If true, move all but 1 army. If false, move half (integer division, minimum 1 if source army > 1)
 	MoveAll  bool
 }
 
 func (m *MoveAction) GetPlayerID() int    { return m.PlayerID }
 func (m *MoveAction) GetType() ActionType { return ActionMove }
+
+// GetFrom returns the From coordinate, using the new field if set, otherwise converting from X,Y
+func (m *MoveAction) GetFrom() Coordinate {
+	if m.From != (Coordinate{}) {
+		return m.From
+	}
+	return Coordinate{X: m.FromX, Y: m.FromY}
+}
+
+// GetTo returns the To coordinate, using the new field if set, otherwise converting from X,Y
+func (m *MoveAction) GetTo() Coordinate {
+	if m.To != (Coordinate{}) {
+		return m.To
+	}
+	return Coordinate{X: m.ToX, Y: m.ToY}
+}
 
 func (m *MoveAction) Validate(b *Board, playerID int) error {
 	// Check bounds for From coordinates

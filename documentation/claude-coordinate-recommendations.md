@@ -21,7 +21,12 @@ The current codebase uses separate integer parameters for coordinates, leading t
 ## Implementation Status
 
 ### Summary
-The Coordinate struct has been created and fully tested. The implementation is ready to be integrated into the rest of the codebase. The remaining work involves updating existing code to use the new Coordinate type while maintaining backward compatibility.
+**Phase 1 is now complete!** The Coordinate struct has been created, fully tested, and integrated into the core game components:
+- ✅ `Board` now has coordinate-based methods (InBoundsCoord, GetTileCoord, SetTile, IdxCoord)
+- ✅ `MoveAction` now supports Coordinate fields with backward compatibility
+- ✅ `CaptureDetails` now includes a Location coordinate field
+
+The implementation maintains full backward compatibility - existing code continues to work while new code can use the cleaner Coordinate-based APIs.
 
 ### Completed (2025-01-26)
 - [x] Created `internal/game/core/coordinate.go` with full Coordinate struct implementation
@@ -34,6 +39,10 @@ The Coordinate struct has been created and fully tested. The implementation is r
   - Performance benchmarks
   - Verified symmetry properties (distance, adjacency)
 - [x] Documented full implementation plan in this file
+- [x] **Phase 1 Complete**: Added Coordinate methods to Board (InBoundsCoord, GetTileCoord, SetTile, IdxCoord)
+- [x] **Phase 1 Complete**: Updated MoveAction with From/To Coordinate fields and GetFrom()/GetTo() helper methods
+- [x] **Phase 1 Complete**: Updated CaptureDetails with Location Coordinate field
+- [x] Created integration tests to verify all new functionality works correctly
 
 ### Next Steps
 The Coordinate type is ready to use. When you're ready to continue:
@@ -43,7 +52,7 @@ The Coordinate type is ready to use. When you're ready to continue:
 
 ### Implementation Plan
 
-### Phase 1: Core Implementation (Priority: High) ✅ PARTIALLY COMPLETE
+### Phase 1: Core Implementation (Priority: High) ✅ COMPLETE
 
 #### 1.1 Create Coordinate Type ✅ COMPLETE
 **File**: `internal/game/core/coordinate.go` (NEW)
@@ -68,7 +77,7 @@ Implemented with the following features:
 - Benchmark tests for performance-critical methods
 - Verified Coordinate works as map key
 
-#### 1.2 Add Coordinate Methods to Board
+#### 1.2 Add Coordinate Methods to Board ✅ COMPLETE
 **File**: `internal/game/core/board.go`
 - Add overloaded methods that accept Coordinate:
   - `InBoundsCoord(c Coordinate) bool`
@@ -77,7 +86,7 @@ Implemented with the following features:
   - `IdxCoord(c Coordinate) int`
 - Keep existing methods for backward compatibility
 
-#### 1.3 Update Action Types
+#### 1.3 Update Action Types ✅ COMPLETE
 **Files**: 
 - `internal/game/core/action.go`
 - `internal/game/core/movement.go`

@@ -88,3 +88,28 @@ func (b *Board) Distance(x1, y1, x2, y2 int) int {
 	}
 	return dx + dy
 }
+
+// Coordinate-based methods for Phase 1.2
+
+// InBoundsCoord checks if a coordinate is within board boundaries
+func (b *Board) InBoundsCoord(c Coordinate) bool {
+	return b.InBounds(c.X, c.Y)
+}
+
+// GetTileCoord safely returns a tile pointer if coordinate is valid, nil otherwise
+func (b *Board) GetTileCoord(c Coordinate) *Tile {
+	return b.GetTile(c.X, c.Y)
+}
+
+// SetTile sets a tile at the given coordinate
+func (b *Board) SetTile(c Coordinate, tile Tile) {
+	if !b.InBoundsCoord(c) {
+		return
+	}
+	b.T[b.Idx(c.X, c.Y)] = tile
+}
+
+// IdxCoord returns the index for a coordinate
+func (b *Board) IdxCoord(c Coordinate) int {
+	return b.Idx(c.X, c.Y)
+}
