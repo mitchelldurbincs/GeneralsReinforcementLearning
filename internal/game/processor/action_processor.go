@@ -8,9 +8,15 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// EventPublisher is an interface for publishing events
+type EventPublisher interface {
+	Publish(event interface{})
+}
+
 // ActionProcessor handles the processing of player actions during each game tick
 type ActionProcessor struct {
-	logger zerolog.Logger
+	logger        zerolog.Logger
+	eventPublisher EventPublisher
 }
 
 // NewActionProcessor creates a new action processor
@@ -18,6 +24,11 @@ func NewActionProcessor(logger zerolog.Logger) *ActionProcessor {
 	return &ActionProcessor{
 		logger: logger.With().Str("component", "ActionProcessor").Logger(),
 	}
+}
+
+// SetEventPublisher sets the event publisher for this processor
+func (ap *ActionProcessor) SetEventPublisher(publisher EventPublisher) {
+	ap.eventPublisher = publisher
 }
 
 // ProcessActions processes all actions for the current tick

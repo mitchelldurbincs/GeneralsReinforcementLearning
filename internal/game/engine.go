@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/events"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/mapgen"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/processor"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/rules"
@@ -25,6 +26,10 @@ type Engine struct {
 	winCondition    *rules.WinConditionChecker
 	legalMoves      *rules.LegalMoveCalculator
 	
+	// Event system
+	eventBus *events.EventBus
+	gameID   string
+	
 	// Reusable temporary maps to avoid allocations
 	tempTileOwnership   map[int]int        // Used in performIncrementalStatsUpdate
 	tempAffectedPlayers map[int]struct{}   // Used in performIncrementalVisibilityUpdate
@@ -36,6 +41,7 @@ type GameConfig struct {
 	Players  int
 	Rng      *rand.Rand
 	Logger   zerolog.Logger
+	GameID   string // Optional game ID, will be generated if not provided
 }
 
 // NewEngine creates a new game engine with map generation.
@@ -58,6 +64,11 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 	if cfg.Rng == nil {
 		engineLogger.Debug().Msg("No RNG provided, creating new seeded RNG")
 		cfg.Rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+	}
+
+	// Generate game ID if not provided
+	if cfg.GameID == "" {
+		cfg.GameID = fmt.Sprintf("game_%d", time.Now().UnixNano())
 	}
 
 	// Generate the map
@@ -99,23 +110,35 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 		}
 	}
 
+	// Create action processor
+	actionProc := processor.NewActionProcessor(engineLogger)
+	
 	e := &Engine{
 		gs:       gs,
 		rng:      cfg.Rng,
 		gameOver: false,
 		logger:   engineLogger,
-		actionProcessor: processor.NewActionProcessor(engineLogger),
+		actionProcessor: actionProc,
 		winCondition:    rules.NewWinConditionChecker(engineLogger, cfg.Players),
 		legalMoves:      rules.NewLegalMoveCalculator(),
+		eventBus:            events.NewEventBus(),
+		gameID:              cfg.GameID,
 		tempTileOwnership:   make(map[int]int),
 		tempAffectedPlayers: make(map[int]struct{}),
 	}
+	
+	// Set the event publisher on the action processor
+	actionProc.SetEventPublisher(e.eventBus)
 
 	// Initial update of player stats to populate OwnedTiles
 	e.updatePlayerStats()
 	e.updateFogOfWar()
 	// CheckGameOver on initialization is probably not needed unless a 0-player game is valid.
 	e.checkGameOver(engineLogger.With().Str("phase", "init").Logger())
+	
+	// Publish GameStarted event
+	e.eventBus.Publish(events.NewGameStartedEvent(e.gameID, cfg.Players, cfg.Width, cfg.Height))
+	
 	engineLogger.Info().Int("width", cfg.Width).Int("height", cfg.Height).Int("players", cfg.Players).Msg("Engine created successfully")
 	return e
 }
@@ -136,6 +159,7 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 		return core.WrapGameStateError(e.gs.Turn, "step", core.ErrGameOver)
 	}
 
+	turnStartTime := time.Now()
 	e.gs.Turn++
 	e.updateFogOfWar()
 	// Clear changed tiles from previous turn (reuse the map to avoid allocation)
@@ -153,6 +177,9 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	turnLogger := e.logger.With().Int("turn", e.gs.Turn).Logger()
 
 	turnLogger.Debug().Msg("Starting game step")
+	
+	// Publish TurnStarted event
+	e.eventBus.Publish(events.NewTurnStartedEvent(e.gameID, e.gs.Turn))
 
 	turnLogger.Debug().Int("num_actions_submitted", len(actions)).Msg("Processing actions")
 	if err := e.processActions(ctx, actions, turnLogger); err != nil {
@@ -183,12 +210,20 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	e.updatePlayerStats()
 	e.checkGameOver(turnLogger)
 
+	// Publish TurnEnded event
+	e.eventBus.Publish(events.NewTurnEndedEvent(e.gameID, e.gs.Turn, len(actions), time.Since(turnStartTime)))
+
 	turnLogger.Debug().Msg("Game step finished")
 	return nil
 }
 
 // processActions handles all actions for this turn using the ActionProcessor.
 func (e *Engine) processActions(ctx context.Context, actions []core.Action, l zerolog.Logger) error {
+	// Publish ActionSubmitted events for each action
+	for _, action := range actions {
+		e.eventBus.Publish(events.NewActionSubmittedEvent(e.gameID, action.PlayerID, action, e.gs.Turn))
+	}
+
 	// Create a slice of PlayerInfo interfaces from our Players
 	playerInfos := make([]processor.PlayerInfo, len(e.gs.Players))
 	for i := range e.gs.Players {
@@ -246,6 +281,9 @@ func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminati
 		eliminatedPlayer.Alive = false
 		eliminatedPlayer.GeneralIdx = -1
 		
+		// Publish PlayerEliminated event
+		e.eventBus.Publish(events.NewPlayerEliminatedEvent(e.gameID, order.EliminatedPlayerID, order.NewOwnerID, 0, e.gs.Turn))
+		
 		l.Debug().
 			Int("eliminated_player_id", order.EliminatedPlayerID).
 			Int("new_owner_player_id", order.NewOwnerID).
@@ -290,6 +328,11 @@ func (e *Engine) processTurnProduction(l zerolog.Logger) {
 			}
 		}
 	}
+	// Publish ProductionApplied event
+	if totalGeneralProd > 0 || totalCityProd > 0 || totalNormalProd > 0 {
+		e.eventBus.Publish(events.NewProductionAppliedEvent(e.gameID, totalNormalProd, totalCityProd, totalGeneralProd, e.gs.Turn))
+	}
+	
 	l.Debug().
 		Int("total_general_production", totalGeneralProd).
 		Int("total_city_production", totalCityProd).
@@ -306,11 +349,14 @@ func (e *Engine) checkGameOver(l zerolog.Logger) {
 	}
 	
 	wasGameOver := e.gameOver
-	gameOver, _ := e.winCondition.CheckGameOver(players)
+	gameOver, winnerID := e.winCondition.CheckGameOver(players)
 	e.gameOver = gameOver
 	
 	if !wasGameOver && e.gameOver {
 		l.Info().Msg("Game over condition met")
+		// Publish GameEnded event
+		// TODO: Track game start time to calculate duration
+		e.eventBus.Publish(events.NewGameEndedEvent(e.gameID, winnerID, 0, e.gs.Turn))
 	} else if wasGameOver && !e.gameOver {
 		// This would be highly unusual
 		l.Error().Msg("Game was over, but is no longer over. This is unexpected!")
@@ -320,6 +366,7 @@ func (e *Engine) checkGameOver(l zerolog.Logger) {
 // Public accessors
 func (e *Engine) GameState() GameState { return *e.gs }
 func (e *Engine) IsGameOver() bool   { return e.gameOver }
+func (e *Engine) EventBus() *events.EventBus { return e.eventBus }
 
 // GetWinner returns the winning player ID, or -1 if game isn't over or it's a draw
 func (e *Engine) GetWinner() int {
