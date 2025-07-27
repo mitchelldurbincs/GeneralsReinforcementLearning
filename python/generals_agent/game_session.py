@@ -268,7 +268,7 @@ class GameSession:
         
         # If multiple players active, find one with most tiles
         if active_players:
-            return max(active_players, key=lambda p: p.tiles_count).id
+            return max(active_players, key=lambda p: p.tile_count).id
         
         return ""  # No winner
     

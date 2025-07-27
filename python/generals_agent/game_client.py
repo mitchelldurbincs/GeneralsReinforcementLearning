@@ -10,7 +10,6 @@ from dataclasses import dataclass
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'python'))
-from proto import game_pb2, game_pb2_grpc
 from generals_pb.game.v1 import game_pb2 as generals_pb2
 from generals_pb.game.v1 import game_pb2_grpc as generals_pb2_grpc
 
@@ -180,51 +179,15 @@ class GameClient:
             self.logger.error(f"Failed to submit action: {e.details()}")
             raise
     
-    @with_connection_retry
-    def leave_game(self, credentials: PlayerCredentials) -> None:
-        """
-        Leave the current game.
-        
-        Args:
-            credentials: Player credentials for authentication
-            
-        Raises:
-            GameError: If leaving the game fails
-        """
-        stub = self.connection.ensure_connected()
-        
-        request = generals_pb2.LeaveGameRequest(
-            game_id=credentials.game_id,
-            player_id=credentials.player_id,
-            player_token=credentials.player_token
-        )
-        
-        try:
-            stub.LeaveGame(request)
-            self.logger.info(f"Left game {credentials.game_id}")
-        except grpc.RpcError as e:
-            self.logger.error(f"Failed to leave game: {e.details()}")
-            raise
+    # Note: LeaveGame and GetAvailableGames are not implemented in the current protobuf
+    # These methods are commented out until the server implements them
     
-    @with_connection_retry
-    def get_available_games(self) -> List[generals_pb2.GameInfo]:
-        """
-        Get a list of available games to join.
-        
-        Returns:
-            List of available games
-            
-        Raises:
-            GameError: If fetching game list fails
-        """
-        stub = self.connection.ensure_connected()
-        
-        request = generals_pb2.GetAvailableGamesRequest()
-        
-        try:
-            response = stub.GetAvailableGames(request)
-            self.logger.info(f"Found {len(response.games)} available games")
-            return list(response.games)
-        except grpc.RpcError as e:
-            self.logger.error(f"Failed to get available games: {e.details()}")
-            raise
+    # @with_connection_retry
+    # def leave_game(self, credentials: PlayerCredentials) -> None:
+    #     """Leave the current game."""
+    #     pass
+    
+    # @with_connection_retry
+    # def get_available_games(self) -> List[generals_pb2.GameInfo]:
+    #     """Get a list of available games to join."""
+    #     pass

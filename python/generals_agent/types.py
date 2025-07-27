@@ -64,13 +64,15 @@ class Position:
     x: int
     y: int
     
-    def to_proto(self) -> game_pb2.Position:
-        """Convert to protobuf Position."""
-        return game_pb2.Position(x=self.x, y=self.y)
+    def to_proto(self):
+        """Convert to protobuf Coordinate."""
+        # Import here to avoid circular imports
+        from generals_pb.common.v1 import common_pb2
+        return common_pb2.Coordinate(x=self.x, y=self.y)
     
     @classmethod
-    def from_proto(cls, proto: game_pb2.Position) -> 'Position':
-        """Create from protobuf Position."""
+    def from_proto(cls, proto) -> 'Position':
+        """Create from protobuf Coordinate."""
         return cls(x=proto.x, y=proto.y)
     
     def __hash__(self):
@@ -86,13 +88,16 @@ class Move:
     
     def to_proto(self) -> game_pb2.Action:
         """Convert to protobuf Action."""
-        return game_pb2.Action(
-            move=game_pb2.MoveAction(
-                from_pos=self.from_pos.to_proto(),
-                to_pos=self.to_pos.to_proto(),
-                split=self.split
-            )
+        from generals_pb.common.v1 import common_pb2
+        action = game_pb2.Action(
+            type=common_pb2.ACTION_TYPE_MOVE,
+            to=self.to_pos.to_proto(),
+            half=self.split,
+            turn_number=0  # Will be set by the game
         )
+        # Use CopyFrom to set the 'from' field (reserved keyword)
+        getattr(action, 'from').CopyFrom(self.from_pos.to_proto())
+        return action
 
 
 @dataclass
@@ -131,12 +136,14 @@ class TileInfo:
     @classmethod
     def from_proto(cls, proto: game_pb2.Tile, position: Position) -> 'TileInfo':
         """Create from protobuf Tile."""
-        tile_type = game_pb2.TileType.Name(proto.type).lower()
+        # Import common_pb2 for TileType enum
+        from generals_pb.common.v1 import common_pb2
+        tile_type = common_pb2.TileType.Name(proto.type).lower().replace('tile_type_', '')
         return cls(
             position=position,
             tile_type=tile_type,
             owner_id=proto.owner_id if proto.owner_id else None,
-            army_size=proto.army_size,
+            army_size=proto.army_count,
             is_visible=True  # Tiles in state are always visible
         )
 
