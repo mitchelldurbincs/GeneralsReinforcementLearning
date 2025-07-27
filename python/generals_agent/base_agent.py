@@ -89,6 +89,8 @@ class BaseAgent(ABC):
         
     def submit_action(self, action: game_pb2.Action) -> bool:
         """Submit an action to the server"""
+        from generals_pb.common.v1 import common_pb2
+        
         request = game_pb2.SubmitActionRequest(
             game_id=self.game_id,
             player_id=self.player_id,
@@ -99,9 +101,13 @@ class BaseAgent(ABC):
         try:
             response = self.stub.SubmitAction(request)
             if response.success:
-                self.logger.debug(f"Action submitted successfully: {action}")
+                if action.type == common_pb2.ACTION_TYPE_MOVE:
+                    from_coord = getattr(action, 'from')
+                    self.logger.debug(f"Move action submitted successfully from ({from_coord.x},{from_coord.y}) to ({action.to.x},{action.to.y})")
+                else:
+                    self.logger.debug(f"Action submitted successfully: type={common_pb2.ActionType.Name(action.type)}")
             else:
-                self.logger.warning(f"Action rejected: {response.message}")
+                self.logger.warning(f"Action rejected: {response.error_message}")
             return response.success
         except grpc.RpcError as e:
             self.logger.error(f"Error submitting action: {e}")
@@ -116,9 +122,16 @@ class BaseAgent(ABC):
         
         try:
             self.logger.debug("Starting to poll game updates...")
+            first_poll = True
             while True:
                 # Get current game state
                 game_state = self.get_game_state()
+                
+                # Log first poll details
+                if first_poll:
+                    status_name = common_pb2.GameStatus.Name(game_state.status)
+                    self.logger.info(f"First poll - Game status: {status_name}, Turn: {game_state.turn}, Players: {len(game_state.players)}")
+                    first_poll = False
                 
                 # Check if game has ended
                 if game_state.status == common_pb2.GAME_STATUS_FINISHED:
@@ -137,11 +150,34 @@ class BaseAgent(ABC):
                     self.on_game_end(game_ended)
                     break
                 
-                # Process state update if turn has changed
+                # Check if we need to process this state
+                should_process = False
+                
+                # Process if turn changed
                 if game_state.turn > last_turn:
+                    self.logger.debug(f"Turn changed from {last_turn} to {game_state.turn}, status: {common_pb2.GameStatus.Name(game_state.status)}")
                     last_turn = game_state.turn
-                    self.current_game_state = game_state
-                    self.on_state_update(game_state)
+                    should_process = True
+                    
+                # Also process if status changed from WAITING to IN_PROGRESS at the same turn
+                if not hasattr(self, '_last_status'):
+                    self._last_status = game_state.status
+                elif self._last_status == common_pb2.GAME_STATUS_WAITING and game_state.status == common_pb2.GAME_STATUS_IN_PROGRESS:
+                    self.logger.info(f"Game started! Status changed from WAITING to IN_PROGRESS at turn {game_state.turn}")
+                    should_process = True
+                    
+                self._last_status = game_state.status
+                self.current_game_state = game_state
+                    
+                # Submit actions if we should process and game is in progress
+                if should_process and game_state.status == common_pb2.GAME_STATUS_IN_PROGRESS:
+                    try:
+                        self.on_state_update(game_state)
+                    except Exception as e:
+                        self.logger.error(f"Error in on_state_update: {e}")
+                        import traceback
+                        self.logger.error(f"Traceback: {traceback.format_exc()}")
+                        raise
                 
                 # Small delay to avoid hammering the server
                 time.sleep(poll_interval)
@@ -150,7 +186,9 @@ class BaseAgent(ABC):
             self.logger.error(f"Polling error: {e}")
             self.on_disconnect()
         except Exception as e:
+            import traceback
             self.logger.error(f"Unexpected error during polling: {e}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             self.on_disconnect()
             
     def run(self, game_id: Optional[str] = None):
@@ -162,6 +200,9 @@ class BaseAgent(ABC):
             if game_id is None:
                 game_id = self.create_game()
             self.join_game(game_id)
+            
+            # Wait a moment for the game to fully initialize
+            time.sleep(0.5)
             
             # Notify game start
             self.on_game_start()
@@ -194,35 +235,31 @@ class BaseAgent(ABC):
         # Import here to avoid circular dependency
         from generals_pb.common.v1 import common_pb2
         
-        # Only process if game is in progress
-        if game_state.status != common_pb2.GAME_STATUS_IN_PROGRESS:
-            self.logger.debug(f"Game not in progress, status: {game_state.status}")
-            return
-            
-        # Check if it's our turn
-        current_player_turn = game_state.turn % 2  # Assuming 2 players, turn alternates
-        if current_player_turn == int(self.player_id):
-            action = self.select_action(game_state)
-            if action:
-                self.submit_action(action)
+        # In Generals, all players submit actions simultaneously for each turn
+        action = self.select_action(game_state)
+        if action:
+            self.submit_action(action)
+        else:
+            # Submit a no-op action to signal we're ready for the next turn
+            self.logger.debug(f"Turn {game_state.turn}: No valid moves, submitting no-op action")
+            no_op_action = game_pb2.Action(
+                type=common_pb2.ACTION_TYPE_UNSPECIFIED,
+                turn_number=game_state.turn
+            )
+            self.submit_action(no_op_action)
                 
     def on_disconnect(self):
         """Called when disconnected from server"""
         self.logger.warning("Disconnected from server")
         
     def wait_for_turn(self):
-        """Wait for our turn by polling game state"""
+        """Wait for next turn (all players act simultaneously in Generals)"""
         from generals_pb.common.v1 import common_pb2
         
-        while True:
-            try:
-                state = self.get_game_state()
-                if state.status == common_pb2.GAME_STATUS_FINISHED:
-                    return False
-                # Check if it's our turn (alternating turns)
-                current_player_turn = state.turn % 2
-                if current_player_turn == int(self.player_id):
-                    return True
-                time.sleep(0.1)  # Small delay to avoid hammering the server
-            except grpc.RpcError:
-                return False
+        # In Generals, all players act simultaneously, so we always return True
+        # unless the game has ended
+        try:
+            state = self.get_game_state()
+            return state.status != common_pb2.GAME_STATUS_FINISHED
+        except grpc.RpcError:
+            return False

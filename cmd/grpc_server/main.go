@@ -117,7 +117,7 @@ func main() {
 
 	// Handle shutdown signals
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 	
 	go func() {
 		sig := <-sigCh
@@ -140,7 +140,8 @@ func main() {
 	
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatal().Err(err).Msg("Failed to serve")
+			log.Error().Err(err).Msg("Server stopped")
+			cancel()
 		}
 	}()
 

@@ -17,6 +17,14 @@ This is a Go-based implementation of a Generals.io-style strategic territory con
 
 The project prioritizes RL training efficiency over production multiplayer features like security, authentication, or public-facing APIs.
 
+### Game Mechanics
+- **Turn-based strategy**: Players take turns moving armies
+- **Territory control**: Capture tiles by moving armies onto them
+- **Army production**: Generals and cities produce 1 army per turn
+- **Combat**: Larger army wins when armies meet, difference remains
+- **Victory conditions**: Capture all enemy generals or control entire map
+- **Map features**: Mountains (impassable), cities (capturable for production)
+
 ## Development Commands
 
 ### Building
@@ -99,8 +107,20 @@ go mod download
 - **validation.go**: Coordinate validation and distance calculations
 
 ### Entry Points (`cmd/`)
-- **game_server/**: Headless server for game logic (planned for RL training)
-- **ui_client/**: Graphical client for human players
+- **game_server/**: gRPC server for hosting games and managing multiplayer sessions
+- **ui_client/**: Graphical client for human players using Ebiten
+
+### Networking (`internal/grpc/`)
+- **gameserver/**: gRPC server implementation
+  - `server.go`: Main server logic, game management, player sessions
+  - `stream_manager.go`: Real-time game state streaming (in development)
+- **proto/**: Protocol buffer definitions for client-server communication
+- **client/**: Go client library for connecting to the game server
+
+### Python Integration (`python/`)
+- **grpc_client.py**: Python gRPC client for RL agents
+- **random_agent.py**: Basic random agent implementation (in progress)
+- **Environment classes planned**: OpenAI Gym-compatible wrappers
 
 ### Key Game Parameters
 - City spawn ratio: 1 per 20 tiles (~5% of map)
@@ -109,6 +129,9 @@ go mod download
 - Normal tile growth: Every 25 turns
 - Fog of war: Fully implemented with toggle via `FogOfWarEnabled` flag
 - Minimum general spacing: 5 (Manhattan distance)
+- Turn time limit: 500ms default (configurable)
+- Map sizes: Small (10x10), Medium (15x15), Large (20x20)
+- Maximum players: 8 (limited by distinct colors)
 
 ### Deployment
 - Docker multi-stage builds for containerization (golang:1.24-alpine → alpine:3.21)
@@ -119,6 +142,31 @@ go mod download
   - S3 for storage
   - VPC and security groups
 
+## Development Status
+
+### ✅ Completed
+- Core game engine with all mechanics
+- gRPC server for multiplayer games
+- Fog of war implementation
+- Map generation system
+- Basic Python client infrastructure
+- Docker containerization
+- Unit tests for core components
+
+### 🚧 In Progress
+- Random agent implementation (Python)
+- StreamGame gRPC method for real-time updates
+- Multi-agent game orchestration
+- Experience collection for RL training
+
+### 📋 Planned
+- Full RL training infrastructure
+- Self-play mechanics
+- Distributed training on AWS
+- Model serving via gRPC
+- Tournament/matchmaking system
+- Performance optimizations for large-scale training
+
 ## Development Notes
 
 When modifying game mechanics, key files to consider:
@@ -128,9 +176,14 @@ When modifying game mechanics, key files to consider:
 - Visual rendering: `internal/ui/renderer/`
 - Fog of war: `internal/game/visibility.go`
 - Performance optimization: Check incremental update patterns in `stats.go` and `visibility.go`
+- gRPC APIs: `internal/grpc/proto/game.proto`
+- Python integration: `python/` directory
 
 The project uses:
 - **Zerolog** for structured logging throughout the codebase
-- **Ebiten v2** for game graphics and rendering
+- **Ebiten v2.8.8** for game graphics and rendering
+- **gRPC 1.70.0** for client-server communication
+- **Viper** for configuration management
 - **Testify** for testing assertions
 - **Go 1.24.0** as the base language version
+- **Python 3.8+** for RL agent development

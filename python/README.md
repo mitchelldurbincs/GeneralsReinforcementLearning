@@ -4,17 +4,27 @@ This directory contains the Python client library for interacting with the Gener
 
 ## Setup
 
-### 1. Install Python Dependencies
+### 1. Create and Activate Virtual Environment
 
 ```bash
-# From the project root
+# From the project root directory
+python -m venv generalsrl
+source generalsrl/bin/activate  # On Linux/Mac
+# or
+generalsrl\Scripts\activate  # On Windows
+```
+
+### 2. Install Python Dependencies
+
+```bash
+# From the project root (with virtual environment activated)
 make install-python-tools
 
 # Or manually:
 pip install -r python/requirements.txt
 ```
 
-### 2. Generate Python Protocol Buffers
+### 3. Generate Python Protocol Buffers
 
 ```bash
 # From the project root
@@ -24,13 +34,39 @@ make generate-python-protos
 ./scripts/generate-python-protos.sh
 ```
 
-### 3. Install the Package (Optional)
+### 4. Install the Package (Optional)
 
 For development, you can install the package in editable mode:
 
 ```bash
 cd python
 pip install -e .
+```
+
+## Running the Examples
+
+### Start the gRPC Server
+
+First, start the game server in a separate terminal:
+
+```bash
+# From the project root
+go run cmd/grpc_server/main.go
+```
+
+### Run Random Agent Match
+
+To run a match between two random agents:
+
+```bash
+# From the project root (with virtual environment activated)
+python python/scripts/run_random_match.py
+
+# Run multiple games (tournament)
+python python/scripts/run_random_match.py --games 10
+
+# Custom board size
+python python/scripts/run_random_match.py --width 30 --height 30
 ```
 
 ## Usage

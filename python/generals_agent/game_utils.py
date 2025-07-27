@@ -138,9 +138,11 @@ def get_valid_moves(game_state: game_pb2.GameState, player_id: str) -> List[game
             action = game_pb2.Action(
                 type=common_pb2.ACTION_TYPE_MOVE,
                 to=common_pb2.Coordinate(x=to_x, y=to_y),
-                half=False
+                half=False,
+                turn_number=game_state.turn
             )
-            setattr(action, 'from', common_pb2.Coordinate(x=x, y=y))
+            # Use CopyFrom to set the 'from' field
+            getattr(action, 'from').CopyFrom(common_pb2.Coordinate(x=x, y=y))
             if is_valid_move(game_state, action, player_id):
                 valid_moves.append(action)
                 
@@ -149,9 +151,11 @@ def get_valid_moves(game_state: game_pb2.GameState, player_id: str) -> List[game
                 action_half = game_pb2.Action(
                     type=common_pb2.ACTION_TYPE_MOVE,
                     to=common_pb2.Coordinate(x=to_x, y=to_y),
-                    half=True
+                    half=True,
+                    turn_number=game_state.turn
                 )
-                setattr(action_half, 'from', common_pb2.Coordinate(x=x, y=y))
+                # Use CopyFrom to set the 'from' field
+                getattr(action_half, 'from').CopyFrom(common_pb2.Coordinate(x=x, y=y))
                 if is_valid_move(game_state, action_half, player_id):
                     valid_moves.append(action_half)
                     

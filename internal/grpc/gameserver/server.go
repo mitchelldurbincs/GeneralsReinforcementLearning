@@ -189,7 +189,9 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 
 	// Start game if we have enough players
 	if len(game.players) == int(game.config.MaxPlayers) {
+		game.mu.Lock()
 		game.status = commonv1.GameStatus_GAME_STATUS_IN_PROGRESS
+		game.mu.Unlock()
 		
 		// Create the game engine
 		engineConfig := gameengine.GameConfig{
@@ -198,7 +200,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 			Players: int(game.config.MaxPlayers),
 			Logger:  log.Logger,
 		}
-		game.engine = gameengine.NewEngine(ctx, engineConfig)
+		game.engine = gameengine.NewEngine(context.Background(), engineConfig)
 		
 		if game.engine == nil {
 			return nil, status.Errorf(codes.Internal, "failed to create game engine for game %s: config %dx%d with %d players", req.GameId, game.config.Width, game.config.Height, game.config.MaxPlayers)
@@ -207,6 +209,12 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		// Initialize action collection
 		game.actionBuffer = make(map[int32]core.Action)
 		game.currentTurn = 0
+		
+		log.Info().
+			Str("game_id", req.GameId).
+			Int32("current_turn", game.currentTurn).
+			Bool("action_buffer_initialized", game.actionBuffer != nil).
+			Msg("Game state initialized")
 		
 		// Start turn timer if configured
 		if game.config.TurnTimeMs > 0 {
@@ -262,11 +270,15 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 	}
 	
 	// Check game status
-	if game.status != commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
+	game.mu.Lock()
+	currentStatus := game.status
+	game.mu.Unlock()
+	
+	if currentStatus != commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
 		resp := &gamev1.SubmitActionResponse{
 			Success:      false,
 			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_GAME_OVER,
-			ErrorMessage: fmt.Sprintf("game %s is not in progress (status: %s)", req.GameId, game.status),
+			ErrorMessage: fmt.Sprintf("game %s is not in progress (status: %s)", req.GameId, currentStatus),
 		}
 		if req.IdempotencyKey != "" {
 			game.storeIdempotency(req.IdempotencyKey, resp)
