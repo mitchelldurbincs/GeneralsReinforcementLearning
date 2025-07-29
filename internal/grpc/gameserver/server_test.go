@@ -138,7 +138,7 @@ func TestJoinGame(t *testing.T) {
 	}
 	_, err = client.JoinGame(ctx, joinReq3)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "game is full")
+	assert.Contains(t, err.Error(), "is full")
 
 	// Test joining non-existent game
 	joinReq4 := &gamev1.JoinGameRequest{

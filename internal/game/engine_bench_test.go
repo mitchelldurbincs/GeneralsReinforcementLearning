@@ -180,7 +180,7 @@ func BenchmarkBoardStringBuilding(b *testing.B) {
 			if tc.fogOfWar {
 				// Make some tiles visible for player 0
 				for i := 0; i < len(engine.gs.Board.T)/4; i++ {
-					engine.gs.Board.T[i].Visible[0] = true
+					engine.gs.Board.T[i].SetVisible(0, true)
 				}
 			}
 			

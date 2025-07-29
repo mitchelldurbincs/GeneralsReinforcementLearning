@@ -198,22 +198,22 @@ func TestEngine_PlayerEliminationAndTileTurnover(t *testing.T) {
 	// P1: Land at (2,2) Army 3, Owner P1
 	board := engine.gs.Board
 	p0AttackerIdx := board.Idx(0, 0)
-	board.T[p0AttackerIdx] = core.Tile{Owner: 0, Army: 20, Type: core.TileNormal, Visible: make(map[int]bool)}
+	board.T[p0AttackerIdx] = core.Tile{Owner: 0, Army: 20, Type: core.TileNormal}
 
 	p1GeneralOriginalIdx := p1.GeneralIdx
 	require.NotEqual(t, -1, p1GeneralOriginalIdx, "Player 1 should have a general from NewEngine")
 
 	p1NewGeneralIdx := board.Idx(0, 1)
 	if p1GeneralOriginalIdx != p1NewGeneralIdx { // Relocate P1's general for test predictability
-		board.T[p1GeneralOriginalIdx] = core.Tile{Owner: core.NeutralID, Type: core.TileNormal, Army: 0, Visible: make(map[int]bool)}
+		board.T[p1GeneralOriginalIdx] = core.Tile{Owner: core.NeutralID, Type: core.TileNormal, Army: 0}
 	}
-	board.T[p1NewGeneralIdx] = core.Tile{Owner: 1, Army: 1, Type: core.TileGeneral, Visible: make(map[int]bool)}
+	board.T[p1NewGeneralIdx] = core.Tile{Owner: 1, Army: 1, Type: core.TileGeneral}
 	p1.GeneralIdx = p1NewGeneralIdx
 
 	p1CityIdx := board.Idx(1, 1)
-	board.T[p1CityIdx] = core.Tile{Owner: 1, Army: 5, Type: core.TileCity, Visible: make(map[int]bool)}
+	board.T[p1CityIdx] = core.Tile{Owner: 1, Army: 5, Type: core.TileCity}
 	p1LandIdx := board.Idx(2, 2)
-	board.T[p1LandIdx] = core.Tile{Owner: 1, Army: 3, Type: core.TileNormal, Visible: make(map[int]bool)}
+	board.T[p1LandIdx] = core.Tile{Owner: 1, Army: 3, Type: core.TileNormal}
 
 	require.NotEqual(t, p0.GeneralIdx, p1NewGeneralIdx, "Test setup conflict: P0 general on P1 general spot")
 	require.NotEqual(t, p0AttackerIdx, p1NewGeneralIdx, "Test setup conflict: P0 attacker on P1 general spot")
@@ -261,7 +261,7 @@ func TestEngine_Step_ActionFromDeadPlayer(t *testing.T) {
 	// First, remove P1's general from the board to truly make them dead
 	if engine.gs.Players[player1ID].GeneralIdx != -1 {
 		board := engine.gs.Board
-		board.T[engine.gs.Players[player1ID].GeneralIdx] = core.Tile{Owner: core.NeutralID, Army: 0, Type: core.TileNormal, Visible: make(map[int]bool)}
+		board.T[engine.gs.Players[player1ID].GeneralIdx] = core.Tile{Owner: core.NeutralID, Army: 0, Type: core.TileNormal}
 	}
 	
 	engine.gs.Players[player1ID].Alive = false
@@ -269,10 +269,10 @@ func TestEngine_Step_ActionFromDeadPlayer(t *testing.T) {
 
 	board := engine.gs.Board
 	p0TileIdx := board.Idx(0, 0)
-	board.T[p0TileIdx] = core.Tile{Owner: player0ID, Army: 10, Type: core.TileNormal, Visible: make(map[int]bool)}
+	board.T[p0TileIdx] = core.Tile{Owner: player0ID, Army: 10, Type: core.TileNormal}
 
 	p1OwnedTileIdx := board.Idx(1, 1) // P1 formally owns this tile despite being dead
-	board.T[p1OwnedTileIdx] = core.Tile{Owner: player1ID, Army: 5, Type: core.TileNormal, Visible: make(map[int]bool)}
+	board.T[p1OwnedTileIdx] = core.Tile{Owner: player1ID, Army: 5, Type: core.TileNormal}
 
 	actions := []core.Action{
 		&core.MoveAction{PlayerID: player1ID, FromX: 1, FromY: 1, ToX: 1, ToY: 2, MoveAll: true}, // Action from dead P1
