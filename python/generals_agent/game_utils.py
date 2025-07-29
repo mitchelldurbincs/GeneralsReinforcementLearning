@@ -198,7 +198,8 @@ def get_visible_tiles(game_state: game_pb2.GameState, player_id: str) -> Set[Tup
     player_idx = int(player_id)
     
     # If no fog of war, all tiles are visible
-    if not game_state.board.tiles[0].is_visible:  # Check if visibility is being tracked
+    # Check if the first tile has visibility tracking by checking if visible field exists and is False
+    if not hasattr(game_state.board.tiles[0], 'visible') or not game_state.fog_of_war_enabled:
         for y in range(game_state.board.height):
             for x in range(game_state.board.width):
                 visible.add((x, y))

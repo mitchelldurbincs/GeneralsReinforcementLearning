@@ -144,7 +144,7 @@ class TileInfo:
             tile_type=tile_type,
             owner_id=proto.owner_id if proto.owner_id else None,
             army_size=proto.army_count,
-            is_visible=True  # Tiles in state are always visible
+            is_visible=proto.visible if hasattr(proto, 'visible') else True
         )
 
 
