@@ -10,6 +10,7 @@ cd "$(dirname "$0")/.."
 # Create output directories if they don't exist
 mkdir -p pkg/api/game/v1
 mkdir -p pkg/api/common/v1
+mkdir -p pkg/api/experience/v1
 
 # Generate common proto files
 echo "Generating common proto files..."
@@ -30,5 +31,15 @@ protoc \
     --go-grpc_opt=paths=source_relative \
     -I proto \
     proto/game/v1/*.proto 2>/dev/null || echo "No game proto files to generate yet"
+
+# Generate experience proto files
+echo "Generating experience proto files..."
+protoc \
+    --go_out=pkg/api \
+    --go_opt=paths=source_relative \
+    --go-grpc_out=pkg/api \
+    --go-grpc_opt=paths=source_relative \
+    -I proto \
+    proto/experience/v1/*.proto 2>/dev/null || echo "No experience proto files to generate yet"
 
 echo "Proto generation complete!"

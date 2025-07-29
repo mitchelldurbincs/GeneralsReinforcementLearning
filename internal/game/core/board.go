@@ -28,6 +28,17 @@ func (t *Tile) IsNeutral() bool { return t.Owner == NeutralID }
 func (t *Tile) IsCity() bool    { return t.Type == TileCity }
 func (t *Tile) IsGeneral() bool { return t.Type == TileGeneral }
 func (t *Tile) IsMountain() bool { return t.Type == TileMountain }
+
+// Clone creates a deep copy of the board
+func (b *Board) Clone() *Board {
+	clone := &Board{
+		W: b.W,
+		H: b.H,
+		T: make([]Tile, len(b.T)),
+	}
+	copy(clone.T, b.T)
+	return clone
+}
 func (t *Tile) IsEmpty() bool    { return t.IsNeutral() && t.Type == TileNormal && t.Army == 0 }
 
 // New bitfield visibility methods

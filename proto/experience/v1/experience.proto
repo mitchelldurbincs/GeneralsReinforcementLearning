@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package generals.experience.v1;
+
+import "common/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/experience/v1;experiencev1";
+
+// ExperienceService provides APIs for experience collection and consumption
+service ExperienceService {
+  // StreamExperiences streams collected experiences to a trainer
+  rpc StreamExperiences(StreamExperiencesRequest) returns (stream Experience);
+  
+  // SubmitExperiences allows batch submission of experiences (for distributed collection)
+  rpc SubmitExperiences(SubmitExperiencesRequest) returns (SubmitExperiencesResponse);
+  
+  // GetExperienceStats returns statistics about collected experiences
+  rpc GetExperienceStats(GetExperienceStatsRequest) returns (GetExperienceStatsResponse);
+}
+
+// Experience represents a single (s, a, r, s', done) tuple
+message Experience {
+  string experience_id = 1;  // Unique ID for deduplication
+  string game_id = 2;        // Game this experience came from
+  int32 player_id = 3;       // Player perspective
+  int32 turn = 4;            // Turn number
+  
+  // State representation as multi-channel tensor
+  TensorState state = 5;
+  
+  // Action taken (flattened index: (y * width + x) * 4 + direction)
+  int32 action = 6;
+  
+  // Reward received
+  float reward = 7;
+  
+  // Next state
+  TensorState next_state = 8;
+  
+  // Whether the episode ended
+  bool done = 9;
+  
+  // Action mask for off-policy correction (flattened boolean array)
+  repeated bool action_mask = 10;
+  
+  // Metadata
+  google.protobuf.Timestamp collected_at = 11;
+  map<string, string> metadata = 12;  // Additional metadata (e.g., agent version)
+}
+
+// TensorState represents the state as a multi-channel tensor
+message TensorState {
+  // Tensor dimensions: [channels, height, width]
+  repeated int32 shape = 1;
+  
+  // Flattened tensor data in row-major order
+  // Channel order:
+  // 0: Own armies (normalized 0-1)
+  // 1: Enemy armies (normalized 0-1)
+  // 2: Own territory (binary)
+  // 3: Enemy territory (binary)
+  // 4: Neutral territory (binary)
+  // 5: Cities (binary)
+  // 6: Mountains (binary)
+  // 7: Visible tiles (binary)
+  // 8: Fog of war tiles (binary)
+  repeated float data = 2;
+}
+
+// StreamExperiencesRequest initiates an experience stream
+message StreamExperiencesRequest {
+  // Filter criteria
+  repeated string game_ids = 1;      // Empty = all games
+  repeated int32 player_ids = 2;     // Empty = all players
+  int64 min_turn = 3;                // Minimum turn number
+  bool follow = 4;                   // Keep streaming new experiences
+  int32 batch_size = 5;              // Experiences per message (0 = no batching)
+}
+
+// SubmitExperiencesRequest for batch submission
+message SubmitExperiencesRequest {
+  repeated Experience experiences = 1;
+}
+
+// SubmitExperiencesResponse
+message SubmitExperiencesResponse {
+  int32 accepted = 1;     // Number of experiences accepted
+  int32 rejected = 2;     // Number of experiences rejected (e.g., duplicates)
+  repeated string errors = 3;
+}
+
+// GetExperienceStatsRequest
+message GetExperienceStatsRequest {
+  repeated string game_ids = 1;   // Empty = all games
+}
+
+// GetExperienceStatsResponse
+message GetExperienceStatsResponse {
+  int64 total_experiences = 1;
+  int64 total_games = 2;
+  map<string, int64> experiences_per_game = 3;
+  map<int32, int64> experiences_per_player = 4;
+  float average_reward = 5;
+  float min_reward = 6;
+  float max_reward = 7;
+  google.protobuf.Timestamp oldest_experience = 8;
+  google.protobuf.Timestamp newest_experience = 9;
+}
+
+// RewardConfig for configurable reward computation
+message RewardConfig {
+  float territory_gained = 1;      // Reward per tile gained (default: 1.0)
+  float territory_lost = 2;        // Penalty per tile lost (default: -1.0)
+  float army_gained = 3;           // Reward per army gained (default: 0.1)
+  float army_lost = 4;             // Penalty per army lost (default: -0.1)
+  float enemy_general_captured = 5; // Reward for capturing enemy general (default: 100.0)
+  float own_general_lost = 6;      // Penalty for losing own general (default: -100.0)
+  float win_game = 7;              // Reward for winning (default: 500.0)
+  float lose_game = 8;             // Penalty for losing (default: -500.0)
+  float city_captured = 9;         // Reward for capturing a city (default: 10.0)
+  float city_lost = 10;            // Penalty for losing a city (default: -10.0)
+}

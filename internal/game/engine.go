@@ -30,18 +30,22 @@ type Engine struct {
 	eventBus *events.EventBus
 	gameID   string
 	
+	// Experience collection
+	experienceCollector ExperienceCollector
+	
 	// Reusable temporary maps to avoid allocations
 	tempTileOwnership   map[int]int        // Used in performIncrementalStatsUpdate
 	tempAffectedPlayers map[int]struct{}   // Used in performIncrementalVisibilityUpdate
 }
 
 type GameConfig struct {
-	Width    int
-	Height   int
-	Players  int
-	Rng      *rand.Rand
-	Logger   zerolog.Logger
-	GameID   string // Optional game ID, will be generated if not provided
+	Width               int
+	Height              int
+	Players             int
+	Rng                 *rand.Rand
+	Logger              zerolog.Logger
+	GameID              string // Optional game ID, will be generated if not provided
+	ExperienceCollector ExperienceCollector // Optional experience collector
 }
 
 // NewEngine creates a new game engine with map generation.
@@ -113,6 +117,11 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 	// Create action processor
 	actionProc := processor.NewActionProcessor(engineLogger)
 	
+	// Use provided experience collector if available
+	if cfg.ExperienceCollector != nil {
+		engineLogger.Info().Msg("Experience collection enabled")
+	}
+	
 	e := &Engine{
 		gs:       gs,
 		rng:      cfg.Rng,
@@ -123,6 +132,7 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 		legalMoves:      rules.NewLegalMoveCalculator(),
 		eventBus:            events.NewEventBus(),
 		gameID:              cfg.GameID,
+		experienceCollector: cfg.ExperienceCollector,
 		tempTileOwnership:   make(map[int]int),
 		tempAffectedPlayers: make(map[int]struct{}),
 	}
@@ -158,6 +168,13 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	if e.gameOver {
 		e.logger.Warn().Int("turn", e.gs.Turn).Msg("Attempted to step game that is already over")
 		return core.WrapGameStateError(e.gs.Turn, "step", core.ErrGameOver)
+	}
+
+	// Capture previous state for experience collection
+	var prevState *GameState
+	if e.experienceCollector != nil {
+		// Deep copy the state before modifications
+		prevState = e.gs.Clone()
 	}
 
 	turnStartTime := time.Now()
@@ -210,6 +227,27 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 	}
 	e.updatePlayerStats()
 	e.checkGameOver(turnLogger)
+
+	// Collect experiences if enabled
+	if e.experienceCollector != nil && prevState != nil {
+		// Convert core.Action to game.Action with player IDs
+		actionMap := make(map[int]*Action)
+		for _, action := range actions {
+			if moveAction, ok := action.(*core.MoveAction); ok {
+				actionMap[moveAction.PlayerID] = &Action{
+					Type: ActionTypeMove,
+					From: moveAction.From,
+					To:   moveAction.To,
+				}
+			}
+		}
+		e.experienceCollector.OnStateTransition(prevState, e.gs, actionMap)
+		
+		// If game is over, notify collector
+		if e.gameOver {
+			e.experienceCollector.OnGameEnd(e.gs)
+		}
+	}
 
 	// Publish TurnEnded event
 	e.eventBus.Publish(events.NewTurnEndedEvent(e.gameID, e.gs.Turn, len(actions), time.Since(turnStartTime)))
@@ -420,4 +458,9 @@ func (e *Engine) GetVisibilityChangedTiles() map[int]bool {
 		result[tileIdx] = true
 	}
 	return result
+}
+
+// GetExperienceCollector returns the experience collector if available
+func (e *Engine) GetExperienceCollector() ExperienceCollector {
+	return e.experienceCollector
 }
