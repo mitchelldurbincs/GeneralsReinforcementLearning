@@ -4,46 +4,162 @@
 
 This document provides a detailed implementation plan for the experience collection system in the Generals.io RL training infrastructure. The system collects (state, action, reward, next_state, done) tuples during gameplay for training reinforcement learning agents.
 
+## Architecture Overview
+
+### Data Flow Diagram
+```
+Game Engine → Experience Collector → Experience Buffer → Storage/Streaming
+     ↓              ↓                      ↓                    ↓
+Game State    State Tensor          In-Memory Queue      S3/File Storage
+             Reward Calc                   ↓              gRPC Stream
+             Action Mask             Python Trainer ←─────────┘
+```
+
+### Processing Paths
+1. **Online Path** (Real-time streaming): Game → Collector → Buffer → gRPC Stream → Trainer
+2. **Offline Path** (Batch processing): Game → Collector → Buffer → Storage → Batch Trainer
+
 ## Current Implementation Status
 
-### ✅ Completed Components
+### ✅ Actually Completed Components
 
 1. **Experience Protobuf Messages** (`proto/experience/v1/experience.proto`)
    - Defines `Experience` message with tensor states, actions, rewards
    - Includes `TensorState` for multi-channel neural network inputs
    - Supports experience streaming and batch submission
 
-2. **State Serializer** (`internal/experience/serializer.go`)
-   - Converts game states to 9-channel tensor representation:
-     - Channel 0: Own armies (normalized 0-1)
-     - Channel 1: Enemy armies (normalized 0-1)
-     - Channel 2: Own territory (binary)
-     - Channel 3: Enemy territory (binary)
-     - Channel 4: Neutral territory (binary)
-     - Channel 5: Cities (binary)
-     - Channel 6: Mountains (binary)
-     - Channel 7: Visible tiles (binary)
-     - Channel 8: Fog of war tiles (binary)
-   - Provides action mask generation for legal moves
-   - Handles action index conversion (flat index ↔ x,y,direction)
-
-3. **Reward Calculator** (`internal/experience/rewards.go`)
-   - Implements reward structure:
-     - Win/Loss: +1.0/-1.0
-     - City capture/loss: +0.1/-0.1
-     - Army advantage: Proportional scaling from -0.05 to +0.05
-   - Configurable reward weights via `RewardConfig`
-
-4. **Experience Buffer** (`internal/experience/buffer.go`)
-   - Thread-safe circular buffer for experiences
-   - Supports streaming via channels
-   - Provides batch sampling for training
-   - Includes save/load functionality
-
-5. **Game Engine Integration** (`internal/game/engine.go`)
-   - Experience collector interface to avoid circular dependencies
+2. **Game Engine Integration** (`internal/game/engine.go`)
+   - Experience collector interface (`internal/game/experience_collector.go`)
    - Hooks in `Step()` function to capture state transitions
-   - Automatic experience collection when games end
+   - Support for experience collection when games end
+
+3. **Core Experience Collection Components** (Added January 2025)
+   - **SimpleCollector** (`internal/experience/collector.go`) - Basic in-memory experience collector
+   - **Serializer** (`internal/experience/serializer.go`) - State to tensor conversion
+   - **Reward Calculator** (`internal/experience/rewards.go`) - Configurable reward computation
+   - **Experience Buffer** (`internal/experience/buffer.go`) - Thread-safe circular buffer with streaming
+
+### 🐛 Issues Fixed (January 2025)
+
+1. **Test Compilation Errors**:
+   - Fixed incorrect tile type constants (e.g., `core.TileTypeEmpty` → `core.TileNormal`)
+   - Fixed tile struct field names (e.g., `Tiles` → `T`, `Armies` → `Army`)
+   - Fixed visibility method calls (e.g., `SetVisibleTo()` → `SetVisible()`)
+   - Removed unused imports
+
+2. **Game State API Mismatches**:
+   - GameState doesn't have `GameOver` or `Winner` fields directly
+   - Must use `IsGameOver()` and `GetWinner()` methods instead
+   - These require Engine integration, so some tests are skipped
+
+### ⚠️ Partially Implemented / Needs Work
+
+1. **Test Coverage**:
+   - Most tests pass except `TestSimpleCollector_OnStateTransition` which has an assertion failure
+   - Win/loss reward tests are skipped as they require Engine integration
+   - Need to add integration tests with actual game engine
+
+2. **Missing gRPC Integration**:
+   - StreamExperiences endpoint not yet implemented
+   - Need to connect buffer to gRPC streaming service
+
+## MVP Implementation Strategy
+
+### Phase 1: Core Components (Week 1)
+Start with a minimal viable implementation to prove the concept:
+
+```go
+// internal/experience/collector_simple.go
+package experience
+
+import (
+    "sync"
+    "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
+    experiencepb "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/experience/v1"
+)
+
+type SimpleCollector struct {
+    experiences []*experiencepb.Experience
+    mu          sync.Mutex
+    maxSize     int
+}
+
+func NewSimpleCollector(maxSize int) *SimpleCollector {
+    return &SimpleCollector{
+        experiences: make([]*experiencepb.Experience, 0, maxSize),
+        maxSize:     maxSize,
+    }
+}
+
+func (c *SimpleCollector) OnStateTransition(prevState, currState *game.GameState, actions map[int]*game.Action) {
+    // TODO: Implement state serialization
+    // TODO: Calculate rewards
+    // TODO: Create experience protobuf
+}
+
+func (c *SimpleCollector) OnGameEnd(finalState *game.GameState) {
+    // TODO: Handle terminal states
+}
+
+func (c *SimpleCollector) GetExperiences() []*experiencepb.Experience {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    return append([]*experiencepb.Experience{}, c.experiences...)
+}
+```
+
+### Phase 2: Serialization (Week 1-2)
+Implement the state tensor conversion:
+
+```go
+// internal/experience/serializer.go
+package experience
+
+import (
+    "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
+)
+
+const (
+    ChannelOwnArmies = 0
+    ChannelEnemyArmies = 1
+    ChannelOwnTerritory = 2
+    ChannelEnemyTerritory = 3
+    ChannelNeutralTerritory = 4
+    ChannelCities = 5
+    ChannelMountains = 6
+    ChannelVisible = 7
+    ChannelFog = 8
+    NumChannels = 9
+)
+
+func StateToTensor(state *game.GameState, playerID int) []float32 {
+    width := state.Board.Width
+    height := state.Board.Height
+    tensor := make([]float32, NumChannels*width*height)
+    
+    // TODO: Implement channel filling logic
+    
+    return tensor
+}
+```
+
+### Phase 3: Basic Rewards (Week 2)
+Simple reward calculation without configuration:
+
+```go
+// internal/experience/rewards.go
+package experience
+
+func CalculateReward(prevState, currState *game.GameState, playerID int) float32 {
+    // Start simple - just win/loss
+    if currState.Winner == playerID {
+        return 1.0
+    } else if currState.Winner != -1 {
+        return -1.0
+    }
+    return 0.0 // Game continues
+}
+```
 
 ## Remaining Implementation Tasks
 
@@ -360,6 +476,87 @@ func TestEndToEndExperienceCollection(t *testing.T) {
 }
 ```
 
+### Performance Benchmarks
+
+```go
+// internal/experience/bench_test.go
+func BenchmarkStateToTensor(b *testing.B) {
+    state := createTestGameState(20, 20) // 20x20 board
+    serializer := NewSerializer()
+    
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        _ = serializer.StateToTensor(state, 0)
+    }
+    b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "states/sec")
+}
+
+func BenchmarkExperienceCompression(b *testing.B) {
+    experiences := generateTestExperiences(100)
+    
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        _, _ = CompressExperiences(experiences)
+    }
+    
+    // Report compression ratio
+    original := calculateSize(experiences)
+    compressed, _ := CompressExperiences(experiences)
+    b.ReportMetric(float64(original)/float64(len(compressed)), "compression_ratio")
+}
+
+func BenchmarkMemoryPooling(b *testing.B) {
+    b.Run("WithPooling", func(b *testing.B) {
+        serializer := NewPooledSerializer()
+        state := createTestGameState(20, 20)
+        
+        b.ResetTimer()
+        for i := 0; i < b.N; i++ {
+            buf := serializer.StateToTensorPooled(state, 0)
+            buf.Release()
+        }
+    })
+    
+    b.Run("WithoutPooling", func(b *testing.B) {
+        serializer := NewSerializer()
+        state := createTestGameState(20, 20)
+        
+        b.ResetTimer()
+        for i := 0; i < b.N; i++ {
+            _ = serializer.StateToTensor(state, 0)
+        }
+    })
+}
+```
+
+### Memory Profiling Tests
+
+```go
+// internal/experience/memory_test.go
+func TestBufferMemoryUsage(t *testing.T) {
+    var m runtime.MemStats
+    
+    runtime.GC()
+    runtime.ReadMemStats(&m)
+    allocBefore := m.Alloc
+    
+    buffer := NewExperienceBuffer(100000)
+    for i := 0; i < 100000; i++ {
+        buffer.Add(generateTestExperience())
+    }
+    
+    runtime.GC()
+    runtime.ReadMemStats(&m)
+    allocAfter := m.Alloc
+    
+    bytesPerExperience := float64(allocAfter-allocBefore) / 100000
+    t.Logf("Memory per experience: %.2f KB", bytesPerExperience/1024)
+    
+    // Ensure we're within expected bounds
+    assert.Less(t, bytesPerExperience, 35000.0) // Less than 35KB per experience
+}
+```
+
 ### Load Tests
 
 ```python
@@ -382,6 +579,27 @@ def test_concurrent_consumers():
     # Verify all consumers received experiences
     for future in futures:
         assert future.result() == 10000
+
+def test_experience_throughput():
+    """Measure maximum experience collection throughput."""
+    collector = ExperienceCollector()
+    
+    start_time = time.time()
+    experiences_collected = 0
+    
+    # Run for 60 seconds
+    while time.time() - start_time < 60:
+        state = generate_random_state()
+        next_state = generate_random_state()
+        
+        collector.collect(state, action=0, reward=0.0, next_state=next_state, done=False)
+        experiences_collected += 1
+    
+    throughput = experiences_collected / 60
+    print(f"Throughput: {throughput:.2f} experiences/second")
+    
+    # Should handle at least 50k experiences/second
+    assert throughput > 50000
 ```
 
 ## Deployment Considerations
@@ -430,7 +648,24 @@ spec:
 - **Redundant storage**: Write to multiple destinations
 - **Health checks**: Automatic detection and recovery of failed components
 
-## Performance Optimizations
+## Performance Considerations and Optimizations
+
+### Memory and Bandwidth Analysis
+
+For a 20x20 board:
+- State size: 9 channels × 20 × 20 × 4 bytes = 14.4KB per state
+- Experience size: ~30KB (state + next_state + metadata)
+- At 1000 games/second with 50 turns average:
+  - Raw data rate: 1.5GB/s
+  - After compression (zstd): ~300-500MB/s
+  - Network bandwidth: ~2.4-4Gbps
+
+### Memory Requirements by Scale
+| Games/Second | Buffer Size (1M exp) | Data Rate | Network BW |
+|--------------|---------------------|-----------|------------|
+| 100          | 3GB                 | 150MB/s   | 1.2Gbps    |
+| 500          | 15GB                | 750MB/s   | 6Gbps      |
+| 1000         | 30GB                | 1.5GB/s   | 12Gbps     |
 
 ### 1. Zero-Copy Serialization
 
@@ -438,8 +673,33 @@ spec:
 // Use memory pooling for tensor allocations
 var tensorPool = sync.Pool{
     New: func() interface{} {
-        return make([]float32, 9*20*20) // Pre-allocate for 20x20 board
+        return &TensorBuffer{
+            data: make([]float32, 9*20*20), // Pre-allocate for 20x20 board
+        }
     },
+}
+
+type TensorBuffer struct {
+    data []float32
+    size int
+}
+
+func (s *Serializer) StateToTensorPooled(state *game.GameState, playerID int) *TensorBuffer {
+    buf := tensorPool.Get().(*TensorBuffer)
+    buf.size = NumChannels * state.Board.Width * state.Board.Height
+    
+    // Reuse buffer if it's large enough
+    if len(buf.data) < buf.size {
+        buf.data = make([]float32, buf.size)
+    }
+    
+    // Fill tensor data...
+    return buf
+}
+
+// Return buffer to pool when done
+func (buf *TensorBuffer) Release() {
+    tensorPool.Put(buf)
 }
 ```
 
@@ -476,7 +736,7 @@ func (c *Collector) OnBatchStateTransition(
 }
 ```
 
-### 3. Compression
+### 3. Compression Strategy
 
 ```go
 // Compress experiences before storage/transmission
@@ -497,6 +757,177 @@ func CompressExperiences(experiences []*experiencepb.Experience) ([]byte, error)
 }
 ```
 
+### 4. Early Compression in Pipeline
+
+```go
+// Compress at collection time to reduce memory usage
+type CompressedCollector struct {
+    compressed [][]byte
+    compressor *zstd.Encoder
+    mu         sync.Mutex
+}
+
+func (c *CompressedCollector) AddExperience(exp *experiencepb.Experience) error {
+    data, err := proto.Marshal(exp)
+    if err != nil {
+        return err
+    }
+    
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    
+    compressed := c.compressor.EncodeAll(data, nil)
+    c.compressed = append(c.compressed, compressed)
+    
+    return nil
+}
+```
+
+## Troubleshooting Guide
+
+### Common Issues and Solutions
+
+#### 1. High Memory Usage
+**Symptoms**: OOM errors, slow performance, system instability
+
+**Solutions**:
+- Reduce buffer size in configuration
+- Enable compression earlier in pipeline
+- Implement experience sampling/dropping
+- Use disk-backed buffer for overflow
+
+```go
+// Example: Disk-backed overflow buffer
+type HybridBuffer struct {
+    memory     *RingBuffer
+    disk       *DiskBuffer
+    threshold  float64 // e.g., 0.8 = use disk when 80% full
+}
+```
+
+#### 2. Slow Serialization Performance
+**Symptoms**: Low experience collection rate, game lag
+
+**Solutions**:
+- Enable memory pooling
+- Parallelize serialization for multiple players
+- Profile and optimize hot paths
+- Consider reducing tensor precision (float32 → float16)
+
+```bash
+# Profile serialization performance
+go test -bench=BenchmarkStateToTensor -cpuprofile=cpu.prof
+go tool pprof cpu.prof
+```
+
+#### 3. Network Bottlenecks
+**Symptoms**: Trainer lag, dropped experiences, timeouts
+
+**Solutions**:
+- Increase batch sizes to reduce message overhead
+- Enable compression for network transfers
+- Implement local caching for trainers
+- Use multiple gRPC connections for parallelism
+
+```yaml
+# config/experience.yaml
+streaming:
+  batch_size: 256  # Increase from default 32
+  compression: true
+  max_message_size: 10485760  # 10MB
+```
+
+#### 4. Experience Loss/Corruption
+**Symptoms**: Missing experiences, training instability
+
+**Solutions**:
+- Enable write-ahead logging
+- Implement checksums for experience validation
+- Add retry logic for failed writes
+- Monitor experience sequence numbers
+
+```go
+// Example: Experience validation
+func ValidateExperience(exp *Experience) error {
+    if exp.State == nil || exp.NextState == nil {
+        return errors.New("missing state data")
+    }
+    if exp.Action < 0 || exp.Action >= MaxActions {
+        return errors.New("invalid action")
+    }
+    if math.IsNaN(float64(exp.Reward)) {
+        return errors.New("NaN reward")
+    }
+    return nil
+}
+```
+
+#### 5. Storage Write Failures
+**Symptoms**: S3 errors, disk full, permission denied
+
+**Solutions**:
+- Implement exponential backoff retry
+- Use multi-destination writes
+- Monitor disk usage and alert early
+- Rotate/archive old experiences
+
+```go
+// Example: Retry with backoff
+func WriteWithRetry(writer Writer, data []byte) error {
+    backoff := 100 * time.Millisecond
+    for i := 0; i < 5; i++ {
+        err := writer.Write(data)
+        if err == nil {
+            return nil
+        }
+        
+        log.Warn().Err(err).Int("attempt", i+1).Msg("Write failed, retrying")
+        time.Sleep(backoff)
+        backoff *= 2
+    }
+    return fmt.Errorf("write failed after 5 attempts")
+}
+```
+
+### Monitoring Checklist
+
+1. **System Metrics**:
+   - CPU usage per component
+   - Memory usage and growth rate
+   - Network bandwidth utilization
+   - Disk I/O and space usage
+
+2. **Application Metrics**:
+   - Experiences collected per second
+   - Serialization latency (p50, p95, p99)
+   - Buffer fill rate and drops
+   - gRPC stream health and latency
+
+3. **Data Quality Metrics**:
+   - Reward distribution statistics
+   - Action distribution (ensure exploration)
+   - Experience validation failures
+   - Compression ratios achieved
+
+### Debug Commands
+
+```bash
+# Check experience collection rate
+curl -s localhost:9090/metrics | grep experiences_collected_total
+
+# Monitor buffer usage
+watch -n 1 'curl -s localhost:9090/metrics | grep experience_buffer'
+
+# Test gRPC streaming
+grpcurl -plaintext localhost:50051 generals.experience.v1.ExperienceService/StreamExperiences
+
+# Analyze memory usage
+go tool pprof http://localhost:6060/debug/pprof/heap
+
+# Check for goroutine leaks
+curl http://localhost:6060/debug/pprof/goroutine?debug=2
+```
+
 ## Future Enhancements
 
 1. **Prioritized Experience Replay**: Weight experiences by TD-error
@@ -504,3 +935,5 @@ func CompressExperiences(experiences []*experiencepb.Experience) ([]byte, error)
 3. **Experience Augmentation**: Generate synthetic experiences
 4. **Curriculum Learning**: Adjust game difficulty based on agent performance
 5. **Multi-Agent Experience Sharing**: Share experiences between similar agents
+6. **Experience Deduplication**: Prevent duplicate experiences in distributed settings
+7. **Adaptive Compression**: Adjust compression based on network/CPU trade-offs
