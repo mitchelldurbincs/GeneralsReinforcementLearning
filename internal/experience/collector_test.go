@@ -354,6 +354,14 @@ func createTestGameState(width, height int) *game.GameState {
 		Army:  10,
 	}
 	
+	// Place a general for player 1 at the opposite corner
+	lastIdx := width*height - 1
+	board.T[lastIdx] = core.Tile{
+		Type:  core.TileGeneral,
+		Owner: 1,
+		Army:  10,
+	}
+	
 	// Create player states
 	players := []game.Player{
 		{
@@ -362,6 +370,13 @@ func createTestGameState(width, height int) *game.GameState {
 			ArmyCount:  10,
 			GeneralIdx: 0,
 			OwnedTiles: []int{0},
+		},
+		{
+			ID:         1,
+			Alive:      true,
+			ArmyCount:  10,
+			GeneralIdx: lastIdx,
+			OwnedTiles: []int{lastIdx},
 		},
 	}
 	

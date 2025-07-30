@@ -3,7 +3,6 @@ package experience
 import (
 	"testing"
 
-	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/stretchr/testify/assert"
 )
