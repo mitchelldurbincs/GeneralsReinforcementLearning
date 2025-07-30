@@ -125,9 +125,10 @@ This document outlines the technologies used in the Generals Reinforcement Learn
 ### Configuration Management Strategy
 - YAML-based configuration files with Viper
 - **Configuration Files**:
-  - `config.yaml`: Base configuration with defaults
-  - `config.dev.yaml`: Development environment overrides
-  - `config.prod.yaml`: Production environment settings
+  - `config/config.yaml`: Base configuration with defaults
+  - `config/config.dev.yaml`: Development environment overrides
+  - `config/config.prod.yaml`: Production environment settings
+  - `config/rlconfig.yaml`: Reinforcement learning specific configuration
 - **Why**: Flexible configuration management, environment-specific settings, hot-reloading support
 - **Features**: Hierarchical configuration, environment variable overrides, type safety
 

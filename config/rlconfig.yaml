@@ -1,0 +1,186 @@
+# Reinforcement Learning Configuration
+# This configuration file controls RL-specific parameters that can be adjusted during training
+
+# Training parameters
+training:
+  # Learning rate schedule
+  learning_rate:
+    initial: 0.0003
+    decay_rate: 0.995
+    min_rate: 0.00001
+    decay_steps: 1000
+  
+  # Batch and buffer sizes
+  batch_size: 32
+  replay_buffer_size: 100000
+  min_replay_size: 1000
+  
+  # Training frequency
+  train_interval: 4
+  target_update_interval: 1000
+  
+  # Exploration parameters
+  epsilon:
+    initial: 1.0
+    final: 0.01
+    decay_steps: 10000
+    decay_type: "exponential"  # linear, exponential
+  
+  # Discount factor
+  gamma: 0.99
+  
+  # Gradient clipping
+  gradient_clip_norm: 10.0
+  
+  # Checkpoint settings
+  checkpoint_interval: 5000
+  checkpoint_dir: "./checkpoints"
+  keep_checkpoints: 5
+
+# Environment settings
+environment:
+  # Reward shaping
+  rewards:
+    tile_capture: 1.0
+    city_capture: 5.0
+    general_capture: 100.0
+    army_loss_penalty: -0.1
+    turn_penalty: -0.01
+    win_bonus: 200.0
+    loss_penalty: -100.0
+  
+  # Episode settings
+  max_episode_steps: 500
+  early_termination_threshold: 0.95  # End if one player controls 95% of map
+  
+  # State representation
+  state:
+    include_fog_of_war: true
+    normalize_values: true
+    include_turn_counter: true
+    include_production_cycles: true
+    
+  # Action masking
+  action_masking:
+    enabled: true
+    invalid_action_penalty: -10.0
+
+# Multi-agent settings
+multi_agent:
+  # Self-play configuration
+  self_play:
+    enabled: true
+    past_agents_ratio: 0.3  # Percentage of games against past versions
+    save_interval: 10000    # Steps between saving agent versions
+    min_elo_difference: 50  # Minimum ELO difference to save new version
+  
+  # League play
+  league:
+    enabled: false
+    num_agents: 10
+    matchmaking_type: "elo"  # elo, random, round_robin
+    
+# Model architecture
+model:
+  # Network type
+  type: "cnn"  # cnn, mlp, transformer
+  
+  # CNN specific
+  cnn:
+    conv_layers: 3
+    filters: [32, 64, 128]
+    kernel_sizes: [3, 3, 3]
+    use_residual: true
+    
+  # Common layers
+  hidden_layers: [512, 256]
+  activation: "relu"
+  use_layer_norm: true
+  dropout_rate: 0.1
+  
+  # Dueling DQN
+  dueling:
+    enabled: true
+    value_stream_layers: [256, 128]
+    advantage_stream_layers: [256, 128]
+
+# Distributed training
+distributed:
+  enabled: false
+  num_workers: 4
+  num_envs_per_worker: 2
+  
+  # Communication
+  parameter_server: "localhost:50052"
+  sync_interval: 100
+  
+  # Resource allocation
+  gpu_per_worker: 0.25
+  cpu_per_worker: 2
+
+# Logging and monitoring
+monitoring:
+  # Metrics logging
+  log_interval: 100
+  eval_interval: 1000
+  eval_episodes: 10
+  
+  # Tensorboard
+  tensorboard:
+    enabled: true
+    log_dir: "./logs"
+    log_histograms: false
+    log_images: true
+    
+  # Wandb integration
+  wandb:
+    enabled: false
+    project: "generals-rl"
+    entity: ""
+    tags: ["training", "self-play"]
+    
+  # Metrics to track
+  metrics:
+    - "episode_reward"
+    - "episode_length" 
+    - "win_rate"
+    - "exploration_rate"
+    - "loss"
+    - "q_values"
+    - "tiles_controlled"
+    - "armies_total"
+
+# Performance optimization
+optimization:
+  # Experience collection
+  use_vectorized_envs: true
+  num_parallel_envs: 8
+  
+  # GPU settings
+  use_mixed_precision: false
+  gpu_memory_growth: true
+  
+  # CPU settings
+  num_threads: 0  # 0 = auto
+  
+# Experimental features
+experimental:
+  # Prioritized experience replay
+  prioritized_replay:
+    enabled: false
+    alpha: 0.6
+    beta_initial: 0.4
+    beta_final: 1.0
+    beta_schedule_steps: 100000
+    
+  # Curiosity-driven exploration
+  curiosity:
+    enabled: false
+    intrinsic_reward_scale: 0.01
+    feature_dim: 128
+    
+  # Hindsight experience replay
+  her:
+    enabled: false
+    goal_selection_strategy: "future"
+    replay_k: 4

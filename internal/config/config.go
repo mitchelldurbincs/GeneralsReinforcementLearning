@@ -296,8 +296,8 @@ func Init(configPath string) error {
 		// Default config locations
 		v.SetConfigName("config")
 		v.SetConfigType("yaml")
-		v.AddConfigPath(".")
 		v.AddConfigPath("./config")
+		v.AddConfigPath(".")
 		v.AddConfigPath("/etc/generals-rl")
 	}
 	

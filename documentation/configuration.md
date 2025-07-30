@@ -24,8 +24,8 @@ Configuration values are loaded with the following precedence (highest to lowest
 ## File Locations
 
 The system looks for configuration files in the following locations:
+- `./config` directory (recommended)
 - Current directory (`.`)
-- `./config` directory
 - `/etc/generals-rl` directory
 
 ## Environment Variables
@@ -42,24 +42,24 @@ export GRL_SERVER_GRPC_SERVER_PORT=8080
 
 ## Configuration Files
 
-### Base Configuration (`config.yaml`)
+### Base Configuration (`config/config.yaml`)
 
-The base configuration file contains all default values for the system. See the provided `config.yaml` for the complete structure.
+The base configuration file contains all default values for the system. See the provided `config/config.yaml` for the complete structure.
 
 ### Environment-Specific Configurations
 
-- `config.dev.yaml` - Development environment overrides
-- `config.prod.yaml` - Production environment overrides
+- `config/config.dev.yaml` - Development environment overrides
+- `config/config.prod.yaml` - Production environment overrides
 
 To use an environment-specific config:
 
 ```bash
 # For development
-./ui_client --config config.yaml
-# The system will automatically load config.dev.yaml if present
+./ui_client --config config/config.yaml
+# The system will automatically load config/config.dev.yaml if present
 
 # For production
-APP_ENV=production ./grpc_server --config config.yaml
+APP_ENV=production ./grpc_server --config config/config.yaml
 ```
 
 ## Configuration Categories
@@ -142,7 +142,7 @@ colors:
 ./ui_client
 
 # Use specific config file
-./ui_client --config /path/to/config.yaml
+./ui_client --config config/config.yaml
 
 # Override specific values
 ./ui_client --width 30 --height 20 --players 4
@@ -158,7 +158,7 @@ colors:
 ./game_server
 
 # Use specific config file
-./game_server --config /path/to/config.yaml
+./game_server --config config/config.yaml
 ```
 
 ### gRPC Server
@@ -210,13 +210,13 @@ Note: Not all configuration changes can be applied at runtime. Some require a re
 Check file locations and permissions:
 ```bash
 # Verify config file exists
-ls -la config.yaml
+ls -la config/config.yaml
 
 # Check current directory
 pwd
 
 # Test with explicit path
-./ui_client --config $(pwd)/config.yaml
+./ui_client --config $(pwd)/config/config.yaml
 ```
 
 ### Environment variables not working
@@ -243,7 +243,7 @@ config validation failed: game.map.city_ratio must be positive
 
 ```bash
 # Load dev config with debug logging
-./grpc_server --config config.yaml --log-level debug
+./grpc_server --config config/config.yaml --log-level debug
 ```
 
 ### Running in Production
