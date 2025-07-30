@@ -147,12 +147,12 @@ func TestSimpleCollector_GameEndingExperience(t *testing.T) {
 	currState := createTestGameState(3, 3)
 	
 	// Game ends - eliminate player 1
-	currState.Players = append(currState.Players, game.Player{
+	currState.Players[1] = game.Player{
 		ID:         1,
 		Alive:      false,
 		ArmyCount:  0,
 		GeneralIdx: -1,
-	})
+	}
 	
 	actions := map[int]*game.Action{
 		0: {

@@ -53,10 +53,17 @@ func TestCalculateReward_CityCapture(t *testing.T) {
 		Type: core.TileCity, Owner: 0, Army: 40,
 	}
 	
+	// Player 0 also gains the army advantage
+	currArmyAdv := calculateArmyAdvantage(currState, 0)
+	armyAdvReward := currArmyAdv * config.ArmyAdvantage // Use current advantage, not delta
+	
+	// Also account for army gain (40 armies from city)
+	armyGainReward := float32(40) * config.ArmyGained
+	
 	reward := CalculateRewardWithConfig(prevState, currState, 0, config)
 	
-	// Should include city capture + territory gain
-	expectedReward := config.CaptureCity + config.TerritoryGained
+	// Should include city capture + territory gain + army gain + army advantage
+	expectedReward := config.CaptureCity + config.TerritoryGained + armyGainReward + armyAdvReward
 	assert.InDelta(t, expectedReward, reward, 0.01, "Should get city capture reward")
 }
 
@@ -75,10 +82,17 @@ func TestCalculateReward_GeneralCapture(t *testing.T) {
 		Type: core.TileGeneral, Owner: 0, Army: 8,
 	}
 	
+	// Calculate army advantage - use current advantage, not delta
+	currArmyAdv := calculateArmyAdvantage(currState, 0)
+	armyAdvReward := currArmyAdv * config.ArmyAdvantage
+	
+	// Also account for army gain (8 armies from general)
+	armyGainReward := float32(8) * config.ArmyGained
+	
 	reward := CalculateRewardWithConfig(prevState, currState, 0, config)
 	
-	// Should include general capture + territory gain
-	expectedReward := config.CaptureGeneral + config.TerritoryGained
+	// Should include general capture + territory gain + army gain + army advantage
+	expectedReward := config.CaptureGeneral + config.TerritoryGained + armyGainReward + armyAdvReward
 	assert.InDelta(t, expectedReward, reward, 0.01, "Should get general capture reward")
 }
 
@@ -92,9 +106,14 @@ func TestCalculateReward_ArmyChanges(t *testing.T) {
 	prevState.Board.T[0].Army = 10
 	currState.Board.T[0].Army = 15
 	
+	// Calculate army advantage change
+	prevArmyAdv := calculateArmyAdvantage(prevState, 0)
+	currArmyAdv := calculateArmyAdvantage(currState, 0)
+	armyAdvReward := (currArmyAdv - prevArmyAdv) * config.ArmyAdvantage
+	
 	reward := CalculateRewardWithConfig(prevState, currState, 0, config)
 	
-	expectedReward := 5 * config.ArmyGained // Gained 5 armies
+	expectedReward := 5 * config.ArmyGained + armyAdvReward // Gained 5 armies + army adv change
 	assert.InDelta(t, expectedReward, reward, 0.01, "Should get army gain reward")
 }
 
@@ -102,7 +121,13 @@ func TestCalculateArmyAdvantage(t *testing.T) {
 	state := createTestGameState(3, 3)
 	
 	// Set up army counts
+	// Player 0 tiles: already has general at index 0 with 10 armies
+	state.Board.T[1] = core.Tile{Type: core.TileNormal, Owner: 0, Army: 5}
+	state.Board.T[2] = core.Tile{Type: core.TileNormal, Owner: 0, Army: 3}
 	// Player 0: 10 + 5 + 3 = 18 armies
+	
+	// Player 1 tiles: already has general at index 8 with 10 armies, adjust to 8
+	state.Board.T[8].Army = 8
 	// Player 1: 8 armies
 	// Total: 26 armies
 	

@@ -156,7 +156,18 @@ func (b *Buffer) GetAll() []*experiencepb.Experience {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	
-	return b.Get(b.size)
+	if b.size == 0 {
+		return []*experiencepb.Experience{}
+	}
+	
+	result := make([]*experiencepb.Experience, b.size)
+	for i := 0; i < b.size; i++ {
+		result[i] = b.buffer[b.tail]
+		b.tail = (b.tail + 1) % b.capacity
+	}
+	b.size = 0
+	
+	return result
 }
 
 // Sample randomly samples n experiences from the buffer
