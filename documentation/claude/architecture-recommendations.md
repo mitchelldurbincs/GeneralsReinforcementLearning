@@ -2,6 +2,17 @@
 
 This document outlines architectural improvements to transform the current game engine into a more extensible, maintainable, and RL-training-optimized platform. The recommendations focus on two primary patterns: Event-Driven Architecture and State Management, along with supporting infrastructure for reinforcement learning.
 
+## Current Status (Updated 2025-07-30)
+
+✅ **Phase 1: Event-Driven Architecture** - COMPLETED (2025-07-26)
+✅ **Phase 2: State Machine Implementation** - COMPLETED (2025-07-30)
+⏳ **Phase 3: RL Infrastructure - Serialization** - Not started
+⏳ **Phase 4: Async Event Processing** - Not started
+⏳ **Phase 5: Metrics and Monitoring** - Not started
+⏳ **Phase 6: Training Pipeline Integration** - Not started
+
+**Note**: gRPC server integration with state machine is still pending and tracked separately.
+
 ## Overview
 
 The current codebase is well-structured but tightly coupled in some areas. These recommendations will:
@@ -72,64 +83,105 @@ internal/game/events/
 - [x] All major game actions publish events
 - [x] Event logging improves debugging
 
-## Phase 2: State Machine Implementation (2-3 weeks)
+## Phase 2: State Machine Implementation (2-3 weeks) ✅ COMPLETED
 
 ### Objective
 Formalize game flow with a proper state machine to prevent invalid operations and support clean episode management for RL.
 
+### Implementation Status (Completed 2025-07-30)
+Phase 2 has been successfully completed with full integration into the game engine:
+
+1. **State Machine Framework**: Complete state machine with phases, transitions, and history tracking
+2. **Game Phases**: All 9 phases properly defined with transition rules
+3. **State Implementations**: Individual state classes for each phase with enter/exit callbacks
+4. **Event Integration**: State transitions publish events through the event bus
+5. **Engine Integration**: State machine fully integrated with Engine
+6. **Pause/Resume**: Complete pause/resume functionality with time tracking
+7. **Action Guards**: Action processing only allowed in PhaseRunning
+8. **Single-Player Support**: Validation updated to allow single-player games for RL training
+
+**REMAINING WORK:**
+- gRPC endpoints need to be updated to check state machine phases
+- This work is tracked separately as it requires modifications to the gRPC server
+
 ### Implementation Tasks
 
-- [ ] Create state machine framework
-  - [ ] Define GamePhase enum in `internal/game/states/phases.go`
-  - [ ] Implement transition rules and validation
-  - [ ] Create state machine with enter/exit callbacks
-  - [ ] Add state history tracking for debugging
+- [x] Create state machine framework
+  - [x] Define GamePhase enum in `internal/game/states/phases.go`
+  - [x] Implement transition rules and validation
+  - [x] Create state machine with enter/exit callbacks
+  - [x] Add state history tracking for debugging
 
-- [ ] Define game phases
-  - [ ] PhaseInitializing - Game object creation
-  - [ ] PhaseLobby - Players joining, configuration
-  - [ ] PhaseStarting - Map generation, player placement
-  - [ ] PhaseRunning - Active gameplay
-  - [ ] PhasePaused - Temporary suspension
-  - [ ] PhaseEnding - Winner determination, cleanup
-  - [ ] PhaseEnded - Final state
-  - [ ] PhaseError - Error recovery state
-  - [ ] PhaseReset - Reset the current game without full teardown
+- [x] Define game phases
+  - [x] PhaseInitializing - Game object creation
+  - [x] PhaseLobby - Players joining, configuration
+  - [x] PhaseStarting - Map generation, player placement
+  - [x] PhaseRunning - Active gameplay
+  - [x] PhasePaused - Temporary suspension
+  - [x] PhaseEnding - Winner determination, cleanup
+  - [x] PhaseEnded - Final state
+  - [x] PhaseError - Error recovery state
+  - [x] PhaseReset - Reset the current game without full teardown
 
-- [ ] Implement transition logic
-  - [ ] Lobby → Starting (all players ready)
-  - [ ] Starting → Running (setup complete)
-  - [ ] Running → Paused (external trigger)
-  - [ ] Paused → Running (resume)
-  - [ ] Running → Ending (win condition)
-  - [ ] Any → Error (unrecoverable error)
+- [x] Implement transition logic
+  - [x] Lobby → Starting (all players ready)
+  - [x] Starting → Running (setup complete)
+  - [x] Running → Paused (external trigger)
+  - [x] Paused → Running (resume)
+  - [x] Running → Ending (win condition)
+  - [x] Any → Error (unrecoverable error)
 
-- [ ] Integrate with game engine
-  - [ ] Add state machine to Engine
-  - [ ] Guard action processing by state
-  - [ ] Publish state transition events
-  - [ ] Update gRPC endpoints to check state
+- [x] Integrate with game engine
+  - [x] Add state machine to Engine
+  - [x] Guard action processing by state
+  - [x] Publish state transition events
+  - [ ] Update gRPC endpoints to check state (tracked separately)
 
-- [ ] Add pause/resume support
-  - [ ] Implement pause command
-  - [ ] Save pause timestamp
-  - [ ] Handle timeout during pause
-  - [ ] Resume with state validation
+- [x] Add pause/resume support
+  - [x] Implement pause command
+  - [x] Save pause timestamp
+  - [x] Handle timeout during pause
+  - [x] Resume with state validation
 
 ### Code Structure
 ```
 internal/game/states/
-├── phases.go         # Phase definitions
-├── machine.go        # State machine implementation
-├── transitions.go    # Transition rules
-└── context.go        # Game context for state decisions
+├── phases.go         # Phase definitions ✅
+├── machine.go        # State machine implementation ✅
+├── states.go         # Individual state implementations ✅
+├── states_test.go    # State machine tests ✅
+├── context.go        # Game context for state decisions ✅
+└── README.md         # Documentation ✅
 ```
 
+### Key Implementation Details
+
+1. **Engine Integration**:
+   - StateMachine field added to Engine struct
+   - State machine initialized in NewEngine with proper transitions
+   - Engine.Step() checks if current phase can receive actions
+   - Engine.Pause() and Engine.Resume() methods implemented
+   - Game end triggers automatic state transitions
+
+2. **State Validation**:
+   - Single-player games allowed (minimum 1 player instead of 2)
+   - State transitions validate preconditions
+   - Invalid transitions return errors
+
+3. **Event Publishing**:
+   - All state transitions publish StateTransitionEvent
+   - Events include from/to phases and reason
+   - Integrated with existing event bus
+
+4. **Time Tracking**:
+   - GameContext tracks StartTime, PauseTime, and TotalPauseDuration
+   - Elapsed time calculation excludes pause durations
+
 ### Success Criteria
-- [ ] Clear game phase progression
-- [ ] Invalid operations prevented by state
-- [ ] Can pause/resume games
-- [ ] State transitions are logged
+- [x] Clear game phase progression
+- [x] Invalid operations prevented by state
+- [x] Can pause/resume games
+- [x] State transitions are logged
 
 ## Phase 3: RL Infrastructure - Serialization (1-2 weeks)
 

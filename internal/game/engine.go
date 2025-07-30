@@ -12,6 +12,7 @@ import (
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/mapgen"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/processor"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/rules"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/states"
 	"github.com/rs/zerolog"
 )
 
@@ -29,6 +30,9 @@ type Engine struct {
 	// Event system
 	eventBus *events.EventBus
 	gameID   string
+	
+	// State management
+	stateMachine *states.StateMachine
 	
 	// Experience collection
 	experienceCollector ExperienceCollector
@@ -122,6 +126,16 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 		engineLogger.Info().Msg("Experience collection enabled")
 	}
 	
+	// Create event bus first as it's needed by state machine
+	eventBus := events.NewEventBus()
+	
+	// Create game context for state machine
+	gameContext := states.NewGameContext(cfg.GameID, cfg.Players, engineLogger)
+	gameContext.PlayerCount = cfg.Players
+	
+	// Create state machine
+	stateMachine := states.NewStateMachine(gameContext, eventBus)
+	
 	e := &Engine{
 		gs:       gs,
 		rng:      cfg.Rng,
@@ -130,8 +144,9 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 		actionProcessor: actionProc,
 		winCondition:    rules.NewWinConditionChecker(engineLogger, cfg.Players),
 		legalMoves:      rules.NewLegalMoveCalculator(),
-		eventBus:            events.NewEventBus(),
+		eventBus:            eventBus,
 		gameID:              cfg.GameID,
+		stateMachine:        stateMachine,
 		experienceCollector: cfg.ExperienceCollector,
 		tempTileOwnership:   make(map[int]int),
 		tempAffectedPlayers: make(map[int]struct{}),
@@ -146,6 +161,26 @@ func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
 	e.updateFogOfWar()
 	// CheckGameOver on initialization is probably not needed unless a 0-player game is valid.
 	e.checkGameOver(engineLogger.With().Str("phase", "init").Logger())
+	
+	// Transition through initial states
+	// First move to Lobby state
+	if err := stateMachine.TransitionTo(states.PhaseLobby, "Engine initialized"); err != nil {
+		engineLogger.Error().Err(err).Msg("Failed to transition to Lobby state")
+		return nil
+	}
+	
+	// Since all players are already added during map generation, transition to Starting
+	if err := stateMachine.TransitionTo(states.PhaseStarting, "All players ready"); err != nil {
+		engineLogger.Error().Err(err).Msg("Failed to transition to Starting state")
+		return nil
+	}
+	
+	// Map is generated and players are placed, transition to Running
+	gameContext.StartTime = time.Now() // Set start time when transitioning to running
+	if err := stateMachine.TransitionTo(states.PhaseRunning, "Game setup complete"); err != nil {
+		engineLogger.Error().Err(err).Msg("Failed to transition to Running state")
+		return nil
+	}
 	
 	// Publish GameStarted event
 	e.eventBus.Publish(events.NewGameStartedEvent(e.gameID, cfg.Players, cfg.Width, cfg.Height))
@@ -163,6 +198,16 @@ func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
 		e.logger.Warn().Err(ctx.Err()).Int("turn", e.gs.Turn).Msg("Game step cancelled or timed out before starting")
 		return ctx.Err()
 	default:
+	}
+
+	// Check if the game is in a state that can receive actions
+	currentPhase := e.stateMachine.CurrentPhase()
+	if !currentPhase.CanReceiveActions() {
+		e.logger.Warn().
+			Str("current_phase", currentPhase.String()).
+			Int("turn", e.gs.Turn).
+			Msg("Attempted to step game in phase that cannot receive actions")
+		return fmt.Errorf("game is in %s phase and cannot receive actions", currentPhase)
 	}
 
 	if e.gameOver {
@@ -393,6 +438,20 @@ func (e *Engine) checkGameOver(l zerolog.Logger) {
 	
 	if !wasGameOver && e.gameOver {
 		l.Info().Msg("Game over condition met")
+		
+		// Update game context with winner
+		e.stateMachine.GetContext().Winner = winnerID
+		
+		// Transition to Ending state
+		if err := e.stateMachine.TransitionTo(states.PhaseEnding, "Game over condition met"); err != nil {
+			l.Error().Err(err).Msg("Failed to transition to Ending state")
+		}
+		
+		// Transition to Ended state
+		if err := e.stateMachine.TransitionTo(states.PhaseEnded, "Game finalized"); err != nil {
+			l.Error().Err(err).Msg("Failed to transition to Ended state")
+		}
+		
 		// Publish GameEnded event
 		// TODO: Track game start time to calculate duration
 		e.eventBus.Publish(events.NewGameEndedEvent(e.gameID, winnerID, 0, e.gs.Turn))
@@ -406,6 +465,52 @@ func (e *Engine) checkGameOver(l zerolog.Logger) {
 func (e *Engine) GameState() GameState { return *e.gs }
 func (e *Engine) IsGameOver() bool   { return e.gameOver }
 func (e *Engine) EventBus() *events.EventBus { return e.eventBus }
+func (e *Engine) CurrentPhase() states.GamePhase { return e.stateMachine.CurrentPhase() }
+
+// Pause pauses the game if it's currently running
+func (e *Engine) Pause(reason string) error {
+	currentPhase := e.stateMachine.CurrentPhase()
+	if currentPhase != states.PhaseRunning {
+		return fmt.Errorf("cannot pause game in %s phase", currentPhase)
+	}
+	
+	// Update pause time in context
+	e.stateMachine.GetContext().PauseTime = time.Now()
+	
+	// Transition to paused state
+	if err := e.stateMachine.TransitionTo(states.PhasePaused, reason); err != nil {
+		e.logger.Error().Err(err).Msg("Failed to pause game")
+		return err
+	}
+	
+	e.logger.Info().Str("reason", reason).Msg("Game paused")
+	return nil
+}
+
+// Resume resumes the game if it's currently paused
+func (e *Engine) Resume(reason string) error {
+	currentPhase := e.stateMachine.CurrentPhase()
+	if currentPhase != states.PhasePaused {
+		return fmt.Errorf("cannot resume game in %s phase", currentPhase)
+	}
+	
+	// Update total pause duration
+	ctx := e.stateMachine.GetContext()
+	if !ctx.PauseTime.IsZero() {
+		pauseDuration := time.Since(ctx.PauseTime)
+		ctx.TotalPauseDuration += pauseDuration
+		ctx.PauseTime = time.Time{} // Reset pause time
+	}
+	
+	// Transition back to running state
+	if err := e.stateMachine.TransitionTo(states.PhaseRunning, reason); err != nil {
+		e.logger.Error().Err(err).Msg("Failed to resume game")
+		return err
+	}
+	
+	e.logger.Info().Str("reason", reason).Msg("Game resumed")
+	return nil
+}
 
 // GetWinner returns the winning player ID, or -1 if game isn't over or it's a draw
 func (e *Engine) GetWinner() int {

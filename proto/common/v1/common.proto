@@ -50,13 +50,30 @@ enum ErrorCode {
   ERROR_CODE_GAME_NOT_FOUND = 10;
   ERROR_CODE_GAME_FULL = 11;
   ERROR_CODE_ALREADY_JOINED = 12;
+  ERROR_CODE_INVALID_PHASE = 13;      // Operation not allowed in current phase
+  ERROR_CODE_PHASE_TRANSITION = 14;   // Failed to transition between phases
 }
 
 // GameStatus represents the current state of a game
+// DEPRECATED: Use GamePhase for more detailed state management
 enum GameStatus {
   GAME_STATUS_UNSPECIFIED = 0;
   GAME_STATUS_WAITING = 1;     // Waiting for players to join
   GAME_STATUS_IN_PROGRESS = 2; // Game is actively being played
   GAME_STATUS_FINISHED = 3;    // Game has ended
   GAME_STATUS_CANCELLED = 4;   // Game was cancelled
+}
+
+// GamePhase represents the detailed phase of a game's lifecycle
+enum GamePhase {
+  GAME_PHASE_UNSPECIFIED = 0;
+  GAME_PHASE_INITIALIZING = 1;  // Game object creation
+  GAME_PHASE_LOBBY = 2;         // Players joining, configuration
+  GAME_PHASE_STARTING = 3;      // Map generation, player placement
+  GAME_PHASE_RUNNING = 4;       // Active gameplay
+  GAME_PHASE_PAUSED = 5;        // Temporary suspension
+  GAME_PHASE_ENDING = 6;        // Winner determination, cleanup
+  GAME_PHASE_ENDED = 7;         // Final state
+  GAME_PHASE_ERROR = 8;         // Error recovery state
+  GAME_PHASE_RESET = 9;         // Reset without full teardown
 }

@@ -32,10 +32,10 @@ func TestStateImplementations(t *testing.T) {
 		assert.NoError(t, state.Validate(ctx))
 		
 		// Test validation failure
-		ctx.MaxPlayers = 1
+		ctx.MaxPlayers = 0
 		err := state.Validate(ctx)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "max players must be at least 2")
+		assert.Contains(t, err.Error(), "max players must be at least 1")
 	})
 	
 	t.Run("StartingState", func(t *testing.T) {
@@ -44,13 +44,17 @@ func TestStateImplementations(t *testing.T) {
 		
 		assert.Equal(t, PhaseStarting, state.Phase())
 		
-		// Test validation failure - not enough players
-		ctx.PlayerCount = 1
+		// Test validation failure - no players
+		ctx.PlayerCount = 0
 		err := state.Validate(ctx)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "not enough players")
 		
-		// Test success
+		// Test success with 1 player
+		ctx.PlayerCount = 1
+		assert.NoError(t, state.Validate(ctx))
+		
+		// Test success with 2 players
 		ctx.PlayerCount = 2
 		assert.NoError(t, state.Validate(ctx))
 		assert.NoError(t, state.Enter(ctx))
@@ -64,10 +68,14 @@ func TestStateImplementations(t *testing.T) {
 		assert.Equal(t, PhaseRunning, state.Phase())
 		
 		// Test validation
-		ctx.PlayerCount = 1
+		ctx.PlayerCount = 0
 		err := state.Validate(ctx)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot run game with fewer than 2 players")
+		assert.Contains(t, err.Error(), "cannot run game with no players")
+		
+		// Test success with 1 player
+		ctx.PlayerCount = 1
+		assert.NoError(t, state.Validate(ctx))
 		
 		ctx.PlayerCount = 2
 		assert.NoError(t, state.Validate(ctx))

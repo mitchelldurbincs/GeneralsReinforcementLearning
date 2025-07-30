@@ -115,8 +115,11 @@ func TestGameContext(t *testing.T) {
 	t.Run("IsReady", func(t *testing.T) {
 		ctx := NewGameContext("test-game", 4, logger)
 		
-		ctx.PlayerCount = 1
+		ctx.PlayerCount = 0
 		assert.False(t, ctx.IsReady())
+		
+		ctx.PlayerCount = 1
+		assert.True(t, ctx.IsReady())
 		
 		ctx.PlayerCount = 2
 		assert.True(t, ctx.IsReady())
@@ -248,15 +251,17 @@ func TestStateMachine(t *testing.T) {
 	t.Run("State Validation", func(t *testing.T) {
 		sm, ctx := setup()
 		
-		// Cannot start without enough players
+		// Cannot start without any players
 		sm.TransitionTo(PhaseLobby, "setup")
-		ctx.PlayerCount = 1
-		err := sm.TransitionTo(PhaseStarting, "not enough players")
+		ctx.PlayerCount = 0
+		ctx.MaxPlayers = 0 // Also set MaxPlayers to 0 to trigger validation
+		err := sm.TransitionTo(PhaseStarting, "no players")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "not enough players")
 		
 		// Cannot pause before starting
 		ctx.PlayerCount = 2
+		ctx.MaxPlayers = 4 // Restore MaxPlayers
 		sm.TransitionTo(PhaseStarting, "enough players")
 		ctx.StartTime = time.Time{} // Clear start time
 		err = sm.TransitionTo(PhasePaused, "pause without start")
