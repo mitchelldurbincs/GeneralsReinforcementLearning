@@ -18,7 +18,7 @@ This document outlines the technologies used in the Generals Reinforcement Learn
   - **Why**: Efficient binary serialization for game state updates, strongly-typed API contracts, and excellent performance for real-time multiplayer communication
   - **Used for**: Client-server communication, game state synchronization, and RL agent communication
   - **Code Generation**: Supports both Go and Python client generation from same proto definitions
-  - **Server Implementation**: Dedicated gRPC server at `cmd/grpc_server/` for network-based gameplay
+  - **Server Implementation**: Dedicated gRPC server at `cmd/game_server/` for network-based gameplay
 
 ### Configuration Management
 - **Viper v1.20.1**: Configuration management library

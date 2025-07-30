@@ -6,7 +6,7 @@ This document outlines the requirements and implementation steps for creating ra
 ## Current State
 
 ### ✅ Working Components
-- **gRPC Server** (`cmd/grpc_server/`): Fully functional with support for multiple concurrent games, turn-based processing, and streaming updates
+- **gRPC Server** (`cmd/game_server/`): Fully functional with support for multiple concurrent games, turn-based processing, and streaming updates
 - **Python Client Infrastructure** (`python/`): Basic gRPC connection, protobuf handling, and move submission capabilities
 - **Game Engine**: Complete game logic with fog of war, turn processing, and win conditions
 

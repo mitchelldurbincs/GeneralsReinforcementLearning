@@ -58,9 +58,31 @@ fmt:
 lint:
 	golangci-lint run
 
-# Docker targets
-docker-build:
-	docker build -t generals-game-server .
+# Docker commands
+.PHONY: docker-build docker-up docker-down docker-logs docker-test docker-clean
 
-docker-run:
-	docker run -p 50051:50051 generals-game-server
+docker-build:
+	docker-compose -f docker-compose.dev.yml build
+
+docker-up:
+	docker-compose -f docker-compose.dev.yml up -d
+
+docker-down:
+	docker-compose -f docker-compose.dev.yml down
+
+docker-logs:
+	docker-compose -f docker-compose.dev.yml logs -f
+
+docker-test:
+	docker-compose -f docker-compose.dev.yml run --rm game-server go test ./...
+
+docker-clean:
+	docker-compose -f docker-compose.dev.yml down -v
+	docker rmi $$(docker images -q "generalsreinforcementlearning_*") 2>/dev/null || true
+
+# Run game server in Docker
+docker-run-server:
+	docker-compose -f docker-compose.dev.yml up game-server
+
+# Build and run in one command
+docker-dev: docker-build docker-up

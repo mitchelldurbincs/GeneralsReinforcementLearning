@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Go
+vendor/
+*.test
+*.out
+coverage.out
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+generalsrl/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Project specific
+/models/
+/logs/
+/data/
+/documentation/
+/deploy/terraform/
+
+# Binaries
+game_server
+grpc_server
+ui_client
+
+# Development files
+*.log
+*.tmp
+.env
+.env.local

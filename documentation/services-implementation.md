@@ -204,7 +204,7 @@ The services architecture provides a network API layer on top of the existing Go
 1. **Local Development**:
    ```bash
    # Start game server
-   go run cmd/grpc_server/main.go
+   go run cmd/game_server/main.go
    
    # Test with grpcurl
    grpcurl -plaintext localhost:50051 list

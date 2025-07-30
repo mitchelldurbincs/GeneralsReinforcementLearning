@@ -51,7 +51,7 @@ First, start the game server in a separate terminal:
 
 ```bash
 # From the project root
-go run cmd/grpc_server/main.go
+go run cmd/game_server/main.go
 ```
 
 ### Run Random Agent Match

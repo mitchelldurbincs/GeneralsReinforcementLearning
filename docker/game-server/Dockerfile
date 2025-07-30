@@ -33,8 +33,8 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/game-server .
 
-# Copy any config files if they exist
-# COPY --from=builder /build/configs ./configs
+# Copy config files
+COPY --from=builder /build/config ./config
 
 # Change ownership
 RUN chown -R appuser:appuser /app
