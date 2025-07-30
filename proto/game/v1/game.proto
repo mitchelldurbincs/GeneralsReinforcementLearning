@@ -119,7 +119,7 @@ message GameUpdate {
 // GameState represents the complete game state
 message GameState {
   string game_id = 1;
-  generals.common.v1.GameStatus status = 2;
+  generals.common.v1.GameStatus status = 2;  // DEPRECATED: Use current_phase instead
   int32 turn = 3;
   Board board = 4;
   repeated PlayerState players = 5;
@@ -133,6 +133,7 @@ message GameState {
   // - Directions: 0=up, 1=right, 2=down, 3=left
   // - true = legal move, false = illegal move
   repeated bool action_mask = 9;
+  generals.common.v1.GamePhase current_phase = 10; // Current game phase
 }
 
 // Board represents the game board
@@ -190,6 +191,7 @@ message GameEvent {
     GameEndedEvent game_ended = 4;
     PlayerDisconnectedEvent player_disconnected = 5;
     PlayerReconnectedEvent player_reconnected = 6;
+    PhaseChangedEvent phase_changed = 7;
   }
 }
 
@@ -219,4 +221,10 @@ message PlayerDisconnectedEvent {
 
 message PlayerReconnectedEvent {
   int32 player_id = 1;
+}
+
+message PhaseChangedEvent {
+  generals.common.v1.GamePhase previous_phase = 1;
+  generals.common.v1.GamePhase new_phase = 2;
+  string reason = 3;
 }

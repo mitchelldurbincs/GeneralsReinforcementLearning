@@ -131,14 +131,14 @@ func TestJoinGame(t *testing.T) {
 	// Game should start after second player joins
 	assert.Equal(t, commonv1.GameStatus_GAME_STATUS_IN_PROGRESS, resp3.InitialState.Status)
 
-	// Test joining full game
+	// Test joining game after it started (game is now in Running phase)
 	joinReq3 := &gamev1.JoinGameRequest{
 		GameId:     gameID,
 		PlayerName: "player-3",
 	}
 	_, err = client.JoinGame(ctx, joinReq3)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "is full")
+	assert.Contains(t, err.Error(), "cannot join game")
 
 	// Test joining non-existent game
 	joinReq4 := &gamev1.JoinGameRequest{

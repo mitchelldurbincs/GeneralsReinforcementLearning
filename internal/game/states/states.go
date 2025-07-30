@@ -54,8 +54,8 @@ func (s *LobbyState) Exit(ctx *GameContext) error {
 }
 
 func (s *LobbyState) Validate(ctx *GameContext) error {
-	if ctx.MaxPlayers < 2 {
-		return fmt.Errorf("max players must be at least 2, got %d", ctx.MaxPlayers)
+	if ctx.MaxPlayers < 1 {
+		return fmt.Errorf("max players must be at least 1, got %d", ctx.MaxPlayers)
 	}
 	return nil
 }
@@ -84,7 +84,7 @@ func (s *StartingState) Exit(ctx *GameContext) error {
 
 func (s *StartingState) Validate(ctx *GameContext) error {
 	if !ctx.IsReady() {
-		return fmt.Errorf("not enough players to start: have %d, need at least 2", ctx.PlayerCount)
+		return fmt.Errorf("not enough players to start: have %d, need at least 1", ctx.PlayerCount)
 	}
 	return nil
 }
@@ -117,8 +117,8 @@ func (s *RunningState) Exit(ctx *GameContext) error {
 }
 
 func (s *RunningState) Validate(ctx *GameContext) error {
-	if ctx.PlayerCount < 2 {
-		return fmt.Errorf("cannot run game with fewer than 2 players")
+	if ctx.PlayerCount < 1 {
+		return fmt.Errorf("cannot run game with no players")
 	}
 	return nil
 }

@@ -52,7 +52,7 @@ func NewGameContext(gameID string, maxPlayers int, logger zerolog.Logger) *GameC
 
 // IsReady returns true if the game has enough players to start
 func (gc *GameContext) IsReady() bool {
-	return gc.PlayerCount >= 2 && gc.PlayerCount <= gc.MaxPlayers
+	return gc.PlayerCount >= 1 && gc.PlayerCount <= gc.MaxPlayers
 }
 
 // GetElapsedTime returns the time elapsed since game start, excluding pauses

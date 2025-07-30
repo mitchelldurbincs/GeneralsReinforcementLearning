@@ -128,7 +128,7 @@ func TestIdempotencyForErrors(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.False(t, resp1.Success)
-	assert.Equal(t, commonv1.ErrorCode_ERROR_CODE_GAME_OVER, resp1.ErrorCode)
+	assert.Equal(t, commonv1.ErrorCode_ERROR_CODE_INVALID_PHASE, resp1.ErrorCode)
 	
 	// Retry with same idempotency key - should return cached error response
 	resp2, err := s.SubmitAction(ctx, &gamev1.SubmitActionRequest{

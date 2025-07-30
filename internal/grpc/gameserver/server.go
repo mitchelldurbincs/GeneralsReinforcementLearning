@@ -14,6 +14,8 @@ import (
 
 	gameengine "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/events"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/states"
 	commonv1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/common/v1"
 	gamev1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/game/v1"
 )
@@ -31,7 +33,6 @@ type Server struct {
 type gameInstance struct {
 	id      string
 	config  *gamev1.GameConfig
-	status  commonv1.GameStatus
 	players []playerInfo
 	engine  *gameengine.Engine
 	mu      sync.Mutex // Per-game mutex for thread-safe engine operations
@@ -126,7 +127,6 @@ func (s *Server) CreateGame(ctx context.Context, req *gamev1.CreateGameRequest) 
 	game := &gameInstance{
 		id:               gameID,
 		config:           config,
-		status:           commonv1.GameStatus_GAME_STATUS_WAITING,
 		players:          make([]playerInfo, 0, config.MaxPlayers),
 		createdAt:        now,
 		lastActivity:     now,
@@ -169,6 +169,15 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		}
 	}
 
+	// Check if game is in a phase that allows joining
+	// If engine exists, use its phase. Otherwise, we're still in pre-engine lobby phase
+	if game.engine != nil {
+		currentPhase := game.CurrentPhase()
+		if currentPhase != commonv1.GamePhase_GAME_PHASE_LOBBY {
+			return nil, status.Errorf(codes.FailedPrecondition, "cannot join game %s: game is in %s phase", req.GameId, currentPhase.String())
+		}
+	}
+	
 	// Check if game is full
 	if len(game.players) >= int(game.config.MaxPlayers) {
 		return nil, status.Errorf(codes.ResourceExhausted, "game %s is full: %d/%d players", req.GameId, len(game.players), game.config.MaxPlayers)
@@ -189,9 +198,8 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 
 	// Start game if we have enough players
 	if len(game.players) == int(game.config.MaxPlayers) {
-		game.mu.Lock()
-		game.status = commonv1.GameStatus_GAME_STATUS_IN_PROGRESS
-		game.mu.Unlock()
+		// Engine will be created and will handle state transitions
+		// No need to manually set status anymore
 		
 		// Create the game engine
 		engineConfig := gameengine.GameConfig{
@@ -205,6 +213,31 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		if game.engine == nil {
 			return nil, status.Errorf(codes.Internal, "failed to create game engine for game %s: config %dx%d with %d players", req.GameId, game.config.Width, game.config.Height, game.config.MaxPlayers)
 		}
+		
+		// Subscribe to state transition events from the engine
+		game.engine.EventBus().SubscribeFunc("state.transition", func(event events.Event) {
+			// Type assert to StateTransitionEvent
+			if stateEvent, ok := event.(*events.StateTransitionEvent); ok {
+				// Convert internal phases to proto phases
+				previousPhase := convertPhaseToProto(states.GamePhase(0)) // We don't have the numeric value, so we'll parse from string
+				newPhase := convertPhaseToProto(states.GamePhase(0))
+				
+				// Parse phase names to get the actual phases
+				// This is a bit hacky but works for now
+				for i := 0; i <= int(states.PhaseReset); i++ {
+					phase := states.GamePhase(i)
+					if phase.String() == stateEvent.FromPhase {
+						previousPhase = convertPhaseToProto(phase)
+					}
+					if phase.String() == stateEvent.ToPhase {
+						newPhase = convertPhaseToProto(phase)
+					}
+				}
+				
+				// Broadcast the phase change to all stream clients
+				game.broadcastPhaseChanged(previousPhase, newPhase, stateEvent.Reason)
+			}
+		})
 		
 		// Initialize action collection
 		game.actionBuffer = make(map[int32]core.Action)
@@ -269,16 +302,18 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		}
 	}
 	
-	// Check game status
-	game.mu.Lock()
-	currentStatus := game.status
-	game.mu.Unlock()
-	
-	if currentStatus != commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
+	// Check game phase - only allow actions in Running phase
+	currentPhase := game.CurrentPhase()
+	if currentPhase != commonv1.GamePhase_GAME_PHASE_RUNNING {
+		errorCode := commonv1.ErrorCode_ERROR_CODE_INVALID_PHASE
+		if currentPhase == commonv1.GamePhase_GAME_PHASE_ENDED {
+			errorCode = commonv1.ErrorCode_ERROR_CODE_GAME_OVER
+		}
+		
 		resp := &gamev1.SubmitActionResponse{
 			Success:      false,
-			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_GAME_OVER,
-			ErrorMessage: fmt.Sprintf("game %s is not in progress (status: %s)", req.GameId, currentStatus),
+			ErrorCode:    errorCode,
+			ErrorMessage: fmt.Sprintf("game %s cannot accept actions in %s phase", req.GameId, currentPhase.String()),
 		}
 		if req.IdempotencyKey != "" {
 			game.storeIdempotency(req.IdempotencyKey, resp)
@@ -384,7 +419,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		game.broadcastUpdates(s)
 		
 		// If turn time is configured and game is still active, start next turn timer
-		if game.config.TurnTimeMs > 0 && game.status == commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
+		if game.config.TurnTimeMs > 0 && game.CurrentPhase() == commonv1.GamePhase_GAME_PHASE_RUNNING {
 			game.startTurnTimer(ctx, time.Duration(game.config.TurnTimeMs)*time.Millisecond)
 		}
 	}
@@ -553,9 +588,16 @@ func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.Gam
 		}
 	}
 
+	// Get current phase (will be UNSPECIFIED if no engine yet)
+	currentPhase := game.CurrentPhase()
+	if currentPhase == commonv1.GamePhase_GAME_PHASE_UNSPECIFIED {
+		// No engine yet, we're in pre-engine lobby
+		currentPhase = commonv1.GamePhase_GAME_PHASE_LOBBY
+	}
+	
 	return &gamev1.GameState{
 		GameId:   game.id,
-		Status:   game.status,
+		Status:   mapPhaseToStatus(currentPhase), // Map phase to status for backward compatibility
 		Turn:     0,
 		Board: &gamev1.Board{
 			Width:  game.config.Width,
@@ -565,6 +607,7 @@ func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.Gam
 		Players:  players,
 		WinnerId: -1,
 		ActionMask: make([]bool, 0), // Empty mask for waiting games
+		CurrentPhase: currentPhase,
 	}
 }
 
@@ -664,9 +707,12 @@ func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameeng
 	// Generate action mask for the requesting player
 	actionMask := game.engine.GetLegalActionMask(int(playerID))
 	
+	// Get current phase from engine
+	currentPhase := game.CurrentPhase()
+	
 	return &gamev1.GameState{
 		GameId:     game.id,
-		Status:     game.status,
+		Status:     mapPhaseToStatus(currentPhase), // Map phase to status for backward compatibility
 		Turn:       int32(engineState.Turn),
 		Board: &gamev1.Board{
 			Width:  int32(engineState.Board.W),
@@ -676,6 +722,7 @@ func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameeng
 		Players:    players,
 		WinnerId:   winnerId,
 		ActionMask: actionMask,
+		CurrentPhase: currentPhase,
 	}
 }
 
@@ -783,11 +830,15 @@ func (game *gameInstance) processTurn(ctx context.Context) error {
 	}
 	
 	// Game ends when only one player remains
-	if aliveCount <= 1 && game.status == commonv1.GameStatus_GAME_STATUS_IN_PROGRESS {
-		game.status = commonv1.GameStatus_GAME_STATUS_FINISHED
-		// Cancel any pending turn timer
-		if game.turnTimer != nil {
-			game.turnTimer.Stop()
+	// The engine will handle the state transition to Ending/Ended
+	if aliveCount <= 1 && game.engine != nil {
+		currentPhase := game.CurrentPhase()
+		if currentPhase == commonv1.GamePhase_GAME_PHASE_RUNNING {
+			// The engine's checkGameOver will transition to Ending/Ended
+			// We just need to cancel the turn timer
+			if game.turnTimer != nil {
+				game.turnTimer.Stop()
+			}
 		}
 		
 		// Broadcast game ended event
@@ -839,7 +890,7 @@ func (game *gameInstance) startTurnTimer(ctx context.Context, duration time.Dura
 			}
 			
 			// Start timer for next turn if game is still active
-			if game.status == commonv1.GameStatus_GAME_STATUS_IN_PROGRESS && duration > 0 {
+			if game.CurrentPhase() == commonv1.GamePhase_GAME_PHASE_RUNNING && duration > 0 {
 				game.startTurnTimer(ctx, duration)
 			}
 		}
@@ -872,7 +923,8 @@ func (s *Server) cleanupGames() {
 		reason := ""
 		
 		// Remove finished games after TTL
-		if game.status == commonv1.GameStatus_GAME_STATUS_FINISHED {
+		currentPhase := game.currentPhaseUnlocked()
+		if currentPhase == commonv1.GamePhase_GAME_PHASE_ENDED {
 			if now.Sub(game.lastActivity) > finishedGameTTL {
 				shouldCleanup = true
 				reason = "finished game TTL expired"
@@ -1288,5 +1340,135 @@ func (g *gameInstance) sendEventToAllClients(update *gamev1.GameUpdate) {
 				Int32("player_id", playerID).
 				Msg("Stream event channel full, dropping event")
 		}
+	}
+}
+
+// broadcastPhaseChanged broadcasts a phase change event to all connected stream clients
+func (g *gameInstance) broadcastPhaseChanged(previousPhase, newPhase commonv1.GamePhase, reason string) {
+	g.streamClientsMu.RLock()
+	defer g.streamClientsMu.RUnlock()
+	
+	if len(g.streamClients) == 0 {
+		return
+	}
+	
+	event := &gamev1.GameEvent{
+		Event: &gamev1.GameEvent_PhaseChanged{
+			PhaseChanged: &gamev1.PhaseChangedEvent{
+				PreviousPhase: previousPhase,
+				NewPhase:      newPhase,
+				Reason:        reason,
+			},
+		},
+	}
+	
+	update := &gamev1.GameUpdate{
+		Update: &gamev1.GameUpdate_Event{
+			Event: event,
+		},
+		Timestamp: timestamppb.Now(),
+	}
+	
+	g.sendEventToAllClients(update)
+	
+	log.Info().
+		Str("game_id", g.id).
+		Str("previous_phase", previousPhase.String()).
+		Str("new_phase", newPhase.String()).
+		Str("reason", reason).
+		Msg("Phase changed event broadcast")
+}
+
+// CurrentPhase returns the current game phase from the engine's state machine
+func (g *gameInstance) CurrentPhase() commonv1.GamePhase {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	
+	return g.currentPhaseUnlocked()
+}
+
+// currentPhaseUnlocked returns the current game phase without locking (caller must hold lock)
+func (g *gameInstance) currentPhaseUnlocked() commonv1.GamePhase {
+	if g.engine == nil {
+		return commonv1.GamePhase_GAME_PHASE_UNSPECIFIED
+	}
+	
+	// Get the current phase from the engine
+	enginePhase := g.engine.CurrentPhase()
+	
+	// Convert internal phase to proto phase
+	return convertPhaseToProto(enginePhase)
+}
+
+// convertPhaseToProto converts internal state machine phase to proto phase
+func convertPhaseToProto(phase states.GamePhase) commonv1.GamePhase {
+	switch phase {
+	case states.PhaseInitializing:
+		return commonv1.GamePhase_GAME_PHASE_INITIALIZING
+	case states.PhaseLobby:
+		return commonv1.GamePhase_GAME_PHASE_LOBBY
+	case states.PhaseStarting:
+		return commonv1.GamePhase_GAME_PHASE_STARTING
+	case states.PhaseRunning:
+		return commonv1.GamePhase_GAME_PHASE_RUNNING
+	case states.PhasePaused:
+		return commonv1.GamePhase_GAME_PHASE_PAUSED
+	case states.PhaseEnding:
+		return commonv1.GamePhase_GAME_PHASE_ENDING
+	case states.PhaseEnded:
+		return commonv1.GamePhase_GAME_PHASE_ENDED
+	case states.PhaseError:
+		return commonv1.GamePhase_GAME_PHASE_ERROR
+	case states.PhaseReset:
+		return commonv1.GamePhase_GAME_PHASE_RESET
+	default:
+		return commonv1.GamePhase_GAME_PHASE_UNSPECIFIED
+	}
+}
+
+// convertProtoToPhase converts proto phase to internal state machine phase
+func convertProtoToPhase(phase commonv1.GamePhase) states.GamePhase {
+	switch phase {
+	case commonv1.GamePhase_GAME_PHASE_INITIALIZING:
+		return states.PhaseInitializing
+	case commonv1.GamePhase_GAME_PHASE_LOBBY:
+		return states.PhaseLobby
+	case commonv1.GamePhase_GAME_PHASE_STARTING:
+		return states.PhaseStarting
+	case commonv1.GamePhase_GAME_PHASE_RUNNING:
+		return states.PhaseRunning
+	case commonv1.GamePhase_GAME_PHASE_PAUSED:
+		return states.PhasePaused
+	case commonv1.GamePhase_GAME_PHASE_ENDING:
+		return states.PhaseEnding
+	case commonv1.GamePhase_GAME_PHASE_ENDED:
+		return states.PhaseEnded
+	case commonv1.GamePhase_GAME_PHASE_ERROR:
+		return states.PhaseError
+	case commonv1.GamePhase_GAME_PHASE_RESET:
+		return states.PhaseReset
+	default:
+		return states.PhaseInitializing
+	}
+}
+
+// mapPhaseToStatus maps game phase to legacy game status for backward compatibility
+func mapPhaseToStatus(phase commonv1.GamePhase) commonv1.GameStatus {
+	switch phase {
+	case commonv1.GamePhase_GAME_PHASE_LOBBY:
+		return commonv1.GameStatus_GAME_STATUS_WAITING
+	case commonv1.GamePhase_GAME_PHASE_RUNNING:
+		return commonv1.GameStatus_GAME_STATUS_IN_PROGRESS
+	case commonv1.GamePhase_GAME_PHASE_ENDED:
+		return commonv1.GameStatus_GAME_STATUS_FINISHED
+	case commonv1.GamePhase_GAME_PHASE_ERROR:
+		return commonv1.GameStatus_GAME_STATUS_CANCELLED
+	default:
+		// For other phases, map to waiting or in progress based on whether game has started
+		if phase == commonv1.GamePhase_GAME_PHASE_STARTING || phase == commonv1.GamePhase_GAME_PHASE_PAUSED ||
+		   phase == commonv1.GamePhase_GAME_PHASE_ENDING {
+			return commonv1.GameStatus_GAME_STATUS_IN_PROGRESS
+		}
+		return commonv1.GameStatus_GAME_STATUS_WAITING
 	}
 }

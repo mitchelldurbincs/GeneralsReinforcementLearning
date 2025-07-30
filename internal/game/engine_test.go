@@ -16,8 +16,9 @@ func newTestRNG() *rand.Rand {
 	return rand.New(rand.NewSource(12345)) // Fixed seed
 }
 
-// testLogger provides a Nop logger for tests where log output is not asserted.
+// testLogger provides a logger for tests.
 func testLogger() zerolog.Logger {
+	// Use Nop logger for clean test output
 	return zerolog.Nop()
 }
 
@@ -71,6 +72,7 @@ func TestEngine_Step_BasicTurn(t *testing.T) {
 		Logger:  testLogger(),
 	}
 	engine := NewEngine(ctx, config)
+	require.NotNil(t, engine, "Engine should not be nil")
 	initialTurn := engine.gs.Turn
 	initialArmy := engine.gs.Players[0].ArmyCount
 
