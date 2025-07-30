@@ -155,5 +155,5 @@ if __name__ == "__main__":
         
     except grpc.RpcError:
         print("\nError: Game server is not running!")
-        print("Please start the server with: go run cmd/grpc_server/main.go")
+        print("Please start the server with: go run cmd/game_server/main.go")
         sys.exit(1)

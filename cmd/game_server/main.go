@@ -1,23 +1,38 @@
 package main
 
 import (
-	"context" // Import the context package
-	"errors"  // Import the errors package for errors.Is
+	"context"
 	"flag"
-	"math/rand"
+	"fmt"
+	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
-	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/config"
-	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
-	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log" // Using the global logger
+	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
+
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/config"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/grpc/gameserver"
+	gamev1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/game/v1"
 )
 
 func main() {
 	// Command line flags
 	configPath := flag.String("config", "", "Path to config file")
+	port := flag.Int("port", -1, "The server port (-1 to use config default)")
+	host := flag.String("host", "", "The server host (empty to use config default)")
+	logLevel := flag.String("log-level", "", "Log level (debug, info, warn, error) (empty to use config default)")
+	turnTimeout := flag.Int("turn-timeout", -1, "Default turn timeout in milliseconds (-1 to use config default)")
+	maxGames := flag.Int("max-games", -1, "Maximum concurrent games (-1 to use config default)")
+	enableReflection := flag.Bool("enable-reflection", false, "Enable gRPC reflection for debugging")
 	flag.Parse()
 	
 	// Initialize configuration
@@ -27,129 +42,231 @@ func main() {
 	
 	cfg := config.Get()
 	
-	// --- Zerolog Configuration ---
-	logLevel, err := zerolog.ParseLevel(cfg.Server.GameServer.LogLevel)
+	// Use config defaults if not overridden by flags
+	if *port == -1 {
+		*port = cfg.Server.GRPCServer.Port
+	}
+	if *host == "" {
+		*host = cfg.Server.GRPCServer.Host
+	}
+	if *logLevel == "" {
+		*logLevel = cfg.Server.GRPCServer.LogLevel
+	}
+	if *turnTimeout == -1 {
+		*turnTimeout = cfg.Server.GRPCServer.TurnTimeout
+	}
+	if *maxGames == -1 {
+		*maxGames = cfg.Server.GRPCServer.MaxGames
+	}
+	// For enableReflection, use config if flag not explicitly set to true
+	if !*enableReflection {
+		*enableReflection = cfg.Server.GRPCServer.EnableReflection
+	}
+
+	// Setup logging
+	setupLogging(*logLevel)
+
+	log.Info().
+		Int("port", *port).
+		Str("host", *host).
+		Int("turn_timeout_ms", *turnTimeout).
+		Int("max_games", *maxGames).
+		Msg("Starting gRPC game server")
+
+	// Create listener
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *host, *port))
 	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to listen")
+	}
+
+	// Create gRPC server with interceptors
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(
+			loggingInterceptor,
+			recoveryInterceptor,
+		),
+		grpc.ChainStreamInterceptor(
+			streamLoggingInterceptor,
+			streamRecoveryInterceptor,
+		),
+	}
+	
+	grpcServer := grpc.NewServer(opts...)
+
+	// Register game service
+	gameService := gameserver.NewServer()
+	gamev1.RegisterGameServiceServer(grpcServer, gameService)
+
+	// Register health service
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+	
+	// Set health status
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(gamev1.GameService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
+
+	// Register reflection service for debugging
+	if *enableReflection {
+		reflection.Register(grpcServer)
+		log.Info().Msg("gRPC reflection enabled")
+	}
+
+	// Setup graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle shutdown signals
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	
+	go func() {
+		sig := <-sigCh
+		log.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
+		
+		// Set health status to NOT_SERVING
+		healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+		healthServer.SetServingStatus(gamev1.GameService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+		
+		// Give ongoing requests time to complete
+		time.Sleep(time.Duration(cfg.Server.GRPCServer.GracefulShutdownDelay) * time.Second)
+		
+		log.Info().Msg("Gracefully stopping gRPC server")
+		grpcServer.GracefulStop()
+		cancel()
+	}()
+
+	// Start server
+	log.Info().Str("address", lis.Addr().String()).Msg("gRPC server listening")
+	
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Error().Err(err).Msg("Server stopped")
+			cancel()
+		}
+	}()
+
+	// TODO: Future enhancements
+	// - Prometheus metrics endpoint on separate port
+	// - OpenTelemetry tracing integration
+	// - Rate limiting per player
+	// - Authentication middleware for production
+	// - Periodic cleanup of abandoned games
+	// - Configuration hot-reload support
+
+	// Wait for shutdown
+	<-ctx.Done()
+	log.Info().Msg("Server shutdown complete")
+}
+
+func setupLogging(level string) {
+	// Parse log level
+	var logLevel zerolog.Level
+	switch level {
+	case "debug":
+		logLevel = zerolog.DebugLevel
+	case "info":
+		logLevel = zerolog.InfoLevel
+	case "warn":
+		logLevel = zerolog.WarnLevel
+	case "error":
+		logLevel = zerolog.ErrorLevel
+	default:
 		logLevel = zerolog.InfoLevel
 	}
+	
 	zerolog.SetGlobalLevel(logLevel)
-	
-	if cfg.Server.GameServer.LogFormat == "json" || os.Getenv("APP_ENV") == "production" {
-		log.Logger = zerolog.New(os.Stdout).With().Timestamp().Caller().Logger()
+
+	// Check if we're in production
+	if os.Getenv("APP_ENV") == "production" {
+		// JSON output for production
+		log.Logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
 	} else {
+		// Pretty console output for development
 		log.Logger = log.Output(zerolog.ConsoleWriter{
-			Out:        os.Stderr,
+			Out:        os.Stdout,
 			TimeFormat: time.RFC3339,
-			NoColor:    false,
-		}).With().Timestamp().Caller().Logger()
+		})
 	}
-
-	log.Info().Msg("Logger initialized")
-
-	randomActionDemo()
-	// manualTest()
 }
 
-func randomActionDemo() {
-	// --- Context for the demo ---
-	// For this standalone demo, context.Background() is sufficient.
-	// It's an empty context, signifying no specific deadline or cancellation signal from a parent.
-	// In a server environment, this context would typically come from the incoming request.
-	ctx := context.Background()
-
-	seed := time.Now().UnixNano()
-	log.Info().Int64("seed", seed).Msg("Starting random action demo")
-	rng := rand.New(rand.NewSource(seed))
-
-	cfg := config.Get()
+// loggingInterceptor logs all unary RPC calls
+func loggingInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	start := time.Now()
 	
-	// Create a game with config values
-	// Pass the context and the global logger (log.Logger) to NewEngine
-	gameConfig := game.GameConfig{
-		Width:   cfg.Server.GameServer.Demo.BoardWidth,
-		Height:  cfg.Server.GameServer.Demo.BoardHeight,
-		Players: 2,
-		Rng:     rng,
-		Logger:  log.Logger,
-	}
-	g := game.NewEngine(ctx, gameConfig)
-	if g == nil {
-		log.Fatal().Msg("Failed to create game engine (NewEngine returned nil, possibly due to context cancellation during init)")
-		return
-	}
-
-
-	log.Info().Msgf("Initial board:\n%s", g.Board(-1))
-	initialPlayers := g.GameState().Players
-	for i, p := range initialPlayers {
-		log.Info().
-			Int("player_id", p.ID).
-			Int("initial_army_count", p.ArmyCount).
-			Bool("initial_alive", p.Alive).
-			Int("initial_general_idx", p.GeneralIdx).
-			Msgf("Initial stats for player %d", i)
-	}
-
-	maxTurns := cfg.Server.GameServer.Demo.MaxTurns
-	for turn := 0; turn < maxTurns && !g.IsGameOver(); turn++ {
-		actions := game.GenerateRandomActions(g, rng)
-
-		turnLogger := log.With().Int("turn", turn+1).Logger()
-
-		// Pass the context to the Step method
-		if err := g.Step(ctx, actions); err != nil {
-			// Check if the error is due to context cancellation/deadline
-			if errors.Is(err, context.Canceled) {
-				turnLogger.Warn().Err(err).Msg("Game step was canceled")
-			} else if errors.Is(err, context.DeadlineExceeded) {
-				turnLogger.Error().Err(err).Msg("Game step timed out")
-			} else {
-				turnLogger.Error().Err(err).Msg("Error processing game step")
-			}
-			break // Stop simulation on any error
-		}
-
-		if turn%5 == 0 || len(actions) > 0 {
-			turnLogger.Info().Int("actions_count", len(actions)).Msg("Turn processed")
-
-			if len(actions) > 0 {
-				for _, action := range actions {
-					if moveAction, ok := action.(*core.MoveAction); ok {
-						turnLogger.Debug().
-							Int("player_id", moveAction.PlayerID).
-							Int("from_x", moveAction.FromX).
-							Int("from_y", moveAction.FromY).
-							Int("to_x", moveAction.ToX).
-							Int("to_y", moveAction.ToY).
-							Bool("move_all", moveAction.MoveAll).
-							Msg("Player move action")
-					}
-				}
-			}
-			turnLogger.Info().Msgf("Board state:\n%s", g.Board(-1))
-
-			state := g.GameState()
-			for _, player := range state.Players {
-				turnLogger.Info().
-					Int("player_id", player.ID).
-					Int("army_count", player.ArmyCount).
-					Bool("alive", player.Alive).
-					Msg("Player status")
-			}
+	// Call the handler
+	resp, err := handler(ctx, req)
+	
+	// Log the call
+	code := codes.OK
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			code = st.Code()
 		}
 	}
-
-	if g.IsGameOver() {
-		winner := g.GetWinner()
-		if winner >= 0 {
-			log.Info().Int("winner_player_id", winner).Msg("🎉 Game Over! Player wins!")
-		} else {
-			log.Info().Msg("Game Over! No winner (draw or error).")
-		}
-	} else {
-		log.Info().Int("max_turns_reached", maxTurns).Msg("Game reached maximum turns")
-	}
-
-	log.Info().Msgf("Final board:\n%s", g.Board(-1))
+	
+	log.Info().
+		Str("method", info.FullMethod).
+		Str("code", code.String()).
+		Dur("duration", time.Since(start)).
+		Err(err).
+		Msg("gRPC call")
+	
+	return resp, err
 }
 
+// recoveryInterceptor catches panics and returns proper gRPC errors
+func recoveryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().
+				Str("method", info.FullMethod).
+				Interface("panic", r).
+				Msg("Recovered from panic in gRPC handler")
+			err = status.Errorf(codes.Internal, "internal server error")
+		}
+	}()
+	
+	return handler(ctx, req)
+}
+
+// streamLoggingInterceptor logs all streaming RPC calls
+func streamLoggingInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	start := time.Now()
+	
+	// Call the handler
+	err := handler(srv, ss)
+	
+	// Log the call
+	code := codes.OK
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			code = st.Code()
+		}
+	}
+	
+	log.Info().
+		Str("method", info.FullMethod).
+		Str("code", code.String()).
+		Dur("duration", time.Since(start)).
+		Bool("is_client_stream", info.IsClientStream).
+		Bool("is_server_stream", info.IsServerStream).
+		Err(err).
+		Msg("gRPC stream")
+	
+	return err
+}
+
+// streamRecoveryInterceptor catches panics in streaming handlers
+func streamRecoveryInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().
+				Str("method", info.FullMethod).
+				Interface("panic", r).
+				Msg("Recovered from panic in gRPC stream handler")
+			err = status.Errorf(codes.Internal, "internal server error")
+		}
+	}()
+	
+	return handler(srv, ss)
+}
