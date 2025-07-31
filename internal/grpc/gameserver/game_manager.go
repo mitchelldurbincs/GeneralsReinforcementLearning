@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/experience"
 	gameengine "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/events"
@@ -39,6 +40,12 @@ type gameInstance struct {
 	
 	// Stream management
 	streamManager *StreamManager
+	
+	// Reference to game manager (for accessing experience service)
+	gameManager *GameManager
+	
+	// Engine context for turn processing
+	engineCtx context.Context
 }
 
 type playerInfo struct {
@@ -49,15 +56,29 @@ type playerInfo struct {
 
 // GameManager manages all active game instances
 type GameManager struct {
-	mu       sync.RWMutex
-	games    map[string]*gameInstance
-	nextID   int64
+	mu                sync.RWMutex
+	games             map[string]*gameInstance
+	nextID            int64
+	experienceService *ExperienceService
 }
 
 // NewGameManager creates a new game manager
 func NewGameManager() *GameManager {
 	gm := &GameManager{
 		games: make(map[string]*gameInstance),
+	}
+	
+	// Start cleanup goroutine
+	go gm.runCleanup()
+	
+	return gm
+}
+
+// NewGameManagerWithExperience creates a new game manager with experience service
+func NewGameManagerWithExperience(experienceService *ExperienceService) *GameManager {
+	gm := &GameManager{
+		games:             make(map[string]*gameInstance),
+		experienceService: experienceService,
 	}
 	
 	// Start cleanup goroutine
@@ -95,6 +116,7 @@ func (gm *GameManager) CreateGame(config *gamev1.GameConfig) (*gameInstance, str
 		lastActivity:       now,
 		idempotencyManager: NewIdempotencyManager(),
 		streamManager:      NewStreamManager(),
+		gameManager:        gm,
 	}
 	
 	gm.mu.Lock()
@@ -243,19 +265,68 @@ func (g *gameInstance) IsFull() bool {
 	return len(g.players) == int(g.config.MaxPlayers)
 }
 
+// getGameManager returns the game manager reference
+func (g *gameInstance) getGameManager() *GameManager {
+	return g.gameManager
+}
+
 // StartEngine initializes the game engine
 func (g *gameInstance) StartEngine(ctx context.Context) error {
 	if g.engine != nil {
 		return fmt.Errorf("engine already started")
 	}
 	
+	// Create experience collector if experience service is available AND collection is enabled
+	var experienceCollector gameengine.ExperienceCollector
+	if gm := g.getGameManager(); gm != nil && gm.experienceService != nil && g.config.CollectExperiences {
+		// Create a simple collector that writes to the experience buffer
+		experienceCollector = experience.NewSimpleCollector(10000, g.id, log.Logger)
+		
+		// Get or create buffer for this game
+		buffer := gm.experienceService.GetBufferManager().GetOrCreateBuffer(g.id)
+		
+		// Connect collector to buffer
+		go func() {
+			// This goroutine transfers experiences from collector to buffer
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					// Get experiences from collector
+					if collector, ok := experienceCollector.(*experience.SimpleCollector); ok {
+						experiences := collector.GetExperiences()
+						if len(experiences) > 0 {
+							// Add to buffer
+							for _, exp := range experiences {
+								if err := buffer.Add(exp); err != nil {
+									log.Error().Err(err).Msg("Failed to add experience to buffer")
+								}
+							}
+							// Clear collector after transfer
+							collector.Clear()
+						}
+					}
+				}
+			}
+		}()
+	}
+	
 	// Create the game engine
 	engineConfig := gameengine.GameConfig{
-		Width:   int(g.config.Width),
-		Height:  int(g.config.Height),
-		Players: int(g.config.MaxPlayers),
-		Logger:  log.Logger,
+		Width:               int(g.config.Width),
+		Height:              int(g.config.Height),
+		Players:             int(g.config.MaxPlayers),
+		Logger:              log.Logger,
+		GameID:              g.id,
+		ExperienceCollector: experienceCollector,
 	}
+	// Store the engine context for use in turn processing
+	g.engineCtx = ctx
+	
 	g.engine = gameengine.NewEngine(ctx, engineConfig)
 	
 	if g.engine == nil {
@@ -350,7 +421,6 @@ func (g *gameInstance) processTurn(ctx context.Context) error {
 	
 	// Clear the buffer for next turn
 	g.actionBuffer = make(map[int32]core.Action)
-	g.currentTurn++
 	
 	g.actionMu.Unlock()
 	
@@ -365,10 +435,17 @@ func (g *gameInstance) processTurn(ctx context.Context) error {
 		prevAliveStatus[player.ID] = player.Alive
 	}
 	
-	err := g.engine.Step(ctx, actions)
+	// Get the current turn from the engine before processing
+	currentTurn := g.engine.GameState().Turn
+	
+	// Use the engine context instead of the request context to avoid cancellation
+	err := g.engine.Step(g.engineCtx, actions)
 	if err != nil {
-		return fmt.Errorf("game %s turn %d: failed to process %d actions: %w", g.id, g.currentTurn-1, len(actions), err)
+		return fmt.Errorf("game %s turn %d: failed to process %d actions: %w", g.id, currentTurn, len(actions), err)
 	}
+	
+	// Update our turn counter to match the engine's
+	g.currentTurn = int32(g.engine.GameState().Turn)
 	
 	// Check for player eliminations and game ending
 	state := g.engine.GameState()
@@ -405,7 +482,7 @@ func (g *gameInstance) processTurn(ctx context.Context) error {
 }
 
 // startTurnTimer begins a timer for the current turn
-func (g *gameInstance) startTurnTimer(ctx context.Context, duration time.Duration) {
+func (g *gameInstance) startTurnTimer(ctx context.Context, duration time.Duration, server *Server) {
 	g.actionMu.Lock()
 	g.turnDeadline = time.Now().Add(duration)
 	g.actionMu.Unlock()
@@ -414,39 +491,59 @@ func (g *gameInstance) startTurnTimer(ctx context.Context, duration time.Duratio
 		g.turnTimer.Stop()
 	}
 	
+	// For 0 duration, process after a short delay to allow action submission
+	if duration == 0 {
+		go func() {
+			// Give players more time to submit actions
+			time.Sleep(500 * time.Millisecond)
+			g.processTurnTimeout(ctx, duration, server)
+		}()
+		return
+	}
+	
 	g.turnTimer = time.AfterFunc(duration, func() {
-		// Turn timeout - submit nil actions for players who haven't acted
-		g.actionMu.Lock()
-		
-		// Fill in nil actions for missing players
-		for _, player := range g.players {
-			if _, exists := g.actionBuffer[player.id]; !exists {
-				g.actionBuffer[player.id] = nil
-			}
-		}
-		
-		allSubmitted := len(g.actionBuffer) >= len(g.players)
-		g.actionMu.Unlock()
-		
-		if allSubmitted {
-			// Process the turn with whatever actions we have
-			if err := g.processTurn(ctx); err != nil {
-				log.Error().Err(err).
-					Str("game_id", g.id).
-					Int32("turn", g.currentTurn).
-					Msg("Failed to process turn after timeout")
-			} else {
-				// Note: Broadcasting updates requires access to the server instance
-				// This would need to be handled by the caller
-				log.Debug().
-					Str("game_id", g.id).
-					Msg("Turn processed after timeout (broadcasting not implemented for timer)")
-			}
-			
-			// Start timer for next turn if game is still active
-			if g.CurrentPhase() == commonv1.GamePhase_GAME_PHASE_RUNNING && duration > 0 {
-				g.startTurnTimer(ctx, duration)
-			}
-		}
+		g.processTurnTimeout(ctx, duration, server)
 	})
+}
+
+// processTurnTimeout handles turn timeout logic
+func (g *gameInstance) processTurnTimeout(ctx context.Context, duration time.Duration, server *Server) {
+	// Turn timeout - submit nil actions for players who haven't acted
+	g.actionMu.Lock()
+	
+	// Fill in nil actions for missing players
+	for _, player := range g.players {
+		if _, exists := g.actionBuffer[player.id]; !exists {
+			g.actionBuffer[player.id] = nil
+		}
+	}
+	
+	allSubmitted := len(g.actionBuffer) >= len(g.players)
+	g.actionMu.Unlock()
+	
+	if allSubmitted {
+		// Process the turn with whatever actions we have
+		// Use the engine context to avoid cancellation issues
+		if err := g.processTurn(g.engineCtx); err != nil {
+			log.Error().Err(err).
+				Str("game_id", g.id).
+				Int32("turn", g.currentTurn).
+				Msg("Failed to process turn after timeout")
+		} else {
+			log.Debug().
+				Str("game_id", g.id).
+				Int32("turn", g.currentTurn).
+				Msg("Turn processed after timeout")
+			
+			// Broadcast updates to all connected stream clients
+			if server != nil {
+				g.broadcastUpdates(server)
+			}
+		}
+		
+		// Start timer for next turn if game is still active
+		if g.CurrentPhase() == commonv1.GamePhase_GAME_PHASE_RUNNING {
+			g.startTurnTimer(g.engineCtx, duration, server)
+		}
+	}
 }

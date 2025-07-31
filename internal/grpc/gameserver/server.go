@@ -27,6 +27,9 @@ type Server struct {
 	
 	// Action validator for validating game actions
 	validator *ActionValidator
+	
+	// Experience service for collecting and streaming experiences
+	experienceService *ExperienceService
 }
 
 
@@ -43,10 +46,16 @@ const (
 
 // NewServer creates a new game server
 func NewServer() *Server {
-	gameManager := NewGameManager()
+	// Create experience service with its buffer manager
+	experienceService := NewExperienceService(nil)
+	
+	// Create game manager with experience service
+	gameManager := NewGameManagerWithExperience(experienceService)
+	
 	return &Server{
-		gameManager: gameManager,
-		validator:   NewActionValidator(gameManager),
+		gameManager:       gameManager,
+		validator:         NewActionValidator(gameManager),
+		experienceService: experienceService,
 	}
 }
 
@@ -127,8 +136,19 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 			Height:  int(game.config.Height),
 			Players: int(game.config.MaxPlayers),
 			Logger:  log.Logger,
+			GameID:  req.GameId,
 		}
-		game.engine = gameengine.NewEngine(context.Background(), engineConfig)
+		
+		// Attach experience collector if enabled
+		if game.config.CollectExperiences && s.experienceService != nil {
+			engineConfig.ExperienceCollector = s.experienceService.CreateCollector(req.GameId)
+		}
+		
+		// Create a background context for the engine that won't be cancelled
+		engineCtx := context.Background()
+		game.engineCtx = engineCtx
+		
+		game.engine = gameengine.NewEngine(engineCtx, engineConfig)
 		
 		if game.engine == nil {
 			return nil, status.Errorf(codes.Internal, "failed to create game engine for game %s: config %dx%d with %d players", req.GameId, game.config.Width, game.config.Height, game.config.MaxPlayers)
@@ -169,10 +189,8 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 			Bool("action_buffer_initialized", game.actionBuffer != nil).
 			Msg("Game state initialized")
 		
-		// Start turn timer if configured
-		if game.config.TurnTimeMs > 0 {
-			game.startTurnTimer(ctx, time.Duration(game.config.TurnTimeMs)*time.Millisecond)
-		}
+		// Start turn timer (even if 0, to process turns automatically)
+		game.startTurnTimer(game.engineCtx, time.Duration(game.config.TurnTimeMs)*time.Millisecond, s)
 		
 		log.Info().
 			Str("game_id", req.GameId).
@@ -257,7 +275,8 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 	
 	// If all players have submitted, process the turn
 	if allSubmitted {
-		if err := game.processTurn(ctx); err != nil {
+		// Use the engine context to avoid cancellation when the request completes
+		if err := game.processTurn(game.engineCtx); err != nil {
 			log.Error().Err(err).
 				Str("game_id", req.GameId).
 				Int32("turn", currentTurn).
@@ -277,9 +296,9 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		// Broadcast updates to all connected stream clients
 		game.broadcastUpdates(s)
 		
-		// If turn time is configured and game is still active, start next turn timer
-		if game.config.TurnTimeMs > 0 && game.CurrentPhase() == commonv1.GamePhase_GAME_PHASE_RUNNING {
-			game.startTurnTimer(ctx, time.Duration(game.config.TurnTimeMs)*time.Millisecond)
+		// If game is still active, start next turn timer
+		if game.CurrentPhase() == commonv1.GamePhase_GAME_PHASE_RUNNING {
+			game.startTurnTimer(game.engineCtx, time.Duration(game.config.TurnTimeMs)*time.Millisecond, s)
 		}
 	}
 	
@@ -733,6 +752,11 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 		},
 		Timestamp: timestamppb.Now(),
 	}
+}
+
+// GetExperienceService returns the experience service for integration
+func (s *Server) GetExperienceService() *ExperienceService {
+	return s.experienceService
 }
 
 

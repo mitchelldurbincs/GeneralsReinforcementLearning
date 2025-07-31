@@ -15,10 +15,22 @@ cd "$(dirname "$0")/.."
 
 echo -e "${YELLOW}Starting Python proto generation...${NC}"
 
+# Check if generalsrl venv exists and use it
+if [ -d "generalsrl" ] && [ -f "generalsrl/bin/python" ]; then
+    echo "Using generalsrl virtual environment..."
+    PYTHON="./generalsrl/bin/python"
+    PIP="./generalsrl/bin/pip"
+else
+    echo "Using system Python (no generalsrl venv found)..."
+    PYTHON="python3"
+    PIP="pip3"
+fi
+
 # Check if grpcio-tools is installed
-if ! python3 -c "import grpc_tools" 2>/dev/null; then
+if ! $PYTHON -c "import grpc_tools" 2>/dev/null; then
     echo -e "${RED}Error: grpcio-tools not installed${NC}"
-    echo "Please install it with: pip install grpcio-tools"
+    echo "Please install it with: $PIP install grpcio-tools"
+    echo "Or run: make install-python-tools"
     exit 1
 fi
 
@@ -26,6 +38,7 @@ fi
 echo "Creating Python package directories..."
 mkdir -p python/generals_pb/common/v1
 mkdir -p python/generals_pb/game/v1
+mkdir -p python/generals_pb/experience/v1
 
 # Create __init__.py files for proper Python packages
 touch python/__init__.py
@@ -34,10 +47,12 @@ touch python/generals_pb/common/__init__.py
 touch python/generals_pb/common/v1/__init__.py
 touch python/generals_pb/game/__init__.py
 touch python/generals_pb/game/v1/__init__.py
+touch python/generals_pb/experience/__init__.py
+touch python/generals_pb/experience/v1/__init__.py
 
 # Generate common proto files
 echo -e "${GREEN}Generating common proto files...${NC}"
-python3 -m grpc_tools.protoc \
+$PYTHON -m grpc_tools.protoc \
     -I proto \
     --python_out=python/generals_pb \
     --grpc_python_out=python/generals_pb \
@@ -45,11 +60,19 @@ python3 -m grpc_tools.protoc \
 
 # Generate game proto files
 echo -e "${GREEN}Generating game proto files...${NC}"
-python3 -m grpc_tools.protoc \
+$PYTHON -m grpc_tools.protoc \
     -I proto \
     --python_out=python/generals_pb \
     --grpc_python_out=python/generals_pb \
     proto/game/v1/game.proto
+
+# Generate experience proto files
+echo -e "${GREEN}Generating experience proto files...${NC}"
+$PYTHON -m grpc_tools.protoc \
+    -I proto \
+    --python_out=python/generals_pb \
+    --grpc_python_out=python/generals_pb \
+    proto/experience/v1/experience.proto
 
 # Fix imports in generated files (protoc generates absolute imports that need adjustment)
 echo "Fixing Python imports..."
@@ -59,10 +82,16 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
     sed -i '' 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/game/v1/game_pb2.py
     sed -i '' 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/game/v1/game_pb2_grpc.py 2>/dev/null || true
+    # Fix imports in experience.proto generated files
+    sed -i '' 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/experience/v1/experience_pb2.py
+    sed -i '' 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/experience/v1/experience_pb2_grpc.py 2>/dev/null || true
 else
     # Linux
     sed -i 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/game/v1/game_pb2.py
     sed -i 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/game/v1/game_pb2_grpc.py 2>/dev/null || true
+    # Fix imports in experience.proto generated files
+    sed -i 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/experience/v1/experience_pb2.py
+    sed -i 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/experience/v1/experience_pb2_grpc.py 2>/dev/null || true
 fi
 
 # Create a setup.py for the Python package
@@ -162,6 +191,7 @@ echo ""
 echo "Generated files in:"
 echo "  - python/generals_pb/common/v1/"
 echo "  - python/generals_pb/game/v1/"
+echo "  - python/generals_pb/experience/v1/"
 echo ""
 echo "To use the Python client:"
 echo "  1. cd python"

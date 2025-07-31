@@ -21,6 +21,7 @@ import (
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/config"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/grpc/gameserver"
+	experiencepb "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/experience/v1"
 	gamev1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/game/v1"
 )
 
@@ -96,6 +97,10 @@ func main() {
 	// Register game service
 	gameService := gameserver.NewServer()
 	gamev1.RegisterGameServiceServer(grpcServer, gameService)
+	
+	// Register experience service
+	experienceService := gameService.GetExperienceService()
+	experiencepb.RegisterExperienceServiceServer(grpcServer, experienceService)
 
 	// Register health service
 	healthServer := health.NewServer()
@@ -104,6 +109,7 @@ func main() {
 	// Set health status
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(gamev1.GameService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(experiencepb.ExperienceService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_SERVING)
 
 	// Register reflection service for debugging
 	if *enableReflection {
@@ -126,6 +132,7 @@ func main() {
 		// Set health status to NOT_SERVING
 		healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 		healthServer.SetServingStatus(gamev1.GameService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+		healthServer.SetServingStatus(experiencepb.ExperienceService_ServiceDesc.ServiceName, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 		
 		// Give ongoing requests time to complete
 		time.Sleep(time.Duration(cfg.Server.GRPCServer.GracefulShutdownDelay) * time.Second)

@@ -10,6 +10,6 @@ setup(
     ],
     python_requires=">=3.7",
     description="Python gRPC client for Generals Reinforcement Learning",
-    author="Mitchell Durbin",
+    author="Your Name",
     license="MIT",
 )
