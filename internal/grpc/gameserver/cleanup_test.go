@@ -12,8 +12,8 @@ import (
 )
 
 func TestGameCleanup(t *testing.T) {
-	// Create server without automatic cleanup goroutine
-	s := &Server{
+	// Create game manager directly (bypass server to avoid automatic cleanup goroutine)
+	gm := &GameManager{
 		games: make(map[string]*gameInstance),
 	}
 	
@@ -30,35 +30,39 @@ func TestGameCleanup(t *testing.T) {
 		players:          make([]playerInfo, 0, 2),
 		createdAt:        now,
 		lastActivity:     now,
-		idempotencyCache: make(map[string]*idempotencyEntry),
-		streamClients:    make(map[int32]*streamClient),
+		idempotencyManager: NewIdempotencyManager(),
+		streamManager:    NewStreamManager(),
 	}
-	s.games[gameID] = game
+	
+	// Add game to manager
+	gm.mu.Lock()
+	gm.games[gameID] = game
+	gm.mu.Unlock()
 	
 	// Verify game exists
-	s.mu.RLock()
-	game, exists := s.games[gameID]
-	s.mu.RUnlock()
+	gm.mu.RLock()
+	game, exists := gm.games[gameID]
+	gm.mu.RUnlock()
 	assert.True(t, exists)
 	
 	// Test 1: Active game should not be cleaned up
 	game.lastActivity = time.Now()
-	s.cleanupGames()
+	gm.cleanupGames()
 	
-	s.mu.RLock()
-	_, stillExists := s.games[gameID]
-	s.mu.RUnlock()
+	gm.mu.RLock()
+	_, stillExists := gm.games[gameID]
+	gm.mu.RUnlock()
 	assert.True(t, stillExists, "Active game should not be cleaned up")
 	
 	// Test 2: Game without engine should be cleaned up after abandoned timeout
 	// Since we can't test finished games without a proper engine setup,
 	// we'll test abandoned game cleanup instead
 	game.lastActivity = time.Now().Add(-35 * time.Minute) // Past abandoned timeout
-	s.cleanupGames()
+	gm.cleanupGames()
 	
-	s.mu.RLock()
-	_, stillExists = s.games[gameID]
-	s.mu.RUnlock()
+	gm.mu.RLock()
+	_, stillExists = gm.games[gameID]
+	gm.mu.RUnlock()
 	assert.False(t, stillExists, "Abandoned game without engine should be cleaned up")
 	
 	// Test 3: Create a new game to test active game preservation
@@ -74,31 +78,37 @@ func TestGameCleanup(t *testing.T) {
 		players:          make([]playerInfo, 0, 2),
 		createdAt:        now2,
 		lastActivity:     now2,
-		idempotencyCache: make(map[string]*idempotencyEntry),
-		streamClients:    make(map[int32]*streamClient),
+		idempotencyManager: NewIdempotencyManager(),
+		streamManager:    NewStreamManager(),
 	}
-	s.games[gameID2] = game2
+	
+	gm.mu.Lock()
+	gm.games[gameID2] = game2
+	gm.mu.Unlock()
 	
 	// Verify the new game exists and is not cleaned up when active
-	s.mu.RLock()
-	_, exists2 := s.games[gameID2]
-	s.mu.RUnlock()
+	gm.mu.RLock()
+	_, exists2 := gm.games[gameID2]
+	gm.mu.RUnlock()
 	assert.True(t, exists2)
 	
 	// Recent activity should prevent cleanup
 	game2.lastActivity = time.Now()
-	s.cleanupGames()
+	gm.cleanupGames()
 	
-	s.mu.RLock()
-	_, stillExists = s.games[gameID2]
-	s.mu.RUnlock()
+	gm.mu.RLock()
+	_, stillExists = gm.games[gameID2]
+	gm.mu.RUnlock()
 	assert.True(t, stillExists, "Active game should not be cleaned up")
 }
 
 func TestLastActivityUpdates(t *testing.T) {
-	// Create server without automatic cleanup goroutine to avoid test interference
-	s := &Server{
+	// Create server with a game manager that doesn't auto-start cleanup
+	gm := &GameManager{
 		games: make(map[string]*gameInstance),
+	}
+	s := &Server{
+		gameManager: gm,
 	}
 	ctx := context.Background()
 	
@@ -113,10 +123,10 @@ func TestLastActivityUpdates(t *testing.T) {
 	require.NoError(t, err)
 	gameID := createResp.GameId
 	
-	s.mu.RLock()
-	game := s.games[gameID]
+	gm.mu.RLock()
+	game := gm.games[gameID]
 	initialActivity := game.lastActivity
-	s.mu.RUnlock()
+	gm.mu.RUnlock()
 	
 	// Wait a bit
 	time.Sleep(10 * time.Millisecond)
@@ -128,9 +138,9 @@ func TestLastActivityUpdates(t *testing.T) {
 	})
 	require.NoError(t, err)
 	
-	s.mu.RLock()
+	gm.mu.RLock()
 	afterJoinActivity := game.lastActivity
-	s.mu.RUnlock()
+	gm.mu.RUnlock()
 	
 	assert.True(t, afterJoinActivity.After(initialActivity), "Join should update last activity")
 	
