@@ -24,6 +24,9 @@ type Server struct {
 	
 	// Game manager for handling all game instances
 	gameManager *GameManager
+	
+	// Action validator for validating game actions
+	validator *ActionValidator
 }
 
 
@@ -40,8 +43,10 @@ const (
 
 // NewServer creates a new game server
 func NewServer() *Server {
+	gameManager := NewGameManager()
 	return &Server{
-		gameManager: NewGameManager(),
+		gameManager: gameManager,
+		validator:   NewActionValidator(gameManager),
 	}
 }
 
@@ -193,83 +198,31 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		Str("idempotency_key", req.IdempotencyKey).
 		Msg("Received action submission")
 	
-	// Validate game exists
-	game, exists := s.gameManager.GetGame(req.GameId)
-	if !exists {
-		return &gamev1.SubmitActionResponse{
-			Success:      false,
-			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_GAME_NOT_FOUND,
-			ErrorMessage: fmt.Sprintf("game %s not found", req.GameId),
-		}, nil
+	// Validate request
+	result, game := s.validator.ValidateSubmitActionRequest(ctx, req)
+	
+	// Handle cached response
+	if result.CachedResponse != nil {
+		return result.CachedResponse, nil
 	}
 	
-	// Check idempotency cache if key provided
-	if req.IdempotencyKey != "" {
-		if cached := game.idempotencyManager.Check(req.IdempotencyKey); cached != nil {
-			log.Debug().
-				Str("game_id", req.GameId).
-				Str("idempotency_key", req.IdempotencyKey).
-				Msg("Returning cached response for idempotent request")
-			return cached, nil
-		}
-	}
-	
-	// Check game phase - only allow actions in Running phase
-	currentPhase := game.CurrentPhase()
-	if currentPhase != commonv1.GamePhase_GAME_PHASE_RUNNING {
-		errorCode := commonv1.ErrorCode_ERROR_CODE_INVALID_PHASE
-		if currentPhase == commonv1.GamePhase_GAME_PHASE_ENDED {
-			errorCode = commonv1.ErrorCode_ERROR_CODE_GAME_OVER
-		}
-		
+	// Handle validation failures
+	if !result.Valid {
 		resp := &gamev1.SubmitActionResponse{
 			Success:      false,
-			ErrorCode:    errorCode,
-			ErrorMessage: fmt.Sprintf("game %s cannot accept actions in %s phase", req.GameId, currentPhase.String()),
+			ErrorCode:    result.ErrorCode,
+			ErrorMessage: result.ErrorMessage,
 		}
-		if req.IdempotencyKey != "" {
+		if req.IdempotencyKey != "" && game != nil {
 			game.idempotencyManager.Store(req.IdempotencyKey, resp)
 		}
 		return resp, nil
 	}
 	
-	// Authenticate player
-	authenticated := false
-	for _, p := range game.players {
-		if p.id == req.PlayerId && p.token == req.PlayerToken {
-			authenticated = true
-			break
-		}
-	}
-	
-	if !authenticated {
-		resp := &gamev1.SubmitActionResponse{
-			Success:      false,
-			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_PLAYER,
-			ErrorMessage: fmt.Sprintf("invalid player credentials for game %s: player %d", req.GameId, req.PlayerId),
-		}
-		if req.IdempotencyKey != "" {
-			game.idempotencyManager.Store(req.IdempotencyKey, resp)
-		}
-		return resp, nil
-	}
-	
-	// Validate turn number
+	// Get current turn for later use
 	game.actionMu.Lock()
 	currentTurn := game.currentTurn
 	game.actionMu.Unlock()
-	
-	if req.Action != nil && req.Action.TurnNumber != currentTurn {
-		resp := &gamev1.SubmitActionResponse{
-			Success:      false,
-			ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
-			ErrorMessage: fmt.Sprintf("invalid turn number for game %s: expected %d, got %d", req.GameId, currentTurn, req.Action.TurnNumber),
-		}
-		if req.IdempotencyKey != "" {
-			game.idempotencyManager.Store(req.IdempotencyKey, resp)
-		}
-		return resp, nil
-	}
 	
 	// Convert protobuf action to core action
 	coreAction, err := convertProtoAction(req.Action, req.PlayerId)
@@ -285,24 +238,18 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		return resp, nil
 	}
 	
-	// Validate action with game engine if not nil
-	if coreAction != nil {
-		game.mu.Lock()
-		engineState := game.engine.GameState()
-		err = coreAction.Validate(engineState.Board, int(req.PlayerId))
-		game.mu.Unlock()
-		
-		if err != nil {
-			resp := &gamev1.SubmitActionResponse{
-				Success:      false,
-				ErrorCode:    commonv1.ErrorCode_ERROR_CODE_INVALID_TURN,
-				ErrorMessage: fmt.Sprintf("action validation failed for game %s player %d turn %d: %v", req.GameId, req.PlayerId, currentTurn, err),
-			}
-			if req.IdempotencyKey != "" {
-				game.idempotencyManager.Store(req.IdempotencyKey, resp)
-			}
-			return resp, nil
+	// Validate core action
+	actionResult := s.validator.ValidateCoreAction(coreAction, game, req.PlayerId, currentTurn)
+	if !actionResult.Valid {
+		resp := &gamev1.SubmitActionResponse{
+			Success:      false,
+			ErrorCode:    actionResult.ErrorCode,
+			ErrorMessage: actionResult.ErrorMessage,
 		}
+		if req.IdempotencyKey != "" {
+			game.idempotencyManager.Store(req.IdempotencyKey, resp)
+		}
+		return resp, nil
 	}
 	
 	// Collect the action and check if all players have submitted

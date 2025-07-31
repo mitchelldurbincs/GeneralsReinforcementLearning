@@ -2,14 +2,12 @@ package game
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"time"
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/events"
-	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/mapgen"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/processor"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/rules"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/states"
@@ -23,9 +21,11 @@ type Engine struct {
 	logger   zerolog.Logger
 	
 	// Extracted components
-	actionProcessor *processor.ActionProcessor
-	winCondition    *rules.WinConditionChecker
-	legalMoves      *rules.LegalMoveCalculator
+	actionProcessor    *processor.ActionProcessor
+	winCondition       *rules.WinConditionChecker
+	legalMoves         *rules.LegalMoveCalculator
+	turnProcessor      *TurnProcessor      // Added turn processor
+	productionManager  *ProductionManager  // Added production manager
 	
 	// Event system
 	eventBus *events.EventBus
@@ -55,250 +55,20 @@ type GameConfig struct {
 // NewEngine creates a new game engine with map generation.
 // Accepts a context, primarily for consistency and potential future use (e.g., complex setup).
 func NewEngine(ctx context.Context, cfg GameConfig) *Engine {
-	// Create a logger for this engine instance, potentially deriving from a passed-in logger
-	// or using a default if none is provided.
-	// For this example, we'll use the parentLogger and add engine-specific fields.
-	engineLogger := cfg.Logger.With().Str("component", "GameEngine").Logger()
-
-	// Example: Check context if setup were long (not strictly necessary here yet)
-	select {
-	case <-ctx.Done():
-		engineLogger.Error().Err(ctx.Err()).Msg("Engine creation cancelled or timed out during initial phase")
-		return nil
-	default:
-	}
-
-	// Set a default RNG if none provided
-	if cfg.Rng == nil {
-		engineLogger.Debug().Msg("No RNG provided, creating new seeded RNG")
-		cfg.Rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-	}
-
-	// Generate game ID if not provided
-	if cfg.GameID == "" {
-		cfg.GameID = fmt.Sprintf("game_%d", time.Now().UnixNano())
-	}
-
-	// Generate the map
-	mapCfg := mapgen.DefaultMapConfig(cfg.Width, cfg.Height, cfg.Players)
-	generator := mapgen.NewGenerator(mapCfg, cfg.Rng)
-	board, err := generator.GenerateMap()
+	initializer := NewEngineInitializer(cfg)
+	engine, err := initializer.Initialize(ctx)
 	if err != nil {
-		engineLogger.Error().Err(err).Msg("Map generation failed")
+		// Log error and return nil to maintain backward compatibility
+		cfg.Logger.Error().Err(err).Msg("Failed to initialize engine")
 		return nil
 	}
-
-	// Initialize game state with the generated map
-	gs := &GameState{
-		Board:                 board,
-		Players:               make([]Player, cfg.Players),
-		Turn:                  0,
-		FogOfWarEnabled:       true,
-		ChangedTiles:          make(map[int]struct{}),
-		VisibilityChangedTiles: make(map[int]struct{}),
-	}
-
-	// Initialize players and find their generals
-	for i := 0; i < cfg.Players; i++ {
-		generalIdx := -1
-		// Find this player's general on the board
-		for idx, tile := range board.T {
-			if tile.Type == core.TileGeneral && tile.Owner == i {
-				generalIdx = idx
-				break
-			}
-		}
-		
-		gs.Players[i] = Player{
-			ID:         i,
-			Alive:      true,
-			GeneralIdx: generalIdx,
-			ArmyCount:  1,
-			OwnedTiles: make([]int, 0, 50), // Pre-allocate some capacity
-		}
-	}
-
-	// Create action processor
-	actionProc := processor.NewActionProcessor(engineLogger)
-	
-	// Use provided experience collector if available
-	if cfg.ExperienceCollector != nil {
-		engineLogger.Info().Msg("Experience collection enabled")
-	}
-	
-	// Create event bus first as it's needed by state machine
-	eventBus := events.NewEventBus()
-	
-	// Create game context for state machine
-	gameContext := states.NewGameContext(cfg.GameID, cfg.Players, engineLogger)
-	gameContext.PlayerCount = cfg.Players
-	
-	// Create state machine
-	stateMachine := states.NewStateMachine(gameContext, eventBus)
-	
-	e := &Engine{
-		gs:       gs,
-		rng:      cfg.Rng,
-		gameOver: false,
-		logger:   engineLogger,
-		actionProcessor: actionProc,
-		winCondition:    rules.NewWinConditionChecker(engineLogger, cfg.Players),
-		legalMoves:      rules.NewLegalMoveCalculator(),
-		eventBus:            eventBus,
-		gameID:              cfg.GameID,
-		stateMachine:        stateMachine,
-		experienceCollector: cfg.ExperienceCollector,
-		tempTileOwnership:   make(map[int]int),
-		tempAffectedPlayers: make(map[int]struct{}),
-	}
-	
-	// Set the event publisher on the action processor using an adapter
-	eventAdapter := events.NewEventPublisherAdapter(e.eventBus)
-	actionProc.SetEventPublisher(eventAdapter)
-
-	// Initial update of player stats to populate OwnedTiles
-	e.updatePlayerStats()
-	e.updateFogOfWar()
-	// CheckGameOver on initialization is probably not needed unless a 0-player game is valid.
-	e.checkGameOver(engineLogger.With().Str("phase", "init").Logger())
-	
-	// Transition through initial states
-	// First move to Lobby state
-	if err := stateMachine.TransitionTo(states.PhaseLobby, "Engine initialized"); err != nil {
-		engineLogger.Error().Err(err).Msg("Failed to transition to Lobby state")
-		return nil
-	}
-	
-	// Since all players are already added during map generation, transition to Starting
-	if err := stateMachine.TransitionTo(states.PhaseStarting, "All players ready"); err != nil {
-		engineLogger.Error().Err(err).Msg("Failed to transition to Starting state")
-		return nil
-	}
-	
-	// Map is generated and players are placed, transition to Running
-	gameContext.StartTime = time.Now() // Set start time when transitioning to running
-	if err := stateMachine.TransitionTo(states.PhaseRunning, "Game setup complete"); err != nil {
-		engineLogger.Error().Err(err).Msg("Failed to transition to Running state")
-		return nil
-	}
-	
-	// Publish GameStarted event
-	e.eventBus.Publish(events.NewGameStartedEvent(e.gameID, cfg.Players, cfg.Width, cfg.Height))
-	
-	engineLogger.Info().Int("width", cfg.Width).Int("height", cfg.Height).Int("players", cfg.Players).Msg("Engine created successfully")
-	return e
+	return engine
 }
 
 // Step processes actions and advances the game by one turn.
 // It accepts a context for cancellation/timeout.
 func (e *Engine) Step(ctx context.Context, actions []core.Action) error {
-	// At the beginning of the step, check for cancellation.
-	select {
-	case <-ctx.Done():
-		e.logger.Warn().Err(ctx.Err()).Int("turn", e.gs.Turn).Msg("Game step cancelled or timed out before starting")
-		return ctx.Err()
-	default:
-	}
-
-	// Check if the game is in a state that can receive actions
-	currentPhase := e.stateMachine.CurrentPhase()
-	if !currentPhase.CanReceiveActions() {
-		e.logger.Warn().
-			Str("current_phase", currentPhase.String()).
-			Int("turn", e.gs.Turn).
-			Msg("Attempted to step game in phase that cannot receive actions")
-		return fmt.Errorf("game is in %s phase and cannot receive actions", currentPhase)
-	}
-
-	if e.gameOver {
-		e.logger.Warn().Int("turn", e.gs.Turn).Msg("Attempted to step game that is already over")
-		return core.WrapGameStateError(e.gs.Turn, "step", core.ErrGameOver)
-	}
-
-	// Capture previous state for experience collection
-	var prevState *GameState
-	if e.experienceCollector != nil {
-		// Deep copy the state before modifications
-		prevState = e.gs.Clone()
-	}
-
-	turnStartTime := time.Now()
-	e.gs.Turn++
-	e.updateFogOfWar()
-	// Clear changed tiles from previous turn (reuse the map to avoid allocation)
-	for k := range e.gs.ChangedTiles {
-		delete(e.gs.ChangedTiles, k)
-	}
-	for k := range e.gs.VisibilityChangedTiles {
-		delete(e.gs.VisibilityChangedTiles, k)
-	}
-	
-	// You can derive the turnLogger from e.logger or potentially from a logger in ctx.
-	// For simplicity, we continue deriving from e.logger.
-	// If ctx contained a request-specific logger: `baseLoggerForTurn := zerolog.Ctx(ctx)`
-	// then `turnLogger := baseLoggerForTurn.With().Int("turn", e.gs.Turn).Logger()`
-	turnLogger := e.logger.With().Int("turn", e.gs.Turn).Logger()
-
-	turnLogger.Debug().Msg("Starting game step")
-	
-	// Publish TurnStarted event
-	e.eventBus.Publish(events.NewTurnStartedEvent(e.gameID, e.gs.Turn))
-
-	turnLogger.Debug().Int("num_actions_submitted", len(actions)).Msg("Processing actions")
-	if err := e.processActions(ctx, actions, turnLogger); err != nil {
-		// Check if the error is due to context cancellation, which might have already been logged by processActions
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return core.WrapGameStateError(e.gs.Turn, "action processing", fmt.Errorf("context cancelled: %w", err))
-		}
-		// Other errors from processActions would have been logged there.
-		return core.WrapGameStateError(e.gs.Turn, "action processing", err)
-	}
-	turnLogger.Debug().Msg("Finished processing actions")
-
-	// Check context again before potentially long operations
-	select {
-	case <-ctx.Done():
-		turnLogger.Warn().Err(ctx.Err()).Msg("Game step cancelled or timed out before production")
-		return core.WrapGameStateError(e.gs.Turn, "production phase", fmt.Errorf("context cancelled: %w", ctx.Err()))
-	default:
-	}
-	e.processTurnProduction(turnLogger)
-
-	select {
-	case <-ctx.Done():
-		turnLogger.Warn().Err(ctx.Err()).Msg("Game step cancelled or timed out before updating/checking stats")
-		return core.WrapGameStateError(e.gs.Turn, "stats update", fmt.Errorf("context cancelled: %w", ctx.Err()))
-	default:
-	}
-	e.updatePlayerStats()
-	e.checkGameOver(turnLogger)
-
-	// Collect experiences if enabled
-	if e.experienceCollector != nil && prevState != nil {
-		// Convert core.Action to game.Action with player IDs
-		actionMap := make(map[int]*Action)
-		for _, action := range actions {
-			if moveAction, ok := action.(*core.MoveAction); ok {
-				actionMap[moveAction.PlayerID] = &Action{
-					Type: ActionTypeMove,
-					From: moveAction.From,
-					To:   moveAction.To,
-				}
-			}
-		}
-		e.experienceCollector.OnStateTransition(prevState, e.gs, actionMap)
-		
-		// If game is over, notify collector
-		if e.gameOver {
-			e.experienceCollector.OnGameEnd(e.gs)
-		}
-	}
-
-	// Publish TurnEnded event
-	e.eventBus.Publish(events.NewTurnEndedEvent(e.gameID, e.gs.Turn, len(actions), time.Since(turnStartTime)))
-
-	turnLogger.Debug().Msg("Game step finished")
-	return nil
+	return e.turnProcessor.ProcessTurn(ctx, actions)
 }
 
 // processActions handles all actions for this turn using the ActionProcessor.
@@ -378,50 +148,7 @@ func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminati
 
 // processTurnProduction applies army growth
 func (e *Engine) processTurnProduction(l zerolog.Logger) {
-	growNormal := e.gs.Turn%NormalGrowInterval() == 0
-	l.Debug().Bool("grow_normal_tiles", growNormal).Msg("Processing turn production")
-
-	// Could add more detailed logs here if needed, e.g., total production amounts
-	// For now, keeping it concise as per-tile logging would be too verbose for INFO/DEBUG
-	var totalGeneralProd, totalCityProd, totalNormalProd int
-
-	// Iterate only through tiles owned by players
-	for pid := range e.gs.Players {
-		if !e.gs.Players[pid].Alive {
-			continue
-		}
-		
-		for _, tileIdx := range e.gs.Players[pid].OwnedTiles {
-			t := &e.gs.Board.T[tileIdx]
-			
-			switch t.Type {
-			case core.TileGeneral:
-				t.Army += GeneralProduction()
-				totalGeneralProd += GeneralProduction()
-				e.gs.ChangedTiles[tileIdx] = struct{}{}
-			case core.TileCity:
-				t.Army += CityProduction()
-				totalCityProd += CityProduction()
-				e.gs.ChangedTiles[tileIdx] = struct{}{}
-			case core.TileNormal:
-				if growNormal {
-					t.Army += NormalProduction()
-					totalNormalProd += NormalProduction()
-					e.gs.ChangedTiles[tileIdx] = struct{}{}
-				}
-			}
-		}
-	}
-	// Publish ProductionApplied event
-	if totalGeneralProd > 0 || totalCityProd > 0 || totalNormalProd > 0 {
-		e.eventBus.Publish(events.NewProductionAppliedEvent(e.gameID, totalNormalProd, totalCityProd, totalGeneralProd, e.gs.Turn))
-	}
-	
-	l.Debug().
-		Int("total_general_production", totalGeneralProd).
-		Int("total_city_production", totalCityProd).
-		Int("total_normal_production", totalNormalProd).
-		Msg("Turn production complete")
+	e.productionManager.ProcessTurnProduction(e.gs, e.gs.Turn)
 }
 
 // checkGameOver determines if the game is over using the WinConditionChecker.

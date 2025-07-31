@@ -95,10 +95,17 @@ func createTestEngine(boardSize, numPlayers int) *Engine {
 	// Create game config
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
 	cfg := GameConfig{
-		Logger: logger,
+		Width:   width,
+		Height:  height,
+		Players: numPlayers,
+		Logger:  logger,
 	}
 	
 	engine := NewEngine(context.Background(), cfg)
+	if engine == nil {
+		panic("Failed to create engine")
+	}
+	// Replace the game state with our test state
 	engine.gs = gs
 	// Initialize temp maps if not already done
 	if engine.tempTileOwnership == nil {
