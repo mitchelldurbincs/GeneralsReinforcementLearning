@@ -5,6 +5,19 @@
   - [ ] Implement server-side streaming for real-time game updates
   - [ ] Add event types for different game state changes
   - [ ] Test with multiple concurrent streams
+- [ ] Fix Python base agent and random agent implementation
+  - [ ] Refactor base_agent.py following architecture recommendations
+  - [ ] Implement working random_agent.py
+  - [ ] Create run_random_match.py for testing
+  - [ ] Add move validation helpers
+- [ ] Implement Game Instance Manager for multi-game support
+  - [ ] Create instance pool management
+  - [ ] Support 100+ concurrent games
+  - [ ] Add resource limits and monitoring
+- [ ] Complete experience collection gRPC integration
+  - [ ] Fix existing experience collector implementation
+  - [ ] Implement StreamExperiences endpoint
+  - [ ] Connect buffer to gRPC streaming service
 - [ ] Create gRPC client examples
   - [ ] Complete the Go client in examples/grpc-client/
   - [ ] Add Python client example for RL integration
@@ -16,15 +29,25 @@
   - [ ] Create model serving infrastructure
 
 ## Medium Priority
+- [ ] Production readiness improvements
+  - [ ] Set up monitoring with Prometheus metrics
+  - [ ] Add structured logging with request IDs
+  - [ ] Implement distributed tracing for gRPC calls
+  - [ ] Create Grafana dashboards
 - [ ] Add comprehensive testing
   - [ ] Integration tests for full multiplayer game flow
   - [ ] Load/stress testing for concurrent games
   - [ ] Test turn timeout handling
   - [ ] Test player disconnection scenarios
+  - [ ] Profile memory usage with many active games
 - [ ] Implement additional gRPC services
   - [ ] ReplayService for experience collection
   - [ ] ModelService for policy distribution
   - [ ] MatchMakerService for game coordination
+- [ ] Complete visibility system optimization (Phase 3-4)
+  - [ ] Update all consumers to use new bitfield visibility
+  - [ ] Remove old map-based code
+  - [ ] Validate with production workloads
 - [ ] Docker and deployment improvements
   - [ ] Complete Terraform infrastructure setup
   - [ ] Add Kubernetes manifests for container orchestration
@@ -37,16 +60,29 @@
   - [ ] Add surrender functionality
   - [ ] Implement spectator mode
   - [ ] Add game history/replay recording
+  - [ ] Add example bot implementations in cmd/grpc_client/examples/
+- [ ] Development tooling improvements
+  - [ ] Integrate golangci-lint for comprehensive code linting
+  - [ ] Add Makefile or go-task for common development operations
+  - [ ] Consider using buf for protobuf management
+  - [ ] Set up pre-commit hooks for code quality checks
+  - [ ] Use testcontainers-go for better integration testing
 - [ ] UI improvements
   - [ ] Connect UI client to remote gRPC server
   - [ ] Add multiplayer lobby interface
   - [ ] Implement reconnection logic
   - [ ] Add chat functionality
 - [ ] Performance optimizations
-  - [ ] Optimize fog of war calculations
+  - [ ] Optimize fog of war calculations with proper caching
   - [ ] Add game state caching
-  - [ ] Implement connection pooling
+  - [ ] Implement connection pooling for concurrent games
   - [ ] Profile and optimize hot paths
+  - [ ] Review mutex usage in gameInstance to prevent potential deadlocks
+- [ ] Documentation improvements
+  - [ ] Create gRPC API documentation with examples
+  - [ ] Document game mechanics and rules comprehensively
+  - [ ] Add architecture decision records (ADRs)
+  - [ ] Create deployment guide for production environments
 
 ## Completed
 - [x] Create proto definitions (game.proto, common.proto)
@@ -67,6 +103,14 @@
 - [x] Create proto generation scripts
 - [x] Add health check service
 - [x] Implement gRPC reflection for debugging
+- [x] Fix config validation failures (already handles missing files gracefully)
+- [x] Replace panic in map generation with proper error handling (no panics found)
+- [x] Fix mapgen tests (fixed testutil package and all tests pass)
+- [x] Implement event-driven architecture (Phase 1 complete)
+- [x] Implement state machine for game lifecycle (Phase 2 complete)
+- [x] Add proper error context throughout codebase (error wrapping complete)
+- [x] Implement Coordinate type (Phases 1-3 complete)
+- [x] Optimize visibility system with bitfields (Phases 1-2 complete)
 
 ## Notes
 - StreamGame method exists but returns Unimplemented - this is the next major feature to implement

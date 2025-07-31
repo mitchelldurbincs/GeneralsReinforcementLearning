@@ -24,6 +24,7 @@ go.work
 
 # Compiled binaries
 game_server
+grpc_server
 ui_client
 generals
 
