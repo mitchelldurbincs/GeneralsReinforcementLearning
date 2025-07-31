@@ -3,8 +3,6 @@ package gameserver
 import (
 	"context"
 	"fmt"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -24,59 +22,13 @@ import (
 type Server struct {
 	gamev1.UnimplementedGameServiceServer
 	
-	// Game registry for managing active games
-	mu      sync.RWMutex
-	games   map[string]*gameInstance
-	nextID  atomic.Int64
+	// Game manager for handling all game instances
+	gameManager *GameManager
 }
 
-type gameInstance struct {
-	id      string
-	config  *gamev1.GameConfig
-	players []playerInfo
-	engine  *gameengine.Engine
-	mu      sync.Mutex // Per-game mutex for thread-safe engine operations
-	
-	// Action collection for turn-based processing
-	actionBuffer map[int32]core.Action // playerID -> action for current turn
-	actionMu     sync.Mutex            // Protects actionBuffer
-	currentTurn  int32                 // Current turn number
-	turnDeadline time.Time             // Deadline for current turn
-	turnTimer    *time.Timer           // Timer for turn timeout
-	
-	// Activity tracking for cleanup
-	createdAt    time.Time
-	lastActivity time.Time
-	
-	// Idempotency tracking
-	idempotencyCache map[string]*idempotencyEntry
-	idempotencyMu    sync.RWMutex
-	
-	// Stream management
-	streamClients   map[int32]*streamClient // playerID -> stream client
-	streamClientsMu sync.RWMutex            // Protects streamClients map
-}
 
-// streamClient represents a connected stream for a player
-type streamClient struct {
-	playerID   int32
-	stream     gamev1.GameService_StreamGameServer
-	ctx        context.Context
-	cancelFunc context.CancelFunc
-	updateChan chan *gamev1.GameUpdate
-}
 
-// idempotencyEntry stores a cached response with timestamp
-type idempotencyEntry struct {
-	response  *gamev1.SubmitActionResponse
-	createdAt time.Time
-}
 
-type playerInfo struct {
-	id    int32
-	name  string
-	token string
-}
 
 // Server configuration constants
 const (
@@ -88,57 +40,23 @@ const (
 
 // NewServer creates a new game server
 func NewServer() *Server {
-	s := &Server{
-		games: make(map[string]*gameInstance),
+	return &Server{
+		gameManager: NewGameManager(),
 	}
-	
-	// Start cleanup goroutine
-	go s.runCleanup()
-	
-	return s
 }
 
 // CreateGame creates a new game instance
 func (s *Server) CreateGame(ctx context.Context, req *gamev1.CreateGameRequest) (*gamev1.CreateGameResponse, error) {
-	// Generate game ID
-	gameID := fmt.Sprintf("game-%d", s.nextID.Add(1))
+	// Create new game instance
+	game, gameID := s.gameManager.CreateGame(req.Config)
 	
 	log.Info().
 		Str("game_id", gameID).
 		Msg("Creating new game")
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Set default config if not provided
-	config := req.Config
-	if config == nil {
-		config = &gamev1.GameConfig{
-			Width:       20,
-			Height:      20,
-			MaxPlayers:  2,
-			FogOfWar:    true,
-			TurnTimeMs:  0,
-		}
-	}
-
-	// Create new game instance
-	now := time.Now()
-	game := &gameInstance{
-		id:               gameID,
-		config:           config,
-		players:          make([]playerInfo, 0, config.MaxPlayers),
-		createdAt:        now,
-		lastActivity:     now,
-		idempotencyCache: make(map[string]*idempotencyEntry),
-		streamClients:    make(map[int32]*streamClient),
-	}
-
-	s.games[gameID] = game
-
 	return &gamev1.CreateGameResponse{
 		GameId: gameID,
-		Config: config,
+		Config: game.config,
 	}, nil
 }
 
@@ -149,10 +67,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		Str("player_name", req.PlayerName).
 		Msg("Player joining game")
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	game, exists := s.games[req.GameId]
+	game, exists := s.gameManager.GetGame(req.GameId)
 	if !exists {
 		return nil, status.Errorf(codes.NotFound, "game %s not found: request from player %s", req.GameId, req.PlayerName)
 	}
@@ -235,7 +150,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 				}
 				
 				// Broadcast the phase change to all stream clients
-				game.broadcastPhaseChanged(previousPhase, newPhase, stateEvent.Reason)
+				game.streamManager.BroadcastPhaseChanged(previousPhase, newPhase, stateEvent.Reason)
 			}
 		})
 		
@@ -260,7 +175,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 			Msg("Game started")
 		
 		// Broadcast game started event
-		game.broadcastGameStarted()
+		game.streamManager.BroadcastGameStarted()
 	}
 
 	return &gamev1.JoinGameResponse{
@@ -279,10 +194,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		Msg("Received action submission")
 	
 	// Validate game exists
-	s.mu.RLock()
-	game, exists := s.games[req.GameId]
-	s.mu.RUnlock()
-	
+	game, exists := s.gameManager.GetGame(req.GameId)
 	if !exists {
 		return &gamev1.SubmitActionResponse{
 			Success:      false,
@@ -293,7 +205,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 	
 	// Check idempotency cache if key provided
 	if req.IdempotencyKey != "" {
-		if cached := game.checkIdempotency(req.IdempotencyKey); cached != nil {
+		if cached := game.idempotencyManager.Check(req.IdempotencyKey); cached != nil {
 			log.Debug().
 				Str("game_id", req.GameId).
 				Str("idempotency_key", req.IdempotencyKey).
@@ -316,7 +228,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			ErrorMessage: fmt.Sprintf("game %s cannot accept actions in %s phase", req.GameId, currentPhase.String()),
 		}
 		if req.IdempotencyKey != "" {
-			game.storeIdempotency(req.IdempotencyKey, resp)
+			game.idempotencyManager.Store(req.IdempotencyKey, resp)
 		}
 		return resp, nil
 	}
@@ -337,7 +249,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			ErrorMessage: fmt.Sprintf("invalid player credentials for game %s: player %d", req.GameId, req.PlayerId),
 		}
 		if req.IdempotencyKey != "" {
-			game.storeIdempotency(req.IdempotencyKey, resp)
+			game.idempotencyManager.Store(req.IdempotencyKey, resp)
 		}
 		return resp, nil
 	}
@@ -354,13 +266,13 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			ErrorMessage: fmt.Sprintf("invalid turn number for game %s: expected %d, got %d", req.GameId, currentTurn, req.Action.TurnNumber),
 		}
 		if req.IdempotencyKey != "" {
-			game.storeIdempotency(req.IdempotencyKey, resp)
+			game.idempotencyManager.Store(req.IdempotencyKey, resp)
 		}
 		return resp, nil
 	}
 	
 	// Convert protobuf action to core action
-	coreAction, err := s.convertProtoAction(req.Action, req.PlayerId)
+	coreAction, err := convertProtoAction(req.Action, req.PlayerId)
 	if err != nil {
 		resp := &gamev1.SubmitActionResponse{
 			Success:      false,
@@ -368,7 +280,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			ErrorMessage: fmt.Sprintf("invalid action for game %s player %d: %v", req.GameId, req.PlayerId, err),
 		}
 		if req.IdempotencyKey != "" {
-			game.storeIdempotency(req.IdempotencyKey, resp)
+			game.idempotencyManager.Store(req.IdempotencyKey, resp)
 		}
 		return resp, nil
 	}
@@ -387,7 +299,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 				ErrorMessage: fmt.Sprintf("action validation failed for game %s player %d turn %d: %v", req.GameId, req.PlayerId, currentTurn, err),
 			}
 			if req.IdempotencyKey != "" {
-				game.storeIdempotency(req.IdempotencyKey, resp)
+				game.idempotencyManager.Store(req.IdempotencyKey, resp)
 			}
 			return resp, nil
 		}
@@ -410,7 +322,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 				ErrorMessage: fmt.Sprintf("failed to process turn %d for game %s", currentTurn, req.GameId),
 			}
 			if req.IdempotencyKey != "" {
-				game.storeIdempotency(req.IdempotencyKey, resp)
+				game.idempotencyManager.Store(req.IdempotencyKey, resp)
 			}
 			return resp, nil
 		}
@@ -429,17 +341,14 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		NextTurnNumber: currentTurn + 1,
 	}
 	if req.IdempotencyKey != "" {
-		game.storeIdempotency(req.IdempotencyKey, resp)
+		game.idempotencyManager.Store(req.IdempotencyKey, resp)
 	}
 	return resp, nil
 }
 
 // GetGameState retrieves the current game state for a player
 func (s *Server) GetGameState(ctx context.Context, req *gamev1.GetGameStateRequest) (*gamev1.GetGameStateResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	game, exists := s.games[req.GameId]
+	game, exists := s.gameManager.GetGame(req.GameId)
 	if !exists {
 		return nil, status.Errorf(codes.NotFound, "game %s not found: requested by player %d", req.GameId, req.PlayerId)
 	}
@@ -469,10 +378,7 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 		Msg("Player connecting to game stream")
 		
 	// Validate game exists
-	s.mu.RLock()
-	game, exists := s.games[req.GameId]
-	s.mu.RUnlock()
-	
+	game, exists := s.gameManager.GetGame(req.GameId)
 	if !exists {
 		return status.Errorf(codes.NotFound, "game %s not found", req.GameId)
 	}
@@ -501,8 +407,8 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 	}
 	
 	// Register the stream
-	game.registerStreamClient(client)
-	defer game.unregisterStreamClient(req.PlayerId)
+	game.streamManager.RegisterClient(client)
+	defer game.streamManager.UnregisterClient(req.PlayerId)
 	
 	// Send initial game state
 	initialUpdate := &gamev1.GameUpdate{
@@ -572,7 +478,7 @@ func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.Gam
 			Status: commonv1.PlayerStatus_PLAYER_STATUS_ACTIVE,
 			ArmyCount: 1,
 			TileCount: 1,
-			Color:  fmt.Sprintf("#%06X", i*0x333333), // Simple color generation
+			Color:  generatePlayerColor(i), // Simple color generation
 		}
 	}
 
@@ -613,26 +519,9 @@ func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.Gam
 
 // GetActiveGames returns the number of active games (for testing)
 func (s *Server) GetActiveGames() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.games)
+	return s.gameManager.GetActiveGames()
 }
 
-// convertTileType converts from core tile type (int) to protobuf TileType
-func convertTileType(t int) commonv1.TileType {
-	switch t {
-	case core.TileNormal:
-		return commonv1.TileType_TILE_TYPE_NORMAL
-	case core.TileGeneral:
-		return commonv1.TileType_TILE_TYPE_GENERAL
-	case core.TileCity:
-		return commonv1.TileType_TILE_TYPE_CITY
-	case core.TileMountain:
-		return commonv1.TileType_TILE_TYPE_MOUNTAIN
-	default:
-		return commonv1.TileType_TILE_TYPE_UNSPECIFIED
-	}
-}
 
 // computePlayerVisibilityFromEngine is a helper to get player visibility from the engine
 func (s *Server) computePlayerVisibilityFromEngine(engine *gameengine.Engine, playerID int) gameengine.PlayerVisibility {
@@ -650,7 +539,7 @@ func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameeng
 			Status:    commonv1.PlayerStatus_PLAYER_STATUS_ACTIVE,
 			ArmyCount: int32(p.ArmyCount),
 			TileCount: int32(len(p.OwnedTiles)),
-			Color:     fmt.Sprintf("#%06X", i*0x333333),
+			Color:     generatePlayerColor(i),
 		}
 		
 		if !p.Alive {
@@ -726,356 +615,21 @@ func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameeng
 	}
 }
 
-// Helper methods for action collection and turn processing
 
-// convertProtoAction converts a protobuf action to a core game action
-func (s *Server) convertProtoAction(protoAction *gamev1.Action, playerID int32) (core.Action, error) {
-	if protoAction == nil {
-		return nil, nil // No action this turn
-	}
-	
-	switch protoAction.Type {
-	case commonv1.ActionType_ACTION_TYPE_MOVE:
-		if protoAction.From == nil || protoAction.To == nil {
-			return nil, status.Errorf(codes.InvalidArgument, "move action for player %d requires from and to coordinates", playerID)
-		}
-		
-		return &core.MoveAction{
-			PlayerID: int(playerID),
-			FromX:    int(protoAction.From.X),
-			FromY:    int(protoAction.From.Y),
-			ToX:      int(protoAction.To.X),
-			ToY:      int(protoAction.To.Y),
-			MoveAll:  !protoAction.Half, // In proto, half=true means move half; in core, MoveAll=true means move all
-		}, nil
-		
-	case commonv1.ActionType_ACTION_TYPE_UNSPECIFIED:
-		// No action this turn (wait/skip)
-		return nil, nil
-		
-	default:
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported action type %v for player %d", protoAction.Type, playerID)
-	}
-}
 
-// collectAction stores an action in the buffer and checks if all players have submitted
-func (game *gameInstance) collectAction(playerID int32, action core.Action) bool {
-	game.actionMu.Lock()
-	defer game.actionMu.Unlock()
-	
-	// Store the action (nil is valid for no action)
-	game.actionBuffer[playerID] = action
-	
-	// Update last activity time
-	game.lastActivity = time.Now()
-	
-	// Check if all active players have submitted
-	activeCount := 0
-	for range game.players {
-		// Only count players that are still in the game
-		// TODO: Check player status once we track eliminations
-		activeCount++
-	}
-	
-	return len(game.actionBuffer) >= activeCount
-}
 
-// processTurn executes all collected actions and advances the game state
-func (game *gameInstance) processTurn(ctx context.Context) error {
-	game.actionMu.Lock()
-	
-	// Convert map to slice of actions
-	actions := make([]core.Action, 0, len(game.actionBuffer))
-	for _, action := range game.actionBuffer {
-		if action != nil {
-			actions = append(actions, action)
-		}
-	}
-	
-	// Clear the buffer for next turn
-	game.actionBuffer = make(map[int32]core.Action)
-	game.currentTurn++
-	
-	game.actionMu.Unlock()
-	
-	// Process the turn with the game engine
-	game.mu.Lock()
-	defer game.mu.Unlock()
-	
-	// Track player states before processing
-	prevAliveStatus := make(map[int]bool)
-	prevState := game.engine.GameState()
-	for _, player := range prevState.Players {
-		prevAliveStatus[player.ID] = player.Alive
-	}
-	
-	err := game.engine.Step(ctx, actions)
-	if err != nil {
-		return fmt.Errorf("game %s turn %d: failed to process %d actions: %w", game.id, game.currentTurn-1, len(actions), err)
-	}
-	
-	// Check for player eliminations and game ending
-	state := game.engine.GameState()
-	aliveCount := 0
-	var winnerId int = -1
-	
-	for _, player := range state.Players {
-		if player.Alive {
-			aliveCount++
-			winnerId = player.ID
-		} else if prevAliveStatus[player.ID] && !player.Alive {
-			// Player was just eliminated
-			game.broadcastPlayerEliminated(int32(player.ID), -1) // TODO: track who eliminated the player
-		}
-	}
-	
-	// Game ends when only one player remains
-	// The engine will handle the state transition to Ending/Ended
-	if aliveCount <= 1 && game.engine != nil {
-		currentPhase := game.CurrentPhase()
-		if currentPhase == commonv1.GamePhase_GAME_PHASE_RUNNING {
-			// The engine's checkGameOver will transition to Ending/Ended
-			// We just need to cancel the turn timer
-			if game.turnTimer != nil {
-				game.turnTimer.Stop()
-			}
-		}
-		
-		// Broadcast game ended event
-		game.broadcastGameEnded(int32(winnerId))
-	}
-	
-	return nil
-}
 
-// startTurnTimer begins a timer for the current turn
-func (game *gameInstance) startTurnTimer(ctx context.Context, duration time.Duration) {
-	game.actionMu.Lock()
-	game.turnDeadline = time.Now().Add(duration)
-	game.actionMu.Unlock()
-	
-	if game.turnTimer != nil {
-		game.turnTimer.Stop()
-	}
-	
-	game.turnTimer = time.AfterFunc(duration, func() {
-		// Turn timeout - submit nil actions for players who haven't acted
-		game.actionMu.Lock()
-		
-		// Fill in nil actions for missing players
-		for _, player := range game.players {
-			if _, exists := game.actionBuffer[player.id]; !exists {
-				game.actionBuffer[player.id] = nil
-			}
-		}
-		
-		allSubmitted := len(game.actionBuffer) >= len(game.players)
-		game.actionMu.Unlock()
-		
-		if allSubmitted {
-			// Process the turn with whatever actions we have
-			if err := game.processTurn(ctx); err != nil {
-				log.Error().Err(err).
-					Str("game_id", game.id).
-					Int32("turn", game.currentTurn).
-					Msg("Failed to process turn after timeout")
-			} else {
-				// Broadcast updates to stream clients after timeout-triggered turn
-				// Note: We need access to the server instance here
-				// For now, we'll skip broadcasting on timeout - this would require refactoring
-				// to pass the server instance to the timer function
-				log.Debug().
-					Str("game_id", game.id).
-					Msg("Turn processed after timeout (broadcasting not implemented for timer)")
-			}
-			
-			// Start timer for next turn if game is still active
-			if game.CurrentPhase() == commonv1.GamePhase_GAME_PHASE_RUNNING && duration > 0 {
-				game.startTurnTimer(ctx, duration)
-			}
-		}
-	})
-}
 
-// runCleanup periodically removes finished and abandoned games
-func (s *Server) runCleanup() {
-	ticker := time.NewTicker(cleanupInterval)
-	defer ticker.Stop()
-	
-	for range ticker.C {
-		s.cleanupGames()
-	}
-}
-
-// cleanupGames removes finished and abandoned games from memory
-func (s *Server) cleanupGames() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	
-	now := time.Now()
-	var toDelete []string
-	
-	for gameID, game := range s.games {
-		game.mu.Lock()
-		
-		// Check if game should be cleaned up
-		shouldCleanup := false
-		reason := ""
-		
-		// Remove finished games after TTL
-		currentPhase := game.currentPhaseUnlocked()
-		if currentPhase == commonv1.GamePhase_GAME_PHASE_ENDED {
-			if now.Sub(game.lastActivity) > finishedGameTTL {
-				shouldCleanup = true
-				reason = "finished game TTL expired"
-			}
-		} else if now.Sub(game.lastActivity) > abandonedGameTimeout {
-			// Remove abandoned games
-			shouldCleanup = true
-			reason = "game abandoned (no activity)"
-		}
-		
-		game.mu.Unlock()
-		
-		if shouldCleanup {
-			toDelete = append(toDelete, gameID)
-			log.Info().
-				Str("game_id", gameID).
-				Str("reason", reason).
-				Dur("age", now.Sub(game.createdAt)).
-				Dur("inactive", now.Sub(game.lastActivity)).
-				Msg("Cleaning up game")
-		}
-	}
-	
-	// Delete games marked for cleanup
-	for _, gameID := range toDelete {
-		game := s.games[gameID]
-		
-		// Cancel any active turn timer
-		game.mu.Lock()
-		if game.turnTimer != nil {
-			game.turnTimer.Stop()
-		}
-		game.mu.Unlock()
-		
-		// Close all stream clients
-		game.streamClientsMu.Lock()
-		for playerID, client := range game.streamClients {
-			client.cancelFunc()
-			close(client.updateChan)
-			delete(game.streamClients, playerID)
-		}
-		game.streamClientsMu.Unlock()
-		
-		delete(s.games, gameID)
-	}
-	
-	if len(toDelete) > 0 {
-		log.Info().
-			Int("cleaned", len(toDelete)).
-			Int("remaining", len(s.games)).
-			Msg("Game cleanup completed")
-	}
-}
-
-// checkIdempotency returns a cached response if the idempotency key exists
-func (g *gameInstance) checkIdempotency(key string) *gamev1.SubmitActionResponse {
-	g.idempotencyMu.RLock()
-	defer g.idempotencyMu.RUnlock()
-	
-	entry, exists := g.idempotencyCache[key]
-	if !exists {
-		return nil
-	}
-	
-	// Check if entry is still valid (24 hours)
-	if time.Since(entry.createdAt) > 24*time.Hour {
-		return nil
-	}
-	
-	return entry.response
-}
-
-// storeIdempotency caches a response for the given idempotency key
-func (g *gameInstance) storeIdempotency(key string, resp *gamev1.SubmitActionResponse) {
-	g.idempotencyMu.Lock()
-	defer g.idempotencyMu.Unlock()
-	
-	g.idempotencyCache[key] = &idempotencyEntry{
-		response:  resp,
-		createdAt: time.Now(),
-	}
-	
-	// Clean up old entries if cache is getting large
-	if len(g.idempotencyCache) > 1000 {
-		g.cleanupIdempotencyCache()
-	}
-}
-
-// cleanupIdempotencyCache removes old entries from the cache
-// Must be called with idempotencyMu held
-func (g *gameInstance) cleanupIdempotencyCache() {
-	now := time.Now()
-	cutoff := now.Add(-24 * time.Hour)
-	
-	for key, entry := range g.idempotencyCache {
-		if entry.createdAt.Before(cutoff) {
-			delete(g.idempotencyCache, key)
-		}
-	}
-}
-
-// registerStreamClient adds a new stream client for a player
-func (g *gameInstance) registerStreamClient(client *streamClient) {
-	g.streamClientsMu.Lock()
-	defer g.streamClientsMu.Unlock()
-	
-	// Close any existing stream for this player
-	if existing, exists := g.streamClients[client.playerID]; exists {
-		existing.cancelFunc()
-		close(existing.updateChan)
-	}
-	
-	g.streamClients[client.playerID] = client
-	
-	log.Debug().
-		Str("game_id", g.id).
-		Int32("player_id", client.playerID).
-		Int("total_streams", len(g.streamClients)).
-		Msg("Stream client registered")
-}
-
-// unregisterStreamClient removes a stream client for a player
-func (g *gameInstance) unregisterStreamClient(playerID int32) {
-	g.streamClientsMu.Lock()
-	defer g.streamClientsMu.Unlock()
-	
-	if client, exists := g.streamClients[playerID]; exists {
-		client.cancelFunc()
-		close(client.updateChan)
-		delete(g.streamClients, playerID)
-		
-		log.Debug().
-			Str("game_id", g.id).
-			Int32("player_id", playerID).
-			Int("remaining_streams", len(g.streamClients)).
-			Msg("Stream client unregistered")
-	}
-}
 
 // broadcastUpdates sends game updates to all connected stream clients
 func (g *gameInstance) broadcastUpdates(server *Server) {
-	g.streamClientsMu.RLock()
-	defer g.streamClientsMu.RUnlock()
-	
-	if len(g.streamClients) == 0 {
+	if g.streamManager.GetClientCount() == 0 {
 		return // No streams to update
 	}
 	
 	log.Debug().
 		Str("game_id", g.id).
-		Int("stream_count", len(g.streamClients)).
+		Int("stream_count", g.streamManager.GetClientCount()).
 		Msg("Broadcasting updates to stream clients")
 	
 	// Get current engine state
@@ -1086,21 +640,10 @@ func (g *gameInstance) broadcastUpdates(server *Server) {
 	g.mu.Unlock()
 	
 	// Send updates to each connected player
-	for playerID, client := range g.streamClients {
+	g.streamManager.ForEachClient(func(playerID int32, client *streamClient) {
 		update := g.createStreamUpdate(server, engineState, playerID, changedTiles, visibilityChangedTiles)
-		
-		// Non-blocking send to avoid blocking the game
-		select {
-		case client.updateChan <- update:
-			// Successfully queued update
-		default:
-			// Channel full, log warning
-			log.Warn().
-				Str("game_id", g.id).
-				Int32("player_id", playerID).
-				Msg("Stream update channel full, dropping update")
-		}
-	}
+		g.streamManager.SendToClient(playerID, update)
+	})
 }
 
 // createStreamUpdate creates an appropriate update for a player based on changed tiles
@@ -1203,7 +746,7 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 				Status:    commonv1.PlayerStatus_PLAYER_STATUS_ACTIVE,
 				ArmyCount: int32(p.ArmyCount),
 				TileCount: int32(len(p.OwnedTiles)),
-				Color:     fmt.Sprintf("#%06X", i*0x333333),
+				Color:     generatePlayerColor(i),
 			}
 			
 			// Update status if player was eliminated
@@ -1245,230 +788,9 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 	}
 }
 
-// broadcastGameStarted sends a game started event to all connected stream clients
-func (g *gameInstance) broadcastGameStarted() {
-	g.streamClientsMu.RLock()
-	defer g.streamClientsMu.RUnlock()
-	
-	if len(g.streamClients) == 0 {
-		return
-	}
-	
-	event := &gamev1.GameEvent{
-		Event: &gamev1.GameEvent_GameStarted{
-			GameStarted: &gamev1.GameStartedEvent{
-				StartedAt: timestamppb.Now(),
-			},
-		},
-	}
-	
-	update := &gamev1.GameUpdate{
-		Update: &gamev1.GameUpdate_Event{
-			Event: event,
-		},
-		Timestamp: timestamppb.Now(),
-	}
-	
-	g.sendEventToAllClients(update)
-}
 
-// broadcastPlayerEliminated sends a player eliminated event to all connected stream clients
-func (g *gameInstance) broadcastPlayerEliminated(playerID int32, eliminatedBy int32) {
-	g.streamClientsMu.RLock()
-	defer g.streamClientsMu.RUnlock()
-	
-	if len(g.streamClients) == 0 {
-		return
-	}
-	
-	event := &gamev1.GameEvent{
-		Event: &gamev1.GameEvent_PlayerEliminated{
-			PlayerEliminated: &gamev1.PlayerEliminatedEvent{
-				PlayerId:     playerID,
-				EliminatedBy: eliminatedBy,
-			},
-		},
-	}
-	
-	update := &gamev1.GameUpdate{
-		Update: &gamev1.GameUpdate_Event{
-			Event: event,
-		},
-		Timestamp: timestamppb.Now(),
-	}
-	
-	g.sendEventToAllClients(update)
-}
 
-// broadcastGameEnded sends a game ended event to all connected stream clients
-func (g *gameInstance) broadcastGameEnded(winnerId int32) {
-	g.streamClientsMu.RLock()
-	defer g.streamClientsMu.RUnlock()
-	
-	if len(g.streamClients) == 0 {
-		return
-	}
-	
-	event := &gamev1.GameEvent{
-		Event: &gamev1.GameEvent_GameEnded{
-			GameEnded: &gamev1.GameEndedEvent{
-				WinnerId: winnerId,
-				EndedAt:  timestamppb.Now(),
-			},
-		},
-	}
-	
-	update := &gamev1.GameUpdate{
-		Update: &gamev1.GameUpdate_Event{
-			Event: event,
-		},
-		Timestamp: timestamppb.Now(),
-	}
-	
-	g.sendEventToAllClients(update)
-}
 
-// sendEventToAllClients is a helper to send an update to all connected stream clients
-func (g *gameInstance) sendEventToAllClients(update *gamev1.GameUpdate) {
-	for playerID, client := range g.streamClients {
-		select {
-		case client.updateChan <- update:
-			// Successfully queued event
-		default:
-			log.Warn().
-				Str("game_id", g.id).
-				Int32("player_id", playerID).
-				Msg("Stream event channel full, dropping event")
-		}
-	}
-}
 
-// broadcastPhaseChanged broadcasts a phase change event to all connected stream clients
-func (g *gameInstance) broadcastPhaseChanged(previousPhase, newPhase commonv1.GamePhase, reason string) {
-	g.streamClientsMu.RLock()
-	defer g.streamClientsMu.RUnlock()
-	
-	if len(g.streamClients) == 0 {
-		return
-	}
-	
-	event := &gamev1.GameEvent{
-		Event: &gamev1.GameEvent_PhaseChanged{
-			PhaseChanged: &gamev1.PhaseChangedEvent{
-				PreviousPhase: previousPhase,
-				NewPhase:      newPhase,
-				Reason:        reason,
-			},
-		},
-	}
-	
-	update := &gamev1.GameUpdate{
-		Update: &gamev1.GameUpdate_Event{
-			Event: event,
-		},
-		Timestamp: timestamppb.Now(),
-	}
-	
-	g.sendEventToAllClients(update)
-	
-	log.Info().
-		Str("game_id", g.id).
-		Str("previous_phase", previousPhase.String()).
-		Str("new_phase", newPhase.String()).
-		Str("reason", reason).
-		Msg("Phase changed event broadcast")
-}
 
-// CurrentPhase returns the current game phase from the engine's state machine
-func (g *gameInstance) CurrentPhase() commonv1.GamePhase {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	
-	return g.currentPhaseUnlocked()
-}
 
-// currentPhaseUnlocked returns the current game phase without locking (caller must hold lock)
-func (g *gameInstance) currentPhaseUnlocked() commonv1.GamePhase {
-	if g.engine == nil {
-		return commonv1.GamePhase_GAME_PHASE_UNSPECIFIED
-	}
-	
-	// Get the current phase from the engine
-	enginePhase := g.engine.CurrentPhase()
-	
-	// Convert internal phase to proto phase
-	return convertPhaseToProto(enginePhase)
-}
-
-// convertPhaseToProto converts internal state machine phase to proto phase
-func convertPhaseToProto(phase states.GamePhase) commonv1.GamePhase {
-	switch phase {
-	case states.PhaseInitializing:
-		return commonv1.GamePhase_GAME_PHASE_INITIALIZING
-	case states.PhaseLobby:
-		return commonv1.GamePhase_GAME_PHASE_LOBBY
-	case states.PhaseStarting:
-		return commonv1.GamePhase_GAME_PHASE_STARTING
-	case states.PhaseRunning:
-		return commonv1.GamePhase_GAME_PHASE_RUNNING
-	case states.PhasePaused:
-		return commonv1.GamePhase_GAME_PHASE_PAUSED
-	case states.PhaseEnding:
-		return commonv1.GamePhase_GAME_PHASE_ENDING
-	case states.PhaseEnded:
-		return commonv1.GamePhase_GAME_PHASE_ENDED
-	case states.PhaseError:
-		return commonv1.GamePhase_GAME_PHASE_ERROR
-	case states.PhaseReset:
-		return commonv1.GamePhase_GAME_PHASE_RESET
-	default:
-		return commonv1.GamePhase_GAME_PHASE_UNSPECIFIED
-	}
-}
-
-// convertProtoToPhase converts proto phase to internal state machine phase
-func convertProtoToPhase(phase commonv1.GamePhase) states.GamePhase {
-	switch phase {
-	case commonv1.GamePhase_GAME_PHASE_INITIALIZING:
-		return states.PhaseInitializing
-	case commonv1.GamePhase_GAME_PHASE_LOBBY:
-		return states.PhaseLobby
-	case commonv1.GamePhase_GAME_PHASE_STARTING:
-		return states.PhaseStarting
-	case commonv1.GamePhase_GAME_PHASE_RUNNING:
-		return states.PhaseRunning
-	case commonv1.GamePhase_GAME_PHASE_PAUSED:
-		return states.PhasePaused
-	case commonv1.GamePhase_GAME_PHASE_ENDING:
-		return states.PhaseEnding
-	case commonv1.GamePhase_GAME_PHASE_ENDED:
-		return states.PhaseEnded
-	case commonv1.GamePhase_GAME_PHASE_ERROR:
-		return states.PhaseError
-	case commonv1.GamePhase_GAME_PHASE_RESET:
-		return states.PhaseReset
-	default:
-		return states.PhaseInitializing
-	}
-}
-
-// mapPhaseToStatus maps game phase to legacy game status for backward compatibility
-func mapPhaseToStatus(phase commonv1.GamePhase) commonv1.GameStatus {
-	switch phase {
-	case commonv1.GamePhase_GAME_PHASE_LOBBY:
-		return commonv1.GameStatus_GAME_STATUS_WAITING
-	case commonv1.GamePhase_GAME_PHASE_RUNNING:
-		return commonv1.GameStatus_GAME_STATUS_IN_PROGRESS
-	case commonv1.GamePhase_GAME_PHASE_ENDED:
-		return commonv1.GameStatus_GAME_STATUS_FINISHED
-	case commonv1.GamePhase_GAME_PHASE_ERROR:
-		return commonv1.GameStatus_GAME_STATUS_CANCELLED
-	default:
-		// For other phases, map to waiting or in progress based on whether game has started
-		if phase == commonv1.GamePhase_GAME_PHASE_STARTING || phase == commonv1.GamePhase_GAME_PHASE_PAUSED ||
-		   phase == commonv1.GamePhase_GAME_PHASE_ENDING {
-			return commonv1.GameStatus_GAME_STATUS_IN_PROGRESS
-		}
-		return commonv1.GameStatus_GAME_STATUS_WAITING
-	}
-}
