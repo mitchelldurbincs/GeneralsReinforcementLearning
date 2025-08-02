@@ -14,9 +14,9 @@ func TestSimpleCollector_Creation(t *testing.T) {
 	collector := NewSimpleCollector(100, "test-game-123", logger)
 	
 	assert.NotNil(t, collector)
-	assert.Equal(t, 100, collector.maxSize)
+	assert.Equal(t, 100, collector.buffer.Capacity())
 	assert.Equal(t, "test-game-123", collector.gameID)
-	assert.Equal(t, 0, len(collector.experiences))
+	assert.Equal(t, 0, collector.GetExperienceCount())
 }
 
 func TestSimpleCollector_OnStateTransition(t *testing.T) {

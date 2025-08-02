@@ -1,8 +1,6 @@
 package experience
 
 import (
-	"sync"
-
 	"github.com/google/uuid"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
 	experiencepb "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/experience/v1"
@@ -10,11 +8,9 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// SimpleCollector implements a basic in-memory experience collector
+// SimpleCollector implements a basic in-memory experience collector using a ring buffer
 type SimpleCollector struct {
-	experiences []*experiencepb.Experience
-	mu          sync.Mutex
-	maxSize     int
+	buffer      *Buffer
 	gameID      string
 	serializer  *Serializer
 	logger      zerolog.Logger
@@ -23,27 +19,15 @@ type SimpleCollector struct {
 // NewSimpleCollector creates a new simple experience collector
 func NewSimpleCollector(maxSize int, gameID string, logger zerolog.Logger) *SimpleCollector {
 	return &SimpleCollector{
-		experiences: make([]*experiencepb.Experience, 0, maxSize),
-		maxSize:     maxSize,
-		gameID:      gameID,
-		serializer:  NewSerializer(),
-		logger:      logger.With().Str("component", "experience_collector").Logger(),
+		buffer:     NewBuffer(maxSize, logger),
+		gameID:     gameID,
+		serializer: NewSerializer(),
+		logger:     logger.With().Str("component", "experience_collector").Logger(),
 	}
 }
 
 // OnStateTransition collects experience from a state transition
 func (c *SimpleCollector) OnStateTransition(prevState, currState *game.GameState, actions map[int]*game.Action) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Skip if buffer is full
-	if len(c.experiences) >= c.maxSize {
-		c.logger.Warn().
-			Int("buffer_size", len(c.experiences)).
-			Int("max_size", c.maxSize).
-			Msg("Experience buffer full, dropping experience")
-		return
-	}
 
 	// Process experience for each player that took an action
 	for playerID, action := range actions {
@@ -94,7 +78,14 @@ func (c *SimpleCollector) OnStateTransition(prevState, currState *game.GameState
 			},
 		}
 
-		c.experiences = append(c.experiences, exp)
+		// Add to buffer (ring buffer will handle overflow automatically)
+		if err := c.buffer.Add(exp); err != nil {
+			c.logger.Error().
+				Err(err).
+				Str("experience_id", expID).
+				Msg("Failed to add experience to buffer")
+			continue
+		}
 
 		c.logger.Debug().
 			Str("experience_id", expID).
@@ -108,9 +99,12 @@ func (c *SimpleCollector) OnStateTransition(prevState, currState *game.GameState
 
 // OnGameEnd handles terminal states
 func (c *SimpleCollector) OnGameEnd(finalState *game.GameState) {
+	stats := c.buffer.Stats()
 	c.logger.Info().
 		Str("game_id", c.gameID).
-		Int("total_experiences", len(c.experiences)).
+		Int("total_experiences", stats.CurrentSize).
+		Int64("total_added", stats.TotalAdded).
+		Int64("total_dropped", stats.TotalDropped).
 		Int("winner", finalState.GetWinner()).
 		Int("final_turn", finalState.Turn).
 		Msg("Game ended, finalizing experience collection")
@@ -120,40 +114,26 @@ func (c *SimpleCollector) OnGameEnd(finalState *game.GameState) {
 
 // GetExperiences returns a copy of all collected experiences
 func (c *SimpleCollector) GetExperiences() []*experiencepb.Experience {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	
-	// Return a copy to avoid external modifications
-	result := make([]*experiencepb.Experience, len(c.experiences))
-	copy(result, c.experiences)
-	return result
+	return c.buffer.GetAll()
 }
 
 // GetExperienceCount returns the current number of experiences
 func (c *SimpleCollector) GetExperienceCount() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return len(c.experiences)
+	return c.buffer.Size()
 }
 
 // Clear removes all experiences from the buffer
 func (c *SimpleCollector) Clear() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.experiences = c.experiences[:0]
+	c.buffer.Clear()
 }
 
 // GetLatestExperiences returns the n most recent experiences
 func (c *SimpleCollector) GetLatestExperiences(n int) []*experiencepb.Experience {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// Use GetLatest to get the most recent experiences
+	return c.buffer.GetLatest(n)
+}
 
-	if n > len(c.experiences) {
-		n = len(c.experiences)
-	}
-
-	start := len(c.experiences) - n
-	result := make([]*experiencepb.Experience, n)
-	copy(result, c.experiences[start:])
-	return result
+// Close cleanly shuts down the collector
+func (c *SimpleCollector) Close() error {
+	return c.buffer.Close()
 }

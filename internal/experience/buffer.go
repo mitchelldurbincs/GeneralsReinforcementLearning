@@ -190,6 +190,26 @@ func (b *Buffer) Sample(n int) []*experiencepb.Experience {
 	return result
 }
 
+// GetLatest returns the n most recent experiences from the buffer
+func (b *Buffer) GetLatest(n int) []*experiencepb.Experience {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	
+	if n > b.size {
+		n = b.size
+	}
+	
+	result := make([]*experiencepb.Experience, n)
+	// Start from head and go backwards to get latest experiences
+	for i := 0; i < n; i++ {
+		// Calculate index going backwards from head
+		idx := (b.head - n + i + b.capacity) % b.capacity
+		result[i] = b.buffer[idx]
+	}
+	
+	return result
+}
+
 // StreamChannel returns a channel for streaming experiences
 func (b *Buffer) StreamChannel() <-chan *experiencepb.Experience {
 	return b.streamChan
