@@ -65,6 +65,7 @@ def test_game_lifecycle(stub, game_id):
     # Get game state
     state_request = game_pb2.GetGameStateRequest(
         game_id=game_id,
+        player_id=player1_id,
         player_token=player1_token
     )
     state_response = stub.GetGameState(state_request)
@@ -100,6 +101,7 @@ def test_game_lifecycle(stub, game_id):
         
         move_request = game_pb2.SubmitActionRequest(
             game_id=game_id,
+            player_id=player1_id,
             player_token=player1_token,
             action=game_pb2.Action(
                 type=common_pb2.ACTION_TYPE_MOVE,
@@ -119,28 +121,35 @@ def test_game_lifecycle(stub, game_id):
         except Exception as e:
             print(f"✗ Move submission error: {type(e).__name__}: {e}")
     
-    return player1_token, player2_token
+    return player1_id, player1_token, player2_id, player2_token
 
-def test_streaming(stub, game_id, player_token):
+def test_streaming(stub, game_id, player_id, player_token):
     """Test game update streaming."""
     print("\nTesting game update streaming...")
     
-    stream_request = game_pb2.StreamGameUpdatesRequest(
+    stream_request = game_pb2.StreamGameRequest(
         game_id=game_id,
+        player_id=player_id,
         player_token=player_token
     )
     
     try:
         # Stream updates for a few seconds
         print("Listening for game updates (5 seconds)...")
-        stream = stub.StreamGameUpdates(stream_request)
+        stream = stub.StreamGame(stream_request)
         
         start_time = time.time()
         update_count = 0
         
         for update in stream:
             update_count += 1
-            print(f"  Update {update_count}: Turn {update.state.turn}, Status: {common_pb2.GameStatus.Name(update.state.status)}")
+            if update.HasField('full_state'):
+                state = update.full_state
+                print(f"  Update {update_count} (full state): Turn {state.turn}, Status: {common_pb2.GameStatus.Name(state.status)}")
+            elif update.HasField('event'):
+                print(f"  Update {update_count} (event): {update.event}")
+            elif update.HasField('delta'):
+                print(f"  Update {update_count} (delta): Turn {update.delta.turn}")
             
             if time.time() - start_time > 5:
                 print("✓ Streaming test complete")
@@ -167,10 +176,10 @@ def main():
             return
         
         # Test 2: Game lifecycle
-        player1_token, player2_token = test_game_lifecycle(stub, game_id)
+        player1_id, player1_token, player2_id, player2_token = test_game_lifecycle(stub, game_id)
         
         # Test 3: Streaming (commented out for now as it may block)
-        # test_streaming(stub, game_id, player1_token)
+        # test_streaming(stub, game_id, player1_id, player1_token)
         
         print("\n✓ All tests completed successfully!")
         

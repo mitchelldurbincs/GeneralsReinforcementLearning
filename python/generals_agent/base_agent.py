@@ -190,8 +190,89 @@ class BaseAgent(ABC):
             self.logger.error(f"Unexpected error during polling: {e}")
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             self.on_disconnect()
+    
+    def stream_game_updates(self):
+        """Stream game updates from the server using StreamGame"""
+        from generals_pb.common.v1 import common_pb2
+        
+        try:
+            self.logger.info("Starting to stream game updates...")
             
-    def run(self, game_id: Optional[str] = None):
+            # Create stream request
+            stream_request = game_pb2.StreamGameRequest(
+                game_id=self.game_id,
+                player_id=self.player_id,
+                player_token=self.player_token
+            )
+            
+            # Connect to stream
+            stream = self.stub.StreamGame(stream_request)
+            first_update = True
+            
+            # Process stream updates
+            for update in stream:
+                try:
+                    # Handle different update types
+                    if update.HasField('full_state'):
+                        game_state = update.full_state
+                        self.current_game_state = game_state
+                        
+                        if first_update:
+                            status_name = common_pb2.GameStatus.Name(game_state.status)
+                            self.logger.info(f"First update - Game status: {status_name}, Turn: {game_state.turn}")
+                            first_update = False
+                        
+                        # Check if game ended
+                        if game_state.status == common_pb2.GAME_STATUS_FINISHED:
+                            winner_id = game_state.winner_id if game_state.winner_id > 0 else None
+                            game_ended = game_pb2.GameEndedEvent()
+                            if winner_id is not None:
+                                game_ended.winner_id = winner_id
+                            self.on_game_end(game_ended)
+                            break
+                        
+                        # Submit action if game is in progress
+                        if game_state.status == common_pb2.GAME_STATUS_IN_PROGRESS:
+                            self.on_state_update(game_state)
+                    
+                    elif update.HasField('event'):
+                        # Handle specific events
+                        event = update.event
+                        if event.HasField('game_started'):
+                            self.logger.info("Game started event received")
+                        elif event.HasField('game_ended'):
+                            self.on_game_end(event.game_ended)
+                            break
+                        elif event.HasField('player_eliminated'):
+                            self.logger.info(f"Player {event.player_eliminated.player_id} eliminated")
+                        elif event.HasField('phase_changed'):
+                            phase_event = event.phase_changed
+                            self.logger.debug(f"Phase changed: {common_pb2.GamePhase.Name(phase_event.previous_phase)} -> {common_pb2.GamePhase.Name(phase_event.new_phase)}")
+                    
+                    elif update.HasField('delta'):
+                        # Handle delta updates (incremental state changes)
+                        self.logger.debug(f"Received delta update for turn {update.delta.turn}")
+                        # For now, we'll request full state on next update
+                        # In the future, we could apply deltas to local state
+                        
+                except Exception as e:
+                    self.logger.error(f"Error processing stream update: {e}")
+                    import traceback
+                    self.logger.error(f"Traceback: {traceback.format_exc()}")
+                    
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.CANCELLED:
+                self.logger.info("Stream cancelled")
+            else:
+                self.logger.error(f"Streaming error: {e.code()}: {e.details()}")
+            self.on_disconnect()
+        except Exception as e:
+            self.logger.error(f"Unexpected error during streaming: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            self.on_disconnect()
+            
+    def run(self, game_id: Optional[str] = None, use_streaming: bool = True):
         """Main game loop"""
         try:
             self.connect()
@@ -207,8 +288,11 @@ class BaseAgent(ABC):
             # Notify game start
             self.on_game_start()
             
-            # Main game loop - poll updates and respond
-            self.poll_game_updates()
+            # Main game loop - use streaming or polling
+            if use_streaming:
+                self.stream_game_updates()
+            else:
+                self.poll_game_updates()
             
         except Exception as e:
             self.logger.error(f"Agent error: {e}")
