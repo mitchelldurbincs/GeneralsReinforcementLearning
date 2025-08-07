@@ -122,7 +122,7 @@ func TestBuffer_Sample(t *testing.T) {
 	// Add experiences
 	for i := 0; i < 7; i++ {
 		exp := createTestExperience(string(rune('a'+i)), int32(i))
-		buffer.Add(exp)
+		_ = buffer.Add(exp)
 	}
 
 	// Sample fewer than available
@@ -141,7 +141,7 @@ func TestBuffer_Clear(t *testing.T) {
 
 	// Add some experiences
 	for i := 0; i < 5; i++ {
-		buffer.Add(createTestExperience(string(rune('a'+i)), int32(i)))
+		_ = buffer.Add(createTestExperience(string(rune('a'+i)), int32(i)))
 	}
 
 	assert.Equal(t, 5, buffer.Size())
@@ -171,7 +171,7 @@ func TestBuffer_ConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < writesPerWriter; i++ {
 				exp := createTestExperience(string(rune('a'+writerID)), int32(i))
-				buffer.Add(exp)
+				_ = buffer.Add(exp)
 			}
 		}(w)
 	}
@@ -324,8 +324,8 @@ func TestBufferManager_CloseAll(t *testing.T) {
 	buffer2 := manager.GetOrCreateBuffer("game2")
 
 	// Add some data
-	buffer1.Add(createTestExperience("test1", 0))
-	buffer2.Add(createTestExperience("test2", 1))
+	_ = buffer1.Add(createTestExperience("test1", 0))
+	_ = buffer2.Add(createTestExperience("test2", 1))
 
 	// Close all
 	err := manager.CloseAll()

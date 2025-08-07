@@ -196,10 +196,9 @@ func TestLoggerSubscriberWithFilter(t *testing.T) {
 		if logSub.InterestedIn(event.Type()) {
 			logSub.HandleEvent(event)
 			assert.NotEmpty(t, buf.String(), "Should log event of type %s", event.Type())
-		} else {
-			// The event bus won't call HandleEvent for events the subscriber isn't interested in
-			// So we shouldn't test handling events we're not interested in
 		}
+		// The event bus won't call HandleEvent for events the subscriber isn't interested in
+		// So we don't test handling events we're not interested in
 	}
 }
 

@@ -242,7 +242,7 @@ func TestStateMachine(t *testing.T) {
 		assert.Equal(t, PhaseInitializing, sm.CurrentPhase())
 
 		// Cannot go from Lobby to Running
-		sm.TransitionTo(PhaseLobby, "setup")
+		_ = sm.TransitionTo(PhaseLobby, "setup")
 		err = sm.TransitionTo(PhaseRunning, "skip starting")
 		assert.Error(t, err)
 		assert.Equal(t, PhaseLobby, sm.CurrentPhase())
@@ -252,7 +252,7 @@ func TestStateMachine(t *testing.T) {
 		sm, ctx := setup()
 
 		// Cannot start without any players
-		sm.TransitionTo(PhaseLobby, "setup")
+		_ = sm.TransitionTo(PhaseLobby, "setup")
 		ctx.PlayerCount = 0
 		ctx.MaxPlayers = 0 // Also set MaxPlayers to 0 to trigger validation
 		err := sm.TransitionTo(PhaseStarting, "no players")
@@ -262,13 +262,13 @@ func TestStateMachine(t *testing.T) {
 		// Cannot pause before starting
 		ctx.PlayerCount = 2
 		ctx.MaxPlayers = 4 // Restore MaxPlayers
-		sm.TransitionTo(PhaseStarting, "enough players")
+		_ = sm.TransitionTo(PhaseStarting, "enough players")
 		ctx.StartTime = time.Time{} // Clear start time
 		err = sm.TransitionTo(PhasePaused, "pause without start")
 		assert.Error(t, err)
 
 		// Cannot enter error state without error
-		sm.TransitionTo(PhaseRunning, "start game")
+		_ = sm.TransitionTo(PhaseRunning, "start game")
 		err = sm.TransitionTo(PhaseError, "no error")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "requires an error")
@@ -278,10 +278,10 @@ func TestStateMachine(t *testing.T) {
 		sm, ctx := setup()
 
 		// Make several transitions
-		sm.TransitionTo(PhaseLobby, "reason1")
+		_ = sm.TransitionTo(PhaseLobby, "reason1")
 		ctx.PlayerCount = 2
-		sm.TransitionTo(PhaseStarting, "reason2")
-		sm.TransitionTo(PhaseRunning, "reason3")
+		_ = sm.TransitionTo(PhaseStarting, "reason2")
+		_ = sm.TransitionTo(PhaseRunning, "reason3")
 
 		history := sm.GetHistory()
 		assert.Len(t, history, 3)

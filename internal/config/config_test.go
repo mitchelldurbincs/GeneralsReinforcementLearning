@@ -162,8 +162,8 @@ server:
 
 	// Change to temp directory
 	oldWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(oldWd)
+	_ = os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(oldWd) }()
 
 	// Reset global state
 	cfg = nil

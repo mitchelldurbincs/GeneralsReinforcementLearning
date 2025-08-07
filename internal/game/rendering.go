@@ -143,6 +143,7 @@ func (e *Engine) getTileDisplayDirect(sb *strings.Builder, t core.Tile, playerID
 }
 
 // getTileDisplay returns a colored tile representation - used for consistency with existing code
+// nolint:unused // Keeping for future use
 func (e *Engine) getTileDisplay(t core.Tile, playerID int) (string, string) {
 	const (
 		EmptySymbol    = "·"

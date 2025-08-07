@@ -50,7 +50,9 @@ type EnhancedCollector struct {
 	logger      zerolog.Logger
 
 	// Batching
-	batchChan  chan []*experiencepb.Experience
+	batchChan chan []*experiencepb.Experience
+	// flushTimer is kept for future batch timing implementation
+	// nolint:unused
 	flushTimer *time.Timer
 
 	// Lifecycle

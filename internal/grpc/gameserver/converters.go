@@ -54,6 +54,7 @@ func convertPhaseToProto(phase states.GamePhase) commonv1.GamePhase {
 }
 
 // convertProtoToPhase converts proto phase to internal state machine phase
+// nolint:unused // Will be used when state machine is fully integrated with gRPC
 func convertProtoToPhase(phase commonv1.GamePhase) states.GamePhase {
 	switch phase {
 	case commonv1.GamePhase_GAME_PHASE_INITIALIZING:

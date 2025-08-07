@@ -379,7 +379,7 @@ func LoadEnvironmentConfig(env string) error {
 func Set(key string, value interface{}) {
 	v.Set(key, value)
 	// Re-unmarshal to update struct
-	v.Unmarshal(cfg)
+	_ = v.Unmarshal(cfg)
 }
 
 // GetString gets a string value from config
@@ -412,7 +412,7 @@ func WatchConfig(onChange func()) {
 	v.WatchConfig()
 	v.OnConfigChange(func(e fsnotify.Event) {
 		// Re-unmarshal on change
-		v.Unmarshal(cfg)
+		_ = v.Unmarshal(cfg)
 		if onChange != nil {
 			onChange()
 		}

@@ -249,6 +249,8 @@ type MultiProducerBuffer struct {
 
 // ProducerBatch holds a batch of experiences for a single producer
 type ProducerBatch struct {
+	// batch and capacity are kept for future batch operations
+	// nolint:unused
 	batch    []*experiencepb.Experience
 	capacity int
 }

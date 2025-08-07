@@ -29,7 +29,7 @@ func setupTestServer(t *testing.T) (gamev1.GameServiceClient, func()) {
 		}
 	}()
 
-	conn, err := grpc.DialContext(context.Background(), "bufnet",
+	conn, err := grpc.NewClient("passthrough:///bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),

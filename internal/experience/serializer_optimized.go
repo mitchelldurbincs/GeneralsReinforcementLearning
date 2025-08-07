@@ -56,7 +56,7 @@ func (tp *TensorPool) Put(tensor []float32) {
 	tp.mu.RUnlock()
 
 	if exists {
-		pool.Put(tensor)
+		pool.Put(&tensor)
 	}
 }
 
@@ -333,7 +333,7 @@ func (s *OptimizedSerializer) ReturnTensor(tensor []float32) {
 
 // ReturnActionMask returns an action mask to the pool for reuse
 func (s *OptimizedSerializer) ReturnActionMask(mask []bool) {
-	s.actionMaskPool.Put(mask)
+	s.actionMaskPool.Put(&mask)
 }
 
 // ClearVisibilityCache clears the visibility cache
