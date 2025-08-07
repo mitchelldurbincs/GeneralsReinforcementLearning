@@ -327,30 +327,38 @@ func TestMemoryUsage(t *testing.T) {
 		t.Skip("Skipping memory usage test in short mode")
 	}
 
+	state := createTestGameState(50, 50)
+
+	// Warm up the optimized serializer's pools first
+	optimized := NewOptimizedSerializer()
+	for i := 0; i < 10; i++ {
+		tensor := optimized.StateToTensor(state, i%4)
+		mask := optimized.GenerateActionMask(state, i%4)
+		optimized.ReturnTensor(tensor)
+		optimized.ReturnActionMask(mask)
+	}
+
+	// Now measure steady-state allocations using TotalAlloc
 	// Force GC before starting
 	runtime.GC()
 	var m1 runtime.MemStats
 	runtime.ReadMemStats(&m1)
 
-	// Original serializer
+	// Original serializer - measure total allocations during operations
 	original := NewSerializer()
-	state := createTestGameState(50, 50)
-
 	for i := 0; i < 1000; i++ {
 		_ = original.StateToTensor(state, i%4)
 		_ = original.GenerateActionMask(state, i%4)
 	}
 
-	runtime.GC()
 	var m2 runtime.MemStats
 	runtime.ReadMemStats(&m2)
-	originalMem := m2.Alloc - m1.Alloc
+	originalMem := m2.TotalAlloc - m1.TotalAlloc
 
-	// Optimized serializer
+	// Optimized serializer - measure total allocations during operations (pools already warmed up)
 	runtime.GC()
 	runtime.ReadMemStats(&m1)
 
-	optimized := NewOptimizedSerializer()
 	for i := 0; i < 1000; i++ {
 		tensor := optimized.StateToTensor(state, i%4)
 		mask := optimized.GenerateActionMask(state, i%4)
@@ -358,14 +366,17 @@ func TestMemoryUsage(t *testing.T) {
 		optimized.ReturnActionMask(mask)
 	}
 
-	runtime.GC()
 	runtime.ReadMemStats(&m2)
-	optimizedMem := m2.Alloc - m1.Alloc
+	optimizedMem := m2.TotalAlloc - m1.TotalAlloc
 
-	t.Logf("Original memory usage: %d bytes", originalMem)
-	t.Logf("Optimized memory usage: %d bytes", optimizedMem)
-	t.Logf("Memory reduction: %.2f%%", float64(originalMem-optimizedMem)/float64(originalMem)*100)
+	t.Logf("Original memory usage during operations: %d bytes", originalMem)
+	t.Logf("Optimized memory usage during operations: %d bytes", optimizedMem)
+	
+	if optimizedMem > 0 && originalMem > 0 {
+		reduction := float64(originalMem-optimizedMem)/float64(originalMem)*100
+		t.Logf("Memory reduction: %.2f%%", reduction)
+	}
 
-	// Optimized should use significantly less memory
-	assert.Less(t, optimizedMem, originalMem/2, "Optimized serializer should use less than half the memory")
+	// Optimized should use significantly less memory during steady-state operations
+	assert.Less(t, optimizedMem, originalMem/2, "Optimized serializer should use less than half the memory during operations")
 }

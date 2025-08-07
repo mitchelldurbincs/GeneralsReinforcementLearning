@@ -1,6 +1,7 @@
 package experience
 
 import (
+	"fmt"
 	"math"
 	"sync"
 
@@ -96,9 +97,10 @@ type boardSizeInfo struct {
 
 // VisibilityCache caches visibility calculations per turn
 type VisibilityCache struct {
-	cache map[string][]bool // Key: "gameID:turn:playerID"
-	mu    sync.RWMutex
-	ttl   int // Number of turns to keep cache
+	cache    map[string][]bool // Key: "gameID:turn:playerID"
+	mu       sync.RWMutex
+	maxSize  int // Maximum number of entries to keep
+	order    []string // Track insertion order for LRU eviction
 }
 
 // NewOptimizedSerializer creates a new optimized serializer
@@ -112,8 +114,9 @@ func NewOptimizedSerializer() *OptimizedSerializer {
 			},
 		},
 		visibilityCache: &VisibilityCache{
-			cache: make(map[string][]bool),
-			ttl:   10, // Keep visibility for 10 turns
+			cache:   make(map[string][]bool),
+			maxSize: 20, // Keep max 20 entries
+			order:   make([]string, 0, 20),
 		},
 		boardSizeCache: make(map[int]*boardSizeInfo),
 	}
@@ -246,10 +249,19 @@ func (s *OptimizedSerializer) getVisibility(state *game.GameState, playerID int)
 		visibility[i] = tile.IsVisibleTo(playerID)
 	}
 
-	// Cache it
+	// Cache it with LRU eviction
 	s.visibilityCache.mu.Lock()
+	// Check if we need to evict
+	if len(s.visibilityCache.cache) >= s.visibilityCache.maxSize {
+		// Remove oldest entry
+		if len(s.visibilityCache.order) > 0 {
+			oldest := s.visibilityCache.order[0]
+			delete(s.visibilityCache.cache, oldest)
+			s.visibilityCache.order = s.visibilityCache.order[1:]
+		}
+	}
 	s.visibilityCache.cache[key] = visibility
-	// TODO: Implement cache eviction based on TTL
+	s.visibilityCache.order = append(s.visibilityCache.order, key)
 	s.visibilityCache.mu.Unlock()
 
 	return visibility
@@ -257,8 +269,8 @@ func (s *OptimizedSerializer) getVisibility(state *game.GameState, playerID int)
 
 // visibilityCacheKey generates a cache key for visibility
 func (s *OptimizedSerializer) visibilityCacheKey(state *game.GameState, playerID int) string {
-	// Simple key format - in production, might want to use game ID
-	return string(rune(state.Turn)) + ":" + string(rune(playerID))
+	// Use formatted strings for proper key generation
+	return fmt.Sprintf("%d:%d", state.Turn, playerID)
 }
 
 // GenerateActionMask creates a boolean mask of legal actions using pooled memory
@@ -365,6 +377,7 @@ func (s *OptimizedSerializer) ReturnActionMask(mask []bool) {
 func (s *OptimizedSerializer) ClearVisibilityCache() {
 	s.visibilityCache.mu.Lock()
 	s.visibilityCache.cache = make(map[string][]bool)
+	s.visibilityCache.order = s.visibilityCache.order[:0]
 	s.visibilityCache.mu.Unlock()
 }
 
