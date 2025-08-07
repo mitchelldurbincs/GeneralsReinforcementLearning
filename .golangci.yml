@@ -1,0 +1,24 @@
+run:
+  timeout: 5m
+  skip-dirs:
+    - internal/ui
+    - cmd/ui_client
+
+issues:
+  exclude-dirs:
+    - internal/ui
+    - cmd/ui_client
+  exclude-files:
+    - ".*\\.pb\\.go$"  # Exclude generated protobuf files
+
+linters:
+  enable:
+    - gofmt
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - gosimple
+    - unused
+  disable:
+    - typecheck  # Disable typecheck for UI packages that need display env
