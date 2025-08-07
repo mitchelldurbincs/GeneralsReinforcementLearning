@@ -22,11 +22,10 @@ type gameInstance struct {
 	config  *gamev1.GameConfig
 	players []playerInfo
 	engine  *gameengine.Engine
-	mu      sync.Mutex // Per-game mutex for thread-safe engine operations
+	mu      sync.RWMutex // Single mutex for all game state (upgraded to RWMutex)
 
 	// Action collection for turn-based processing
 	actionBuffer map[int32]core.Action // playerID -> action for current turn
-	actionMu     sync.Mutex            // Protects actionBuffer
 	currentTurn  int32                 // Current turn number
 	turnDeadline time.Time             // Deadline for current turn
 	turnTimer    *time.Timer           // Timer for turn timeout
@@ -164,19 +163,29 @@ func (gm *GameManager) runCleanup() {
 
 // cleanupGames removes finished and abandoned games from memory
 func (gm *GameManager) cleanupGames() {
-	gm.mu.Lock()
-	defer gm.mu.Unlock()
+	// Phase 1: Collect game references without holding GameManager lock while accessing game locks
+	gm.mu.RLock()
+	gameRefs := make([]*gameInstance, 0, len(gm.games))
+	gameIDs := make([]string, 0, len(gm.games))
+	for gameID, game := range gm.games {
+		gameRefs = append(gameRefs, game)
+		gameIDs = append(gameIDs, gameID)
+	}
+	gm.mu.RUnlock()
 
+	// Phase 2: Check each game independently (no nested locks)
 	now := time.Now()
 	var toDelete []string
-
-	for gameID, game := range gm.games {
+	
+	for i, game := range gameRefs {
+		gameID := gameIDs[i]
+		
 		game.mu.Lock()
-
+		
 		// Check if game should be cleaned up
 		shouldCleanup := false
 		reason := ""
-
+		
 		// Remove finished games after TTL
 		currentPhase := game.currentPhaseUnlocked()
 		if currentPhase == commonv1.GamePhase_GAME_PHASE_ENDED {
@@ -189,46 +198,64 @@ func (gm *GameManager) cleanupGames() {
 			shouldCleanup = true
 			reason = "game abandoned (no activity)"
 		}
-
+		
+		// Store these for logging outside the lock
+		createdAt := game.createdAt
+		lastActivity := game.lastActivity
+		
 		game.mu.Unlock()
-
+		
 		if shouldCleanup {
 			toDelete = append(toDelete, gameID)
 			log.Info().
 				Str("game_id", gameID).
 				Str("reason", reason).
-				Dur("age", now.Sub(game.createdAt)).
-				Dur("inactive", now.Sub(game.lastActivity)).
+				Dur("age", now.Sub(createdAt)).
+				Dur("inactive", now.Sub(lastActivity)).
 				Msg("Cleaning up game")
 		}
 	}
 
-	// Delete games marked for cleanup
-	for _, gameID := range toDelete {
-		game := gm.games[gameID]
-
-		// Cancel any active turn timer
-		game.mu.Lock()
-		if game.turnTimer != nil {
-			game.turnTimer.Stop()
-		}
-		game.mu.Unlock()
-
-		// Unregister from experience aggregator
-		if gm.experienceAggregator != nil {
-			gm.experienceAggregator.UnregisterGame(gameID)
-		}
-
-		// Close all stream clients
-		game.streamManager.CloseAll()
-
-		delete(gm.games, gameID)
-	}
-
+	// Phase 3: Clean up games with fresh locks (no nesting)
 	if len(toDelete) > 0 {
+		// First, handle per-game cleanup without holding GameManager lock
+		for _, gameID := range toDelete {
+			// Get game reference
+			gm.mu.RLock()
+			game, exists := gm.games[gameID]
+			gm.mu.RUnlock()
+			
+			if !exists {
+				continue
+			}
+			
+			// Cancel any active turn timer
+			game.mu.Lock()
+			if game.turnTimer != nil {
+				game.turnTimer.Stop()
+			}
+			game.mu.Unlock()
+			
+			// Unregister from experience aggregator
+			if gm.experienceAggregator != nil {
+				gm.experienceAggregator.UnregisterGame(gameID)
+			}
+			
+			// Close all stream clients
+			game.streamManager.CloseAll()
+		}
+		
+		// Finally, remove games from the map with a single lock
+		gm.mu.Lock()
+		for _, gameID := range toDelete {
+			delete(gm.games, gameID)
+		}
+		remainingCount := len(gm.games)
+		gm.mu.Unlock()
+		
 		log.Info().
 			Int("cleaned", len(toDelete)).
-			Int("remaining", len(gm.games)).
+			Int("remaining", remainingCount).
 			Msg("Game cleanup completed")
 	}
 }
@@ -391,8 +418,8 @@ func (g *gameInstance) StartEngine(ctx context.Context) error {
 
 // CurrentPhase returns the current game phase from the engine's state machine
 func (g *gameInstance) CurrentPhase() commonv1.GamePhase {
-	g.mu.Lock()
-	defer g.mu.Unlock()
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 
 	return g.currentPhaseUnlocked()
 }
@@ -412,8 +439,8 @@ func (g *gameInstance) currentPhaseUnlocked() commonv1.GamePhase {
 
 // collectAction stores an action in the buffer and checks if all players have submitted
 func (g *gameInstance) collectAction(playerID int32, action core.Action) bool {
-	g.actionMu.Lock()
-	defer g.actionMu.Unlock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	// Store the action (nil is valid for no action)
 	g.actionBuffer[playerID] = action
@@ -434,7 +461,8 @@ func (g *gameInstance) collectAction(playerID int32, action core.Action) bool {
 
 // processTurn executes all collected actions and advances the game state
 func (g *gameInstance) processTurn(ctx context.Context) error {
-	g.actionMu.Lock()
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	// Convert map to slice of actions
 	actions := make([]core.Action, 0, len(g.actionBuffer))
@@ -446,12 +474,6 @@ func (g *gameInstance) processTurn(ctx context.Context) error {
 
 	// Clear the buffer for next turn
 	g.actionBuffer = make(map[int32]core.Action)
-
-	g.actionMu.Unlock()
-
-	// Process the turn with the game engine
-	g.mu.Lock()
-	defer g.mu.Unlock()
 
 	// Track player states before processing
 	prevAliveStatus := make(map[int]bool)
@@ -513,9 +535,9 @@ func (g *gameInstance) processTurn(ctx context.Context) error {
 
 // startTurnTimer begins a timer for the current turn
 func (g *gameInstance) startTurnTimer(ctx context.Context, duration time.Duration, server *Server) {
-	g.actionMu.Lock()
+	g.mu.Lock()
 	g.turnDeadline = time.Now().Add(duration)
-	g.actionMu.Unlock()
+	g.mu.Unlock()
 
 	if g.turnTimer != nil {
 		g.turnTimer.Stop()
@@ -539,7 +561,7 @@ func (g *gameInstance) startTurnTimer(ctx context.Context, duration time.Duratio
 // processTurnTimeout handles turn timeout logic
 func (g *gameInstance) processTurnTimeout(ctx context.Context, duration time.Duration, server *Server) {
 	// Turn timeout - submit nil actions for players who haven't acted
-	g.actionMu.Lock()
+	g.mu.Lock()
 
 	// Fill in nil actions for missing players
 	for _, player := range g.players {
@@ -549,7 +571,7 @@ func (g *gameInstance) processTurnTimeout(ctx context.Context, duration time.Dur
 	}
 
 	allSubmitted := len(g.actionBuffer) >= len(g.players)
-	g.actionMu.Unlock()
+	g.mu.Unlock()
 
 	if allSubmitted {
 		// Process the turn with whatever actions we have

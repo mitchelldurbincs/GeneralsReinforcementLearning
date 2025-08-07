@@ -94,9 +94,9 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 	}
 
 	// 5. Validate turn number
-	game.actionMu.Lock()
+	game.mu.RLock()
 	currentTurn := game.currentTurn
-	game.actionMu.Unlock()
+	game.mu.RUnlock()
 
 	if req.Action != nil && req.Action.TurnNumber != currentTurn {
 		return &ValidationResult{

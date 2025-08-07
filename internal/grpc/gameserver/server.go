@@ -247,9 +247,9 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 	}
 
 	// Get current turn for later use
-	game.actionMu.Lock()
+	game.mu.RLock()
 	currentTurn := game.currentTurn
-	game.actionMu.Unlock()
+	game.mu.RUnlock()
 
 	// Convert protobuf action to core action
 	coreAction, err := convertProtoAction(req.Action, req.PlayerId)
@@ -438,9 +438,9 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.GameState {
 	// If engine exists, use it
 	if game.engine != nil {
-		game.mu.Lock()
+		game.mu.RLock()
 		engineState := game.engine.GameState()
-		game.mu.Unlock()
+		game.mu.RUnlock()
 		return s.convertGameStateToProto(game, engineState, playerID)
 	}
 
@@ -601,11 +601,11 @@ func (g *gameInstance) broadcastUpdates(server *Server) {
 		Msg("Broadcasting updates to stream clients")
 
 	// Get current engine state
-	g.mu.Lock()
+	g.mu.RLock()
 	engineState := g.engine.GameState()
 	changedTiles := g.engine.GetChangedTiles()
 	visibilityChangedTiles := g.engine.GetVisibilityChangedTiles()
-	g.mu.Unlock()
+	g.mu.RUnlock()
 
 	// Send updates to each connected player
 	g.streamManager.ForEachClient(func(playerID int32, client *streamClient) {
