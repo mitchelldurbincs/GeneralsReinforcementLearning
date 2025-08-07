@@ -54,7 +54,7 @@ jobs:
 
     - name: Install protoc plugins
       run: |
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.7
         go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
     - name: Generate proto files
@@ -138,7 +138,7 @@ jobs:
 
     - name: Install protoc plugins
       run: |
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.7
         go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
     - name: Generate proto files
@@ -220,7 +220,7 @@ jobs:
 
     - name: Install protoc plugins
       run: |
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.7
         go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
     - name: Generate protos
