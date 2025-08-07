@@ -116,10 +116,16 @@ jobs:
           exit 1
         fi
 
-    - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v6
-      with:
-        version: latest
+    - name: Run golangci-lint (excluding UI packages)
+      run: |
+        # Install golangci-lint
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.8
+        
+        # Get packages to lint (excluding UI packages)
+        PACKAGES=$(go list ./... | grep -v '/internal/ui' | grep -v '/cmd/ui_client' | sed 's|github.com/mitchelldurbincs/GeneralsReinforcementLearning/||' | head -1 | xargs dirname)
+        
+        # Run golangci-lint only on non-UI packages
+        golangci-lint run ./internal/common/... ./internal/config/... ./internal/experience/... ./internal/game/... ./internal/grpc/... ./internal/testutil/... ./cmd/game_server/... ./pkg/...
 
     - name: Run gosec security scanner
       run: |

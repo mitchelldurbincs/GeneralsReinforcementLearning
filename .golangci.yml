@@ -18,4 +18,4 @@ linters:
     - gosimple
     - unused
   disable:
-    - typecheck  # Disable typecheck for UI packages that need display env
+    - typecheck  # Disable typecheck globally since UI packages cause issues
