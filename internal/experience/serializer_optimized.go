@@ -43,7 +43,7 @@ func (tp *TensorPool) Get(size int) []float32 {
 
 	tensorInterface := pool.Get()
 	var tensor []float32
-	
+
 	// Handle both []float32 and *[]float32 types
 	switch t := tensorInterface.(type) {
 	case []float32:
@@ -54,7 +54,7 @@ func (tp *TensorPool) Get(size int) []float32 {
 		// If neither type, create a new tensor
 		tensor = make([]float32, size)
 	}
-	
+
 	// Clear the tensor
 	for i := range tensor {
 		tensor[i] = 0
@@ -97,10 +97,10 @@ type boardSizeInfo struct {
 
 // VisibilityCache caches visibility calculations per turn
 type VisibilityCache struct {
-	cache    map[string][]bool // Key: "gameID:turn:playerID"
-	mu       sync.RWMutex
-	maxSize  int // Maximum number of entries to keep
-	order    []string // Track insertion order for LRU eviction
+	cache   map[string][]bool // Key: "gameID:turn:playerID"
+	mu      sync.RWMutex
+	maxSize int      // Maximum number of entries to keep
+	order   []string // Track insertion order for LRU eviction
 }
 
 // NewOptimizedSerializer creates a new optimized serializer
@@ -280,7 +280,7 @@ func (s *OptimizedSerializer) GenerateActionMask(state *game.GameState, playerID
 	// Get mask from pool and resize if needed
 	maskInterface := s.actionMaskPool.Get()
 	var mask []bool
-	
+
 	// Handle both []bool and *[]bool types
 	switch m := maskInterface.(type) {
 	case []bool:
@@ -290,7 +290,7 @@ func (s *OptimizedSerializer) GenerateActionMask(state *game.GameState, playerID
 	default:
 		mask = make([]bool, 0)
 	}
-	
+
 	if cap(mask) < info.numActions {
 		mask = make([]bool, info.numActions)
 	} else {

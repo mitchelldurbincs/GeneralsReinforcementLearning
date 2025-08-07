@@ -371,9 +371,9 @@ func TestMemoryUsage(t *testing.T) {
 
 	t.Logf("Original memory usage during operations: %d bytes", originalMem)
 	t.Logf("Optimized memory usage during operations: %d bytes", optimizedMem)
-	
+
 	if optimizedMem > 0 && originalMem > 0 {
-		reduction := float64(originalMem-optimizedMem)/float64(originalMem)*100
+		reduction := float64(originalMem-optimizedMem) / float64(originalMem) * 100
 		t.Logf("Memory reduction: %.2f%%", reduction)
 	}
 
