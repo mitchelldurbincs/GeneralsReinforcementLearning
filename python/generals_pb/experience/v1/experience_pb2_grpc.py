@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from experience.v1 import experience_pb2 as experience_dot_v1_dot_experience__pb2
+from generals_pb.experience.v1 import experience_pb2 as experience_dot_v1_dot_experience__pb2
 
 GRPC_GENERATED_VERSION = '1.74.0'
 GRPC_VERSION = grpc.__version__
