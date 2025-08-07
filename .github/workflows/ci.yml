@@ -51,11 +51,30 @@ jobs:
     - name: Run tests with coverage (excluding UI packages)
       run: |
         # Get all packages except UI-related ones
-        PACKAGES=$(go list ./... | grep -v '/internal/ui' | grep -v '/cmd/ui_client')
+        PACKAGES=$(go list ./... | grep -v '/internal/ui' | grep -v '/cmd/ui_client' | tr '\n' ' ')
         
-        # Run tests on non-UI packages
+        # Check if we have packages to test
+        if [ -z "$PACKAGES" ]; then
+          echo "No packages to test after filtering"
+          exit 1
+        fi
+        
+        echo "Testing packages: $PACKAGES"
+        
+        # Run tests on non-UI packages (allow exit code capture)
+        set +e
         go test -v -race -coverprofile=coverage.out -covermode=atomic $PACKAGES
-        go tool cover -html=coverage.out -o coverage.html
+        TEST_EXIT_CODE=$?
+        set -e
+        
+        # Generate coverage report even if tests fail
+        if [ -f coverage.out ]; then
+          go tool cover -html=coverage.out -o coverage.html || true
+          go tool cover -func=coverage.out || true
+        fi
+        
+        # Exit with the test exit code
+        exit $TEST_EXIT_CODE
 
     - name: Upload coverage to GitHub
       uses: actions/upload-artifact@v4
