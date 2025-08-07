@@ -82,14 +82,21 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		return nil, status.Errorf(codes.NotFound, "game %s not found: request from player %s", req.GameId, req.PlayerName)
 	}
 
+	// Lock the game instance for the entire operation
+	game.mu.Lock()
+
 	// Check if player already in game
 	for _, p := range game.players {
 		if p.name == req.PlayerName {
+			// Store player info to return after unlocking
+			playerId := p.id
+			playerToken := p.token
+			game.mu.Unlock()
 			// Return existing player info
 			return &gamev1.JoinGameResponse{
-				PlayerId:     p.id,
-				PlayerToken:  p.token,
-				InitialState: s.createGameState(game, p.id),
+				PlayerId:     playerId,
+				PlayerToken:  playerToken,
+				InitialState: s.createGameState(game, playerId),
 			}, nil
 		}
 	}
@@ -97,14 +104,16 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 	// Check if game is in a phase that allows joining
 	// If engine exists, use its phase. Otherwise, we're still in pre-engine lobby phase
 	if game.engine != nil {
-		currentPhase := game.CurrentPhase()
+		currentPhase := game.currentPhaseUnlocked()
 		if currentPhase != commonv1.GamePhase_GAME_PHASE_LOBBY {
+			game.mu.Unlock()
 			return nil, status.Errorf(codes.FailedPrecondition, "cannot join game %s: game is in %s phase", req.GameId, currentPhase.String())
 		}
 	}
 
 	// Check if game is full
 	if len(game.players) >= int(game.config.MaxPlayers) {
+		game.mu.Unlock()
 		return nil, status.Errorf(codes.ResourceExhausted, "game %s is full: %d/%d players", req.GameId, len(game.players), game.config.MaxPlayers)
 	}
 
@@ -147,6 +156,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		game.engine = gameengine.NewEngine(engineCtx, engineConfig)
 
 		if game.engine == nil {
+			game.mu.Unlock()
 			return nil, status.Errorf(codes.Internal, "failed to create game engine for game %s: config %dx%d with %d players", req.GameId, game.config.Width, game.config.Height, game.config.MaxPlayers)
 		}
 
@@ -196,6 +206,9 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		// Broadcast game started event
 		game.streamManager.BroadcastGameStarted()
 	}
+
+	// Unlock before creating game state to avoid potential deadlock
+	game.mu.Unlock()
 
 	return &gamev1.JoinGameResponse{
 		PlayerId:     playerID,

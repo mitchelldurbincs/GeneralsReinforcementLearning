@@ -2,6 +2,7 @@ package gameserver
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,16 +17,34 @@ import (
 type mockStreamServer struct {
 	grpc.ServerStream
 	ctx     context.Context
+	mu      sync.RWMutex
 	updates []*gamev1.GameUpdate
 }
 
 func (m *mockStreamServer) Send(update *gamev1.GameUpdate) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.updates = append(m.updates, update)
 	return nil
 }
 
 func (m *mockStreamServer) Context() context.Context {
 	return m.ctx
+}
+
+func (m *mockStreamServer) getUpdates() []*gamev1.GameUpdate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	// Return a copy to avoid races
+	result := make([]*gamev1.GameUpdate, len(m.updates))
+	copy(result, m.updates)
+	return result
+}
+
+func (m *mockStreamServer) getUpdateCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.updates)
 }
 
 func TestStreamGame(t *testing.T) {
@@ -54,7 +73,7 @@ func TestStreamGame(t *testing.T) {
 	// Create mock stream for player 1
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	defer cancel1()
-	stream1 := &mockStreamServer{ctx: ctx1, updates: []*gamev1.GameUpdate{}}
+	stream1 := &mockStreamServer{ctx: ctx1}
 
 	// Start streaming in a goroutine
 	streamErr := make(chan error, 1)
@@ -71,8 +90,9 @@ func TestStreamGame(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify initial state was sent
-	assert.Len(t, stream1.updates, 1)
-	assert.NotNil(t, stream1.updates[0].GetFullState())
+	updates := stream1.getUpdates()
+	assert.Len(t, updates, 1)
+	assert.NotNil(t, updates[0].GetFullState())
 
 	// Join as player 2 to start the game
 	joinResp2, err := server.JoinGame(context.Background(), &gamev1.JoinGameRequest{
@@ -85,9 +105,10 @@ func TestStreamGame(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify game started event was sent
-	assert.Greater(t, len(stream1.updates), 1)
+	updates = stream1.getUpdates()
+	assert.Greater(t, len(updates), 1)
 	foundStartEvent := false
-	for _, update := range stream1.updates[1:] {
+	for _, update := range updates[1:] {
 		if event := update.GetEvent(); event != nil {
 			if event.GetGameStarted() != nil {
 				foundStartEvent = true
@@ -118,7 +139,8 @@ func TestStreamGame(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify we received a game update (either full state or delta)
-	lastUpdate := stream1.updates[len(stream1.updates)-1]
+	updates = stream1.getUpdates()
+	lastUpdate := updates[len(updates)-1]
 	assert.True(t, lastUpdate.GetFullState() != nil || lastUpdate.GetDelta() != nil,
 		"Expected to receive either full state or delta update after turn processing")
 
