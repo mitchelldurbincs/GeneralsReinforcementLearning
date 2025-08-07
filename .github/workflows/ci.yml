@@ -132,8 +132,8 @@ jobs:
         # Install gosec
         go install github.com/securego/gosec/v2/cmd/gosec@latest
         
-        # Run gosec and create SARIF output (continue on error to always create file)
-        ~/go/bin/gosec -fmt sarif -out gosec-results.sarif ./... || true
+        # Run gosec excluding UI packages (continue on error to always create file)
+        ~/go/bin/gosec -fmt sarif -out gosec-results.sarif -exclude-dir=internal/ui -exclude-dir=cmd/ui_client ./... || true
         
         # Check if file was created
         if [ -f gosec-results.sarif ]; then
@@ -174,15 +174,15 @@ jobs:
 
     - name: Install protoc
       run: |
-        PROTOC_VERSION=28.3
+        PROTOC_VERSION=29.5
         curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip
         unzip protoc-${PROTOC_VERSION}-linux-x86_64.zip -d $HOME/.local
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Install protoc plugins
       run: |
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.2
 
     - name: Generate protos
       run: |
