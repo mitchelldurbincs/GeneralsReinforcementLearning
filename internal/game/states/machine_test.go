@@ -303,7 +303,7 @@ func TestStateMachine(t *testing.T) {
 		sm, ctx := setup()
 
 		// Enter error state
-		sm.TransitionTo(PhaseLobby, "setup")
+		_ = sm.TransitionTo(PhaseLobby, "setup")
 		ctx.Error = errors.New("test error")
 		err := sm.TransitionTo(PhaseError, "error occurred")
 		assert.NoError(t, err)

@@ -216,7 +216,7 @@ func TestBuffer_StreamChannel(t *testing.T) {
 
 	// Add experiences
 	for i := 0; i < 3; i++ {
-		buffer.Add(createTestExperience(string(rune('a'+i)), int32(i)))
+		_ = buffer.Add(createTestExperience(string(rune('a'+i)), int32(i)))
 	}
 
 	// Give consumer time to process
@@ -284,7 +284,7 @@ func TestBufferManager_RemoveBuffer(t *testing.T) {
 
 	// Create buffer
 	buffer := manager.GetOrCreateBuffer("game1")
-	buffer.Add(createTestExperience("test", 0))
+	_ = buffer.Add(createTestExperience("test", 0))
 
 	// Remove buffer
 	err := manager.RemoveBuffer("game1")
