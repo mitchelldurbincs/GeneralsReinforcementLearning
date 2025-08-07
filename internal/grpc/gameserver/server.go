@@ -21,20 +21,16 @@ import (
 // Server implements the GameService gRPC server
 type Server struct {
 	gamev1.UnimplementedGameServiceServer
-	
+
 	// Game manager for handling all game instances
 	gameManager *GameManager
-	
+
 	// Action validator for validating game actions
 	validator *ActionValidator
-	
+
 	// Experience service for collecting and streaming experiences
 	experienceService *ExperienceService
 }
-
-
-
-
 
 // Server configuration constants
 const (
@@ -48,10 +44,10 @@ const (
 func NewServer() *Server {
 	// Create experience service with its buffer manager
 	experienceService := NewExperienceService(nil)
-	
+
 	// Create game manager with experience service
 	gameManager := NewGameManagerWithExperience(experienceService)
-	
+
 	return &Server{
 		gameManager:       gameManager,
 		validator:         NewActionValidator(gameManager),
@@ -63,7 +59,7 @@ func NewServer() *Server {
 func (s *Server) CreateGame(ctx context.Context, req *gamev1.CreateGameRequest) (*gamev1.CreateGameResponse, error) {
 	// Create new game instance
 	game, gameID := s.gameManager.CreateGame(req.Config)
-	
+
 	log.Info().
 		Str("game_id", gameID).
 		Msg("Creating new game")
@@ -91,8 +87,8 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		if p.name == req.PlayerName {
 			// Return existing player info
 			return &gamev1.JoinGameResponse{
-				PlayerId:    p.id,
-				PlayerToken: p.token,
+				PlayerId:     p.id,
+				PlayerToken:  p.token,
 				InitialState: s.createGameState(game, p.id),
 			}, nil
 		}
@@ -106,7 +102,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 			return nil, status.Errorf(codes.FailedPrecondition, "cannot join game %s: game is in %s phase", req.GameId, currentPhase.String())
 		}
 	}
-	
+
 	// Check if game is full
 	if len(game.players) >= int(game.config.MaxPlayers) {
 		return nil, status.Errorf(codes.ResourceExhausted, "game %s is full: %d/%d players", req.GameId, len(game.players), game.config.MaxPlayers)
@@ -115,13 +111,13 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 	// Add new player
 	playerID := int32(len(game.players))
 	playerToken := fmt.Sprintf("token-%s-%d", req.GameId, playerID)
-	
+
 	game.players = append(game.players, playerInfo{
 		id:    playerID,
 		name:  req.PlayerName,
 		token: playerToken,
 	})
-	
+
 	// Update last activity time
 	game.lastActivity = time.Now()
 
@@ -129,7 +125,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 	if len(game.players) == int(game.config.MaxPlayers) {
 		// Engine will be created and will handle state transitions
 		// No need to manually set status anymore
-		
+
 		// Create the game engine
 		engineConfig := gameengine.GameConfig{
 			Width:   int(game.config.Width),
@@ -138,22 +134,22 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 			Logger:  log.Logger,
 			GameID:  req.GameId,
 		}
-		
+
 		// Attach experience collector if enabled
 		if game.config.CollectExperiences && s.experienceService != nil {
 			engineConfig.ExperienceCollector = s.experienceService.CreateCollector(req.GameId)
 		}
-		
+
 		// Create a background context for the engine that won't be cancelled
 		engineCtx := context.Background()
 		game.engineCtx = engineCtx
-		
+
 		game.engine = gameengine.NewEngine(engineCtx, engineConfig)
-		
+
 		if game.engine == nil {
 			return nil, status.Errorf(codes.Internal, "failed to create game engine for game %s: config %dx%d with %d players", req.GameId, game.config.Width, game.config.Height, game.config.MaxPlayers)
 		}
-		
+
 		// Subscribe to state transition events from the engine
 		game.engine.EventBus().SubscribeFunc("state.transition", func(event events.Event) {
 			// Type assert to StateTransitionEvent
@@ -161,7 +157,7 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 				// Convert internal phases to proto phases
 				previousPhase := convertPhaseToProto(states.GamePhase(0)) // We don't have the numeric value, so we'll parse from string
 				newPhase := convertPhaseToProto(states.GamePhase(0))
-				
+
 				// Parse phase names to get the actual phases
 				// This is a bit hacky but works for now
 				for i := 0; i <= int(states.PhaseReset); i++ {
@@ -173,30 +169,30 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 						newPhase = convertPhaseToProto(phase)
 					}
 				}
-				
+
 				// Broadcast the phase change to all stream clients
 				game.streamManager.BroadcastPhaseChanged(previousPhase, newPhase, stateEvent.Reason)
 			}
 		})
-		
+
 		// Initialize action collection
 		game.actionBuffer = make(map[int32]core.Action)
 		game.currentTurn = 0
-		
+
 		log.Info().
 			Str("game_id", req.GameId).
 			Int32("current_turn", game.currentTurn).
 			Bool("action_buffer_initialized", game.actionBuffer != nil).
 			Msg("Game state initialized")
-		
+
 		// Start turn timer (even if 0, to process turns automatically)
 		game.startTurnTimer(game.engineCtx, time.Duration(game.config.TurnTimeMs)*time.Millisecond, s)
-		
+
 		log.Info().
 			Str("game_id", req.GameId).
 			Int("players", len(game.players)).
 			Msg("Game started")
-		
+
 		// Broadcast game started event
 		game.streamManager.BroadcastGameStarted()
 	}
@@ -215,15 +211,15 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		Int32("player_id", req.PlayerId).
 		Str("idempotency_key", req.IdempotencyKey).
 		Msg("Received action submission")
-	
+
 	// Validate request
 	result, game := s.validator.ValidateSubmitActionRequest(ctx, req)
-	
+
 	// Handle cached response
 	if result.CachedResponse != nil {
 		return result.CachedResponse, nil
 	}
-	
+
 	// Handle validation failures
 	if !result.Valid {
 		resp := &gamev1.SubmitActionResponse{
@@ -236,12 +232,12 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		}
 		return resp, nil
 	}
-	
+
 	// Get current turn for later use
 	game.actionMu.Lock()
 	currentTurn := game.currentTurn
 	game.actionMu.Unlock()
-	
+
 	// Convert protobuf action to core action
 	coreAction, err := convertProtoAction(req.Action, req.PlayerId)
 	if err != nil {
@@ -255,7 +251,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		}
 		return resp, nil
 	}
-	
+
 	// Validate core action
 	actionResult := s.validator.ValidateCoreAction(coreAction, game, req.PlayerId, currentTurn)
 	if !actionResult.Valid {
@@ -269,10 +265,10 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		}
 		return resp, nil
 	}
-	
+
 	// Collect the action and check if all players have submitted
 	allSubmitted := game.collectAction(req.PlayerId, coreAction)
-	
+
 	// If all players have submitted, process the turn
 	if allSubmitted {
 		// Use the engine context to avoid cancellation when the request completes
@@ -281,7 +277,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 				Str("game_id", req.GameId).
 				Int32("turn", currentTurn).
 				Msg("Failed to process turn")
-			
+
 			resp := &gamev1.SubmitActionResponse{
 				Success:      false,
 				ErrorCode:    commonv1.ErrorCode_ERROR_CODE_UNSPECIFIED,
@@ -292,16 +288,16 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			}
 			return resp, nil
 		}
-		
+
 		// Broadcast updates to all connected stream clients
 		game.broadcastUpdates(s)
-		
+
 		// If game is still active, start next turn timer
 		if game.CurrentPhase() == commonv1.GamePhase_GAME_PHASE_RUNNING {
 			game.startTurnTimer(game.engineCtx, time.Duration(game.config.TurnTimeMs)*time.Millisecond, s)
 		}
 	}
-	
+
 	resp := &gamev1.SubmitActionResponse{
 		Success:        true,
 		NextTurnNumber: currentTurn + 1,
@@ -342,13 +338,13 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 		Str("game_id", req.GameId).
 		Int32("player_id", req.PlayerId).
 		Msg("Player connecting to game stream")
-		
+
 	// Validate game exists
 	game, exists := s.gameManager.GetGame(req.GameId)
 	if !exists {
 		return status.Errorf(codes.NotFound, "game %s not found", req.GameId)
 	}
-	
+
 	// Validate player credentials
 	authenticated := false
 	for _, p := range game.players {
@@ -357,11 +353,11 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 			break
 		}
 	}
-	
+
 	if !authenticated {
 		return status.Errorf(codes.PermissionDenied, "invalid player credentials for game %s: player %d", req.GameId, req.PlayerId)
 	}
-	
+
 	// Create stream client with cancellable context
 	ctx, cancel := context.WithCancel(stream.Context())
 	client := &streamClient{
@@ -371,11 +367,11 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 		cancelFunc: cancel,
 		updateChan: make(chan *gamev1.GameUpdate, 10), // Buffered channel
 	}
-	
+
 	// Register the stream
 	game.streamManager.RegisterClient(client)
 	defer game.streamManager.UnregisterClient(req.PlayerId)
-	
+
 	// Send initial game state
 	initialUpdate := &gamev1.GameUpdate{
 		Update: &gamev1.GameUpdate_FullState{
@@ -383,7 +379,7 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 		},
 		Timestamp: timestamppb.Now(),
 	}
-	
+
 	if err := stream.Send(initialUpdate); err != nil {
 		log.Error().Err(err).
 			Str("game_id", req.GameId).
@@ -391,7 +387,7 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 			Msg("Failed to send initial game state")
 		return err
 	}
-	
+
 	// Start goroutine to handle updates
 	errChan := make(chan error, 1)
 	go func() {
@@ -407,7 +403,7 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 			}
 		}
 	}()
-	
+
 	// Wait for stream to close or error
 	select {
 	case err := <-errChan:
@@ -434,17 +430,17 @@ func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.Gam
 		game.mu.Unlock()
 		return s.convertGameStateToProto(game, engineState, playerID)
 	}
-	
+
 	// Otherwise create placeholder state for waiting games
 	players := make([]*gamev1.PlayerState, len(game.players))
 	for i, p := range game.players {
 		players[i] = &gamev1.PlayerState{
-			Id:     p.id,
-			Name:   p.name,
-			Status: commonv1.PlayerStatus_PLAYER_STATUS_ACTIVE,
+			Id:        p.id,
+			Name:      p.name,
+			Status:    commonv1.PlayerStatus_PLAYER_STATUS_ACTIVE,
 			ArmyCount: 1,
 			TileCount: 1,
-			Color:  generatePlayerColor(i), // Simple color generation
+			Color:     generatePlayerColor(i), // Simple color generation
 		}
 	}
 
@@ -466,19 +462,19 @@ func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.Gam
 		// No engine yet, we're in pre-engine lobby
 		currentPhase = commonv1.GamePhase_GAME_PHASE_LOBBY
 	}
-	
+
 	return &gamev1.GameState{
-		GameId:   game.id,
-		Status:   mapPhaseToStatus(currentPhase), // Map phase to status for backward compatibility
-		Turn:     0,
+		GameId: game.id,
+		Status: mapPhaseToStatus(currentPhase), // Map phase to status for backward compatibility
+		Turn:   0,
 		Board: &gamev1.Board{
 			Width:  game.config.Width,
 			Height: game.config.Height,
 			Tiles:  tiles,
 		},
-		Players:  players,
-		WinnerId: -1,
-		ActionMask: make([]bool, 0), // Empty mask for waiting games
+		Players:      players,
+		WinnerId:     -1,
+		ActionMask:   make([]bool, 0), // Empty mask for waiting games
 		CurrentPhase: currentPhase,
 	}
 }
@@ -487,7 +483,6 @@ func (s *Server) createGameState(game *gameInstance, playerID int32) *gamev1.Gam
 func (s *Server) GetActiveGames() int {
 	return s.gameManager.GetActiveGames()
 }
-
 
 // computePlayerVisibilityFromEngine is a helper to get player visibility from the engine
 func (s *Server) computePlayerVisibilityFromEngine(engine *gameengine.Engine, playerID int) gameengine.PlayerVisibility {
@@ -507,11 +502,11 @@ func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameeng
 			TileCount: int32(len(p.OwnedTiles)),
 			Color:     generatePlayerColor(i),
 		}
-		
+
 		if !p.Alive {
 			playerState.Status = commonv1.PlayerStatus_PLAYER_STATUS_ELIMINATED
 		}
-		
+
 		// Show general position if discovered or eliminated
 		if p.GeneralIdx >= 0 && (!p.Alive || engineState.Board.T[p.GeneralIdx].Owner == int(playerID)) {
 			x := p.GeneralIdx % engineState.Board.W
@@ -521,14 +516,14 @@ func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameeng
 				Y: int32(y),
 			}
 		}
-		
+
 		players[i] = playerState
 	}
-	
+
 	// Convert board tiles with fog of war
 	tiles := make([]*gamev1.Tile, len(engineState.Board.T))
 	visibility := game.engine.ComputePlayerVisibility(int(playerID))
-	
+
 	for i, tile := range engineState.Board.T {
 		protoTile := &gamev1.Tile{
 			Type:      convertTileType(tile.Type),
@@ -537,7 +532,7 @@ func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameeng
 			Visible:   visibility.VisibleTiles[i],
 			FogOfWar:  visibility.FogTiles[i],
 		}
-		
+
 		// Apply fog of war rules
 		if !protoTile.Visible && !protoTile.FogOfWar {
 			// Completely hidden tile
@@ -549,62 +544,56 @@ func (s *Server) convertGameStateToProto(game *gameInstance, engineState gameeng
 			protoTile.OwnerId = -1
 			protoTile.ArmyCount = 0
 		}
-		
+
 		tiles[i] = protoTile
 	}
-	
+
 	// Determine winner
 	winnerId := int32(-1)
 	if game.engine.IsGameOver() {
 		winnerId = int32(game.engine.GetWinner())
 	}
-	
+
 	// Generate action mask for the requesting player
 	actionMask := game.engine.GetLegalActionMask(int(playerID))
-	
+
 	// Get current phase from engine
 	currentPhase := game.CurrentPhase()
-	
+
 	return &gamev1.GameState{
-		GameId:     game.id,
-		Status:     mapPhaseToStatus(currentPhase), // Map phase to status for backward compatibility
-		Turn:       int32(engineState.Turn),
+		GameId: game.id,
+		Status: mapPhaseToStatus(currentPhase), // Map phase to status for backward compatibility
+		Turn:   int32(engineState.Turn),
 		Board: &gamev1.Board{
 			Width:  int32(engineState.Board.W),
 			Height: int32(engineState.Board.H),
 			Tiles:  tiles,
 		},
-		Players:    players,
-		WinnerId:   winnerId,
-		ActionMask: actionMask,
+		Players:      players,
+		WinnerId:     winnerId,
+		ActionMask:   actionMask,
 		CurrentPhase: currentPhase,
 	}
 }
-
-
-
-
-
-
 
 // broadcastUpdates sends game updates to all connected stream clients
 func (g *gameInstance) broadcastUpdates(server *Server) {
 	if g.streamManager.GetClientCount() == 0 {
 		return // No streams to update
 	}
-	
+
 	log.Debug().
 		Str("game_id", g.id).
 		Int("stream_count", g.streamManager.GetClientCount()).
 		Msg("Broadcasting updates to stream clients")
-	
+
 	// Get current engine state
 	g.mu.Lock()
 	engineState := g.engine.GameState()
 	changedTiles := g.engine.GetChangedTiles()
 	visibilityChangedTiles := g.engine.GetVisibilityChangedTiles()
 	g.mu.Unlock()
-	
+
 	// Send updates to each connected player
 	g.streamManager.ForEachClient(func(playerID int32, client *streamClient) {
 		update := g.createStreamUpdate(server, engineState, playerID, changedTiles, visibilityChangedTiles)
@@ -617,18 +606,18 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 	// If there are few changes, send a delta update; otherwise send full state
 	totalChanges := len(changedTiles) + len(visibilityChangedTiles)
 	boardSize := engineState.Board.W * engineState.Board.H
-	
+
 	// Use delta updates if less than 20% of the board changed
 	if totalChanges > 0 && totalChanges < boardSize/5 {
 		// Create delta update
 		delta := &gamev1.GameStateDelta{
-			Turn: int32(engineState.Turn),
+			Turn:        int32(engineState.Turn),
 			TileUpdates: make([]*gamev1.TileUpdate, 0, totalChanges),
 		}
-		
+
 		// Get player visibility for applying fog of war
 		visibility := server.computePlayerVisibilityFromEngine(g.engine, int(playerID))
-		
+
 		// Add changed tiles
 		processedTiles := make(map[int]bool)
 		for tileIdx := range changedTiles {
@@ -636,11 +625,11 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 				continue
 			}
 			processedTiles[tileIdx] = true
-			
+
 			tile := &engineState.Board.T[tileIdx]
 			x := tileIdx % engineState.Board.W
 			y := tileIdx / engineState.Board.W
-			
+
 			tileUpdate := &gamev1.TileUpdate{
 				Position: &commonv1.Coordinate{X: int32(x), Y: int32(y)},
 				Tile: &gamev1.Tile{
@@ -651,7 +640,7 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 					FogOfWar:  visibility.FogTiles[tileIdx],
 				},
 			}
-			
+
 			// Apply fog of war rules
 			if !tileUpdate.Tile.Visible && !tileUpdate.Tile.FogOfWar {
 				// Completely hidden tile
@@ -663,20 +652,20 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 				tileUpdate.Tile.OwnerId = -1
 				tileUpdate.Tile.ArmyCount = 0
 			}
-			
+
 			delta.TileUpdates = append(delta.TileUpdates, tileUpdate)
 		}
-		
+
 		// Add visibility changed tiles that weren't already processed
 		for tileIdx := range visibilityChangedTiles {
 			if processedTiles[tileIdx] {
 				continue
 			}
-			
+
 			tile := &engineState.Board.T[tileIdx]
 			x := tileIdx % engineState.Board.W
 			y := tileIdx / engineState.Board.W
-			
+
 			tileUpdate := &gamev1.TileUpdate{
 				Position: &commonv1.Coordinate{X: int32(x), Y: int32(y)},
 				Tile: &gamev1.Tile{
@@ -687,7 +676,7 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 					FogOfWar:  visibility.FogTiles[tileIdx],
 				},
 			}
-			
+
 			// Apply fog of war rules
 			if !tileUpdate.Tile.Visible && !tileUpdate.Tile.FogOfWar {
 				// Completely hidden tile
@@ -699,10 +688,10 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 				tileUpdate.Tile.OwnerId = -1
 				tileUpdate.Tile.ArmyCount = 0
 			}
-			
+
 			delta.TileUpdates = append(delta.TileUpdates, tileUpdate)
 		}
-		
+
 		// Add player updates
 		delta.PlayerUpdates = make([]*gamev1.PlayerUpdate, 0, len(engineState.Players))
 		for i, p := range engineState.Players {
@@ -714,11 +703,11 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 				TileCount: int32(len(p.OwnedTiles)),
 				Color:     generatePlayerColor(i),
 			}
-			
+
 			// Update status if player was eliminated
 			if !p.Alive {
 				playerState.Status = commonv1.PlayerStatus_PLAYER_STATUS_ELIMINATED
-				
+
 				// Show general position when eliminated
 				if p.GeneralIdx >= 0 {
 					x := p.GeneralIdx % engineState.Board.W
@@ -729,14 +718,14 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 					}
 				}
 			}
-			
+
 			playerUpdate := &gamev1.PlayerUpdate{
 				PlayerId: int32(p.ID),
 				State:    playerState,
 			}
 			delta.PlayerUpdates = append(delta.PlayerUpdates, playerUpdate)
 		}
-		
+
 		return &gamev1.GameUpdate{
 			Update: &gamev1.GameUpdate_Delta{
 				Delta: delta,
@@ -744,7 +733,7 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 			Timestamp: timestamppb.Now(),
 		}
 	}
-	
+
 	// Fall back to full state update for large changes
 	return &gamev1.GameUpdate{
 		Update: &gamev1.GameUpdate_FullState{
@@ -758,10 +747,3 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 func (s *Server) GetExperienceService() *ExperienceService {
 	return s.experienceService
 }
-
-
-
-
-
-
-

@@ -24,28 +24,28 @@ const (
 type Handler struct {
 	// Mouse state
 	mouseX, mouseY int
-	
+
 	// Selection state
-	selectionState SelectionState
-	selectedTileX  int
-	selectedTileY  int
+	selectionState    SelectionState
+	selectedTileX     int
+	selectedTileY     int
 	keyboardSelection bool // Track if selection was made via keyboard
-	
+
 	// Movement state
-	moveMode       MoveMode
-	pendingMoves   []PendingMove
-	
+	moveMode     MoveMode
+	pendingMoves []PendingMove
+
 	// UI state
-	tileSize       int
-	boardOffsetX   int
-	boardOffsetY   int
-	
+	tileSize     int
+	boardOffsetX int
+	boardOffsetY int
+
 	// Turn state
-	isPlayerTurn   bool
-	turnEnded      bool
-	
+	isPlayerTurn bool
+	turnEnded    bool
+
 	// Validation callback
-	tileValidator  func(x, y int) (bool, string)
+	tileValidator         func(x, y int) (bool, string)
 	lastValidationMessage string
 }
 
@@ -67,16 +67,16 @@ func NewHandler(tileSize int) *Handler {
 func (h *Handler) Update() {
 	// Update mouse position
 	h.mouseX, h.mouseY = ebiten.CursorPosition()
-	
+
 	// Handle mouse clicks
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		h.handleLeftClick()
 	}
-	
+
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 		h.handleRightClick()
 	}
-	
+
 	// Handle keyboard input
 	h.handleKeyboard()
 }
@@ -86,14 +86,14 @@ func (h *Handler) handleLeftClick() {
 		log.Debug().Msg("Click ignored - not player turn")
 		return
 	}
-	
+
 	tileX, tileY := h.screenToTile(h.mouseX, h.mouseY)
 	log.Debug().
 		Int("tileX", tileX).Int("tileY", tileY).
 		Int("mouseX", h.mouseX).Int("mouseY", h.mouseY).
 		Int("selectionState", int(h.selectionState)).
 		Msg("Left click detected")
-	
+
 	switch h.selectionState {
 	case SelectionNone:
 		// Select a tile if it belongs to the player
@@ -114,7 +114,7 @@ func (h *Handler) handleLeftClick() {
 			h.selectionState = SelectionTileSelected
 			h.keyboardSelection = false
 		}
-		
+
 	case SelectionTileSelected:
 		// If clicking the same tile, deselect
 		if tileX == h.selectedTileX && tileY == h.selectedTileY {
@@ -151,17 +151,17 @@ func (h *Handler) handleKeyboard() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyQ) {
 		h.moveMode = MoveFull
 	}
-	
+
 	// Escape to deselect
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		h.selectionState = SelectionNone
 	}
-	
+
 	// Check for WASD movement if a tile is selected
 	if h.selectionState == SelectionTileSelected {
 		h.handleMovementKeys()
 	}
-	
+
 	// Shift modifier for half army movement (works with WASD too)
 	if ebiten.IsKeyPressed(ebiten.KeyShift) {
 		h.moveMode = MoveHalf
@@ -174,7 +174,7 @@ func (h *Handler) handleMovementKeys() {
 	// Direction mapping for WASD and arrow keys
 	var dx, dy int
 	moved := false
-	
+
 	// WASD keys
 	if inpututil.IsKeyJustPressed(ebiten.KeyW) || inpututil.IsKeyJustPressed(ebiten.KeyUp) {
 		dx, dy = 0, -1 // North
@@ -189,12 +189,12 @@ func (h *Handler) handleMovementKeys() {
 		dx, dy = 1, 0 // East
 		moved = true
 	}
-	
+
 	if moved {
 		// Create a pending move from selected tile to destination
 		toX := h.selectedTileX + dx
 		toY := h.selectedTileY + dy
-		
+
 		h.pendingMoves = append(h.pendingMoves, PendingMove{
 			FromX:    h.selectedTileX,
 			FromY:    h.selectedTileY,
@@ -202,14 +202,14 @@ func (h *Handler) handleMovementKeys() {
 			ToY:      toY,
 			MoveHalf: h.moveMode == MoveHalf,
 		})
-		
+
 		log.Debug().
 			Str("key", "WASD").
 			Int("fromX", h.selectedTileX).Int("fromY", h.selectedTileY).
 			Int("toX", toX).Int("toY", toY).
 			Bool("moveHalf", h.moveMode == MoveHalf).
 			Msg("Created keyboard move")
-		
+
 		// Move selection to the destination tile (actual Generals.io behavior)
 		// This allows continuous movement by pressing the same key repeatedly
 		h.selectedTileX = toX

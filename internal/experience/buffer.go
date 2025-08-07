@@ -18,23 +18,23 @@ var (
 
 // Buffer represents a thread-safe circular buffer for experiences
 type Buffer struct {
-	mu         sync.RWMutex
-	buffer     []*experiencepb.Experience
-	capacity   int
-	size       int
-	head       int // Write position
-	tail       int // Read position
-	closed     bool
-	
+	mu       sync.RWMutex
+	buffer   []*experiencepb.Experience
+	capacity int
+	size     int
+	head     int // Write position
+	tail     int // Read position
+	closed   bool
+
 	// Channels for streaming
 	streamChan chan *experiencepb.Experience
 	closeChan  chan struct{}
-	
+
 	// Statistics
 	totalAdded    int64
 	totalDropped  int64
 	totalStreamed int64
-	
+
 	logger zerolog.Logger
 }
 
@@ -43,7 +43,7 @@ func NewBuffer(capacity int, logger zerolog.Logger) *Buffer {
 	if capacity <= 0 {
 		capacity = 10000 // Default capacity
 	}
-	
+
 	return &Buffer{
 		buffer:     make([]*experiencepb.Experience, capacity),
 		capacity:   capacity,
@@ -57,11 +57,11 @@ func NewBuffer(capacity int, logger zerolog.Logger) *Buffer {
 func (b *Buffer) Add(exp *experiencepb.Experience) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	if b.closed {
 		return ErrBufferClosed
 	}
-	
+
 	// Check if buffer is full
 	if b.size >= b.capacity {
 		// Drop oldest experience (circular buffer behavior)
@@ -73,12 +73,12 @@ func (b *Buffer) Add(exp *experiencepb.Experience) error {
 	} else {
 		b.size++
 	}
-	
+
 	// Add new experience
 	b.buffer[b.head] = exp
 	b.head = (b.head + 1) % b.capacity
 	b.totalAdded++
-	
+
 	// Try to stream experience (non-blocking)
 	select {
 	case b.streamChan <- exp:
@@ -87,7 +87,7 @@ func (b *Buffer) Add(exp *experiencepb.Experience) error {
 		// Stream channel full, continue without blocking
 		b.logger.Debug().Msg("Stream channel full, experience not streamed")
 	}
-	
+
 	return nil
 }
 
@@ -95,11 +95,11 @@ func (b *Buffer) Add(exp *experiencepb.Experience) error {
 func (b *Buffer) AddBatch(experiences []*experiencepb.Experience) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	if b.closed {
 		return ErrBufferClosed
 	}
-	
+
 	for _, exp := range experiences {
 		// Inline add logic to avoid lock contention
 		if b.size >= b.capacity {
@@ -108,11 +108,11 @@ func (b *Buffer) AddBatch(experiences []*experiencepb.Experience) error {
 		} else {
 			b.size++
 		}
-		
+
 		b.buffer[b.head] = exp
 		b.head = (b.head + 1) % b.capacity
 		b.totalAdded++
-		
+
 		// Try to stream
 		select {
 		case b.streamChan <- exp:
@@ -121,14 +121,14 @@ func (b *Buffer) AddBatch(experiences []*experiencepb.Experience) error {
 			// Continue without blocking
 		}
 	}
-	
+
 	if len(experiences) > 0 {
 		b.logger.Debug().
 			Int("batch_size", len(experiences)).
 			Int64("total_added", b.totalAdded).
 			Msg("Added batch of experiences")
 	}
-	
+
 	return nil
 }
 
@@ -136,18 +136,18 @@ func (b *Buffer) AddBatch(experiences []*experiencepb.Experience) error {
 func (b *Buffer) Get(n int) []*experiencepb.Experience {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	if n > b.size {
 		n = b.size
 	}
-	
+
 	result := make([]*experiencepb.Experience, n)
 	for i := 0; i < n; i++ {
 		result[i] = b.buffer[b.tail]
 		b.tail = (b.tail + 1) % b.capacity
 		b.size--
 	}
-	
+
 	return result
 }
 
@@ -155,18 +155,18 @@ func (b *Buffer) Get(n int) []*experiencepb.Experience {
 func (b *Buffer) GetAll() []*experiencepb.Experience {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	if b.size == 0 {
 		return []*experiencepb.Experience{}
 	}
-	
+
 	result := make([]*experiencepb.Experience, b.size)
 	for i := 0; i < b.size; i++ {
 		result[i] = b.buffer[b.tail]
 		b.tail = (b.tail + 1) % b.capacity
 	}
 	b.size = 0
-	
+
 	return result
 }
 
@@ -174,11 +174,11 @@ func (b *Buffer) GetAll() []*experiencepb.Experience {
 func (b *Buffer) Sample(n int) []*experiencepb.Experience {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	
+
 	if n > b.size {
 		n = b.size
 	}
-	
+
 	// For now, just return the latest n experiences
 	// TODO: Implement true random sampling
 	result := make([]*experiencepb.Experience, n)
@@ -186,7 +186,7 @@ func (b *Buffer) Sample(n int) []*experiencepb.Experience {
 		idx := (b.tail + i) % b.capacity
 		result[i] = b.buffer[idx]
 	}
-	
+
 	return result
 }
 
@@ -194,11 +194,11 @@ func (b *Buffer) Sample(n int) []*experiencepb.Experience {
 func (b *Buffer) GetLatest(n int) []*experiencepb.Experience {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	
+
 	if n > b.size {
 		n = b.size
 	}
-	
+
 	result := make([]*experiencepb.Experience, n)
 	// Start from head and go backwards to get latest experiences
 	for i := 0; i < n; i++ {
@@ -206,7 +206,7 @@ func (b *Buffer) GetLatest(n int) []*experiencepb.Experience {
 		idx := (b.head - n + i + b.capacity) % b.capacity
 		result[i] = b.buffer[idx]
 	}
-	
+
 	return result
 }
 
@@ -238,12 +238,12 @@ func (b *Buffer) IsFull() bool {
 func (b *Buffer) Clear() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	b.size = 0
 	b.head = 0
 	b.tail = 0
 	b.buffer = make([]*experiencepb.Experience, b.capacity)
-	
+
 	b.logger.Debug().Msg("Buffer cleared")
 }
 
@@ -251,21 +251,21 @@ func (b *Buffer) Clear() {
 func (b *Buffer) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	
+
 	if b.closed {
 		return nil
 	}
-	
+
 	b.closed = true
 	close(b.closeChan)
 	close(b.streamChan)
-	
+
 	b.logger.Info().
 		Int64("total_added", b.totalAdded).
 		Int64("total_dropped", b.totalDropped).
 		Int64("total_streamed", b.totalStreamed).
 		Msg("Buffer closed")
-	
+
 	return nil
 }
 
@@ -273,13 +273,13 @@ func (b *Buffer) Close() error {
 func (b *Buffer) Stats() BufferStats {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	
+
 	return BufferStats{
-		CurrentSize:   b.size,
-		Capacity:      b.capacity,
-		TotalAdded:    b.totalAdded,
-		TotalDropped:  b.totalDropped,
-		TotalStreamed: b.totalStreamed,
+		CurrentSize:    b.size,
+		Capacity:       b.capacity,
+		TotalAdded:     b.totalAdded,
+		TotalDropped:   b.totalDropped,
+		TotalStreamed:  b.totalStreamed,
 		UtilizationPct: float64(b.size) / float64(b.capacity) * 100,
 	}
 }
@@ -299,7 +299,7 @@ type BufferManager struct {
 	mu      sync.RWMutex
 	buffers map[string]*Buffer
 	logger  zerolog.Logger
-	
+
 	// Default configuration
 	defaultCapacity int
 }
@@ -317,20 +317,20 @@ func NewBufferManager(defaultCapacity int, logger zerolog.Logger) *BufferManager
 func (m *BufferManager) GetOrCreateBuffer(key string) *Buffer {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if buffer, exists := m.buffers[key]; exists {
 		return buffer
 	}
-	
+
 	// Create new buffer
 	buffer := NewBuffer(m.defaultCapacity, m.logger)
 	m.buffers[key] = buffer
-	
+
 	m.logger.Debug().
 		Str("key", key).
 		Int("capacity", m.defaultCapacity).
 		Msg("Created new buffer")
-	
+
 	return buffer
 }
 
@@ -338,7 +338,7 @@ func (m *BufferManager) GetOrCreateBuffer(key string) *Buffer {
 func (m *BufferManager) GetBuffer(key string) (*Buffer, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	buffer, exists := m.buffers[key]
 	return buffer, exists
 }
@@ -347,18 +347,18 @@ func (m *BufferManager) GetBuffer(key string) (*Buffer, bool) {
 func (m *BufferManager) RemoveBuffer(key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if buffer, exists := m.buffers[key]; exists {
 		if err := buffer.Close(); err != nil {
 			return err
 		}
 		delete(m.buffers, key)
-		
+
 		m.logger.Debug().
 			Str("key", key).
 			Msg("Removed buffer")
 	}
-	
+
 	return nil
 }
 
@@ -366,7 +366,7 @@ func (m *BufferManager) RemoveBuffer(key string) error {
 func (m *BufferManager) GetAllBuffers() map[string]*Buffer {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	// Return a copy to avoid concurrent modification
 	result := make(map[string]*Buffer, len(m.buffers))
 	for k, v := range m.buffers {
@@ -379,7 +379,7 @@ func (m *BufferManager) GetAllBuffers() map[string]*Buffer {
 func (m *BufferManager) CloseAll() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	for key, buffer := range m.buffers {
 		if err := buffer.Close(); err != nil {
 			m.logger.Error().
@@ -388,18 +388,18 @@ func (m *BufferManager) CloseAll() error {
 				Msg("Failed to close buffer")
 		}
 	}
-	
+
 	m.buffers = make(map[string]*Buffer)
 	return nil
 }
 
 // StreamMerger merges multiple experience streams into one
 type StreamMerger struct {
-	sources    []<-chan *experiencepb.Experience
-	output     chan *experiencepb.Experience
-	closeChan  chan struct{}
-	wg         sync.WaitGroup
-	logger     zerolog.Logger
+	sources   []<-chan *experiencepb.Experience
+	output    chan *experiencepb.Experience
+	closeChan chan struct{}
+	wg        sync.WaitGroup
+	logger    zerolog.Logger
 }
 
 // NewStreamMerger creates a new stream merger
@@ -427,7 +427,7 @@ func (m *StreamMerger) Start() {
 // mergeSource merges a single source into the output
 func (m *StreamMerger) mergeSource(sourceID int, source <-chan *experiencepb.Experience) {
 	defer m.wg.Done()
-	
+
 	for {
 		select {
 		case exp, ok := <-source:
@@ -437,14 +437,14 @@ func (m *StreamMerger) mergeSource(sourceID int, source <-chan *experiencepb.Exp
 					Msg("Source channel closed")
 				return
 			}
-			
+
 			select {
 			case m.output <- exp:
 				// Successfully forwarded
 			case <-m.closeChan:
 				return
 			}
-			
+
 		case <-m.closeChan:
 			return
 		}
@@ -465,12 +465,12 @@ func (m *StreamMerger) Close() {
 
 // TimedBatcher batches experiences based on time or size
 type TimedBatcher struct {
-	input      <-chan *experiencepb.Experience
-	output     chan []*experiencepb.Experience
-	batchSize  int
-	timeout    time.Duration
-	closeChan  chan struct{}
-	logger     zerolog.Logger
+	input     <-chan *experiencepb.Experience
+	output    chan []*experiencepb.Experience
+	batchSize int
+	timeout   time.Duration
+	closeChan chan struct{}
+	logger    zerolog.Logger
 }
 
 // NewTimedBatcher creates a new timed batcher
@@ -495,7 +495,7 @@ func (b *TimedBatcher) run() {
 	batch := make([]*experiencepb.Experience, 0, b.batchSize)
 	timer := time.NewTimer(b.timeout)
 	defer timer.Stop()
-	
+
 	for {
 		select {
 		case exp, ok := <-b.input:
@@ -507,16 +507,16 @@ func (b *TimedBatcher) run() {
 				close(b.output)
 				return
 			}
-			
+
 			batch = append(batch, exp)
-			
+
 			if len(batch) >= b.batchSize {
 				// Batch full, send it
 				b.output <- batch
 				batch = make([]*experiencepb.Experience, 0, b.batchSize)
 				timer.Reset(b.timeout)
 			}
-			
+
 		case <-timer.C:
 			// Timeout reached, send partial batch
 			if len(batch) > 0 {
@@ -524,7 +524,7 @@ func (b *TimedBatcher) run() {
 				batch = make([]*experiencepb.Experience, 0, b.batchSize)
 			}
 			timer.Reset(b.timeout)
-			
+
 		case <-b.closeChan:
 			// Flush remaining batch
 			if len(batch) > 0 {

@@ -13,7 +13,7 @@ func TestInit(t *testing.T) {
 	// Create a temporary config file
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
-	
+
 	configContent := `
 game:
   map:
@@ -30,18 +30,18 @@ ui:
     width: 1024
     height: 768
 `
-	
+
 	err := os.WriteFile(configFile, []byte(configContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Reset global state
 	cfg = nil
 	v = nil
-	
+
 	// Initialize config
 	err = Init(configFile)
 	require.NoError(t, err)
-	
+
 	// Test loaded values
 	c := Get()
 	assert.Equal(t, 25, c.Game.Map.CityRatio)
@@ -57,11 +57,11 @@ func TestInitWithDefaults(t *testing.T) {
 	// Reset global state
 	cfg = nil
 	v = nil
-	
+
 	// Initialize with non-existent config (should use defaults)
 	err := Init("/non/existent/path/config.yaml")
 	require.NoError(t, err)
-	
+
 	// Should have empty config (no defaults in code, only in yaml)
 	c := Get()
 	assert.NotNil(t, c)
@@ -71,17 +71,17 @@ func TestEnvironmentVariables(t *testing.T) {
 	// Reset global state
 	cfg = nil
 	v = nil
-	
+
 	// Set environment variables
 	os.Setenv("GRL_GAME_MAP_CITY_RATIO", "30")
 	os.Setenv("GRL_SERVER_GRPC_SERVER_PORT", "9090")
 	defer os.Unsetenv("GRL_GAME_MAP_CITY_RATIO")
 	defer os.Unsetenv("GRL_SERVER_GRPC_SERVER_PORT")
-	
+
 	// Initialize config
 	err := Init("")
 	require.NoError(t, err)
-	
+
 	// Environment variables should override
 	c := Get()
 	assert.Equal(t, 30, c.Game.Map.CityRatio)
@@ -92,15 +92,15 @@ func TestSet(t *testing.T) {
 	// Reset global state
 	cfg = nil
 	v = nil
-	
+
 	// Initialize config
 	err := Init("")
 	require.NoError(t, err)
-	
+
 	// Set values
 	Set("game.map.city_ratio", 35)
 	Set("ui.window.width", 1280)
-	
+
 	// Check updated values
 	c := Get()
 	assert.Equal(t, 35, c.Game.Map.CityRatio)
@@ -111,17 +111,17 @@ func TestGetHelpers(t *testing.T) {
 	// Reset global state
 	cfg = nil
 	v = nil
-	
+
 	// Initialize config
 	err := Init("")
 	require.NoError(t, err)
-	
+
 	// Set some values
 	Set("test.string", "hello")
 	Set("test.int", 42)
 	Set("test.bool", true)
 	Set("test.float", 3.14)
-	
+
 	// Test getters
 	assert.Equal(t, "hello", GetString("test.string"))
 	assert.Equal(t, 42, GetInt("test.int"))
@@ -132,7 +132,7 @@ func TestGetHelpers(t *testing.T) {
 func TestLoadEnvironmentConfig(t *testing.T) {
 	// Create temporary config files
 	tmpDir := t.TempDir()
-	
+
 	// Base config
 	baseConfig := filepath.Join(tmpDir, "config.yaml")
 	baseContent := `
@@ -145,7 +145,7 @@ server:
 `
 	err := os.WriteFile(baseConfig, []byte(baseContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Environment-specific config
 	envConfig := filepath.Join(tmpDir, "config.prod.yaml")
 	envContent := `
@@ -159,27 +159,27 @@ server:
 `
 	err = os.WriteFile(envConfig, []byte(envContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Change to temp directory
 	oldWd, _ := os.Getwd()
 	os.Chdir(tmpDir)
 	defer os.Chdir(oldWd)
-	
+
 	// Reset global state
 	cfg = nil
 	v = nil
-	
+
 	// Initialize base config
 	err = Init(baseConfig)
 	require.NoError(t, err)
-	
+
 	// Load environment config
 	err = LoadEnvironmentConfig("prod")
 	require.NoError(t, err)
-	
+
 	// Check merged values
 	c := Get()
-	assert.Equal(t, 30, c.Game.Map.CityRatio) // Overridden
-	assert.Equal(t, 8080, c.Server.GRPCServer.Port) // Overridden
+	assert.Equal(t, 30, c.Game.Map.CityRatio)              // Overridden
+	assert.Equal(t, 8080, c.Server.GRPCServer.Port)        // Overridden
 	assert.Equal(t, "error", c.Server.GRPCServer.LogLevel) // New value
 }

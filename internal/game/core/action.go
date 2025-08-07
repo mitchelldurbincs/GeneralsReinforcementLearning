@@ -23,15 +23,15 @@ type Action interface {
 type MoveAction struct {
 	PlayerID int
 	// Keep existing fields for backward compatibility
-	FromX    int
-	FromY    int
-	ToX      int
-	ToY      int
+	FromX int
+	FromY int
+	ToX   int
+	ToY   int
 	// New coordinate fields
-	From     Coordinate
-	To       Coordinate
+	From Coordinate
+	To   Coordinate
 	// If true, move all but 1 army. If false, move half (integer division, minimum 1 if source army > 1)
-	MoveAll  bool
+	MoveAll bool
 }
 
 func (m *MoveAction) GetPlayerID() int    { return m.PlayerID }
@@ -103,4 +103,3 @@ func (m *MoveAction) Validate(b *Board, playerID int) error {
 
 	return nil
 }
-

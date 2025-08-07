@@ -8,28 +8,28 @@ type GamePhase int
 const (
 	// PhaseInitializing - Game object creation
 	PhaseInitializing GamePhase = iota
-	
+
 	// PhaseLobby - Players joining, configuration
 	PhaseLobby
-	
+
 	// PhaseStarting - Map generation, player placement
 	PhaseStarting
-	
+
 	// PhaseRunning - Active gameplay
 	PhaseRunning
-	
+
 	// PhasePaused - Temporary suspension
 	PhasePaused
-	
+
 	// PhaseEnding - Winner determination, cleanup
 	PhaseEnding
-	
+
 	// PhaseEnded - Final state
 	PhaseEnded
-	
+
 	// PhaseError - Error recovery state
 	PhaseError
-	
+
 	// PhaseReset - Reset the current game without full teardown
 	PhaseReset
 )

@@ -14,7 +14,7 @@ func TestPlayer_InitialState(t *testing.T) {
 		GeneralIdx: 12,
 		OwnedTiles: []int{12},
 	}
-	
+
 	assert.Equal(t, 0, player.ID)
 	assert.True(t, player.Alive)
 	assert.Equal(t, 1, player.ArmyCount)
@@ -24,8 +24,8 @@ func TestPlayer_InitialState(t *testing.T) {
 
 func TestPlayer_Elimination(t *testing.T) {
 	tests := []struct {
-		name       string
-		player     Player
+		name         string
+		player       Player
 		isEliminated bool
 	}{
 		{
@@ -62,7 +62,7 @@ func TestPlayer_Elimination(t *testing.T) {
 			isEliminated: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			isEliminated := tt.player.GeneralIdx == -1
@@ -78,25 +78,25 @@ func TestPlayer_OwnedTiles(t *testing.T) {
 			Alive:      true,
 			OwnedTiles: []int{},
 		}
-		
+
 		// Simulate adding tiles
 		player.OwnedTiles = append(player.OwnedTiles, 5)
 		player.OwnedTiles = append(player.OwnedTiles, 10)
 		player.OwnedTiles = append(player.OwnedTiles, 15)
-		
+
 		assert.Len(t, player.OwnedTiles, 3)
 		assert.Contains(t, player.OwnedTiles, 5)
 		assert.Contains(t, player.OwnedTiles, 10)
 		assert.Contains(t, player.OwnedTiles, 15)
 	})
-	
+
 	t.Run("remove tiles", func(t *testing.T) {
 		player := Player{
 			ID:         0,
 			Alive:      true,
 			OwnedTiles: []int{1, 2, 3, 4, 5},
 		}
-		
+
 		// Simulate removing a tile (e.g., tile 3)
 		newOwnedTiles := []int{}
 		for _, tile := range player.OwnedTiles {
@@ -105,7 +105,7 @@ func TestPlayer_OwnedTiles(t *testing.T) {
 			}
 		}
 		player.OwnedTiles = newOwnedTiles
-		
+
 		assert.Len(t, player.OwnedTiles, 4)
 		assert.NotContains(t, player.OwnedTiles, 3)
 	})
@@ -113,39 +113,39 @@ func TestPlayer_OwnedTiles(t *testing.T) {
 
 func TestPlayer_ArmyCount(t *testing.T) {
 	tests := []struct {
-		name      string
-		player    Player
-		expected  int
+		name     string
+		player   Player
+		expected int
 	}{
 		{
 			name: "player with armies",
 			player: Player{
-				ID:         0,
-				Alive:      true,
-				ArmyCount:  50,
+				ID:        0,
+				Alive:     true,
+				ArmyCount: 50,
 			},
 			expected: 50,
 		},
 		{
 			name: "eliminated player",
 			player: Player{
-				ID:         1,
-				Alive:      false,
-				ArmyCount:  0,
+				ID:        1,
+				Alive:     false,
+				ArmyCount: 0,
 			},
 			expected: 0,
 		},
 		{
 			name: "new player",
 			player: Player{
-				ID:         2,
-				Alive:      true,
-				ArmyCount:  1,
+				ID:        2,
+				Alive:     true,
+				ArmyCount: 1,
 			},
 			expected: 1,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.player.ArmyCount)
@@ -178,7 +178,7 @@ func TestPlayer_MultiplePlayersInteraction(t *testing.T) {
 			OwnedTiles: []int{},
 		},
 	}
-	
+
 	// Count alive players
 	aliveCount := 0
 	for _, p := range players {
@@ -187,14 +187,14 @@ func TestPlayer_MultiplePlayersInteraction(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 2, aliveCount)
-	
+
 	// Total army count
 	totalArmy := 0
 	for _, p := range players {
 		totalArmy += p.ArmyCount
 	}
 	assert.Equal(t, 55, totalArmy)
-	
+
 	// Total owned tiles
 	totalTiles := 0
 	for _, p := range players {

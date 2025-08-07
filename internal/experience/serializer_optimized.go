@@ -25,7 +25,7 @@ func (tp *TensorPool) Get(size int) []float32 {
 	tp.mu.RLock()
 	pool, exists := tp.pools[size]
 	tp.mu.RUnlock()
-	
+
 	if !exists {
 		tp.mu.Lock()
 		// Double-check after acquiring write lock
@@ -39,7 +39,7 @@ func (tp *TensorPool) Get(size int) []float32 {
 		}
 		tp.mu.Unlock()
 	}
-	
+
 	tensor := pool.Get().([]float32)
 	// Clear the tensor
 	for i := range tensor {
@@ -54,7 +54,7 @@ func (tp *TensorPool) Put(tensor []float32) {
 	tp.mu.RLock()
 	pool, exists := tp.pools[size]
 	tp.mu.RUnlock()
-	
+
 	if exists {
 		pool.Put(tensor)
 	}
@@ -65,7 +65,7 @@ type OptimizedSerializer struct {
 	tensorPool      *TensorPool
 	actionMaskPool  *sync.Pool
 	visibilityCache *VisibilityCache
-	
+
 	// Pre-computed values for common operations
 	boardSizeCache map[int]*boardSizeInfo
 	cacheMu        sync.RWMutex
@@ -108,11 +108,11 @@ func NewOptimizedSerializer() *OptimizedSerializer {
 // getBoardSizeInfo returns cached board size information
 func (s *OptimizedSerializer) getBoardSizeInfo(width, height int) *boardSizeInfo {
 	key := width*10000 + height // Simple hash
-	
+
 	s.cacheMu.RLock()
 	info, exists := s.boardSizeCache[key]
 	s.cacheMu.RUnlock()
-	
+
 	if !exists {
 		s.cacheMu.Lock()
 		// Double-check
@@ -128,36 +128,36 @@ func (s *OptimizedSerializer) getBoardSizeInfo(width, height int) *boardSizeInfo
 		}
 		s.cacheMu.Unlock()
 	}
-	
+
 	return info
 }
 
 // StateToTensor converts a game state to a tensor using pooled memory
 func (s *OptimizedSerializer) StateToTensor(state *game.GameState, playerID int) []float32 {
 	info := s.getBoardSizeInfo(state.Board.W, state.Board.H)
-	
+
 	// Get tensor from pool
 	tensor := s.tensorPool.Get(info.tensorSize)
-	
+
 	// Pre-compute channel offsets
 	channelOffsets := [NumChannels]int{}
 	for i := 0; i < NumChannels; i++ {
 		channelOffsets[i] = i * info.channelSize
 	}
-	
+
 	// Get visibility info (cached if possible)
 	visibility := s.getVisibility(state, playerID)
-	
+
 	// Process tiles in a single loop with optimized calculations
 	tileIdx := 0
 	for y := 0; y < info.height; y++ {
 		for x := 0; x < info.width; x++ {
 			tile := &state.Board.T[tileIdx]
 			baseIdx := y*info.width + x
-			
+
 			// Check visibility
 			isVisible := visibility[tileIdx]
-			
+
 			// Set visibility channels
 			if isVisible {
 				tensor[channelOffsets[ChannelVisible]+baseIdx] = 1.0
@@ -166,19 +166,19 @@ func (s *OptimizedSerializer) StateToTensor(state *game.GameState, playerID int)
 				tileIdx++
 				continue // Skip other channels if not visible
 			}
-			
+
 			// Mountains
 			if tile.IsMountain() {
 				tensor[channelOffsets[ChannelMountains]+baseIdx] = 1.0
 				tileIdx++
 				continue
 			}
-			
+
 			// Cities/Generals
 			if tile.IsCity() || tile.IsGeneral() {
 				tensor[channelOffsets[ChannelCities]+baseIdx] = 1.0
 			}
-			
+
 			// Optimized army and territory processing
 			if tile.Owner == playerID {
 				// Own territory
@@ -197,11 +197,11 @@ func (s *OptimizedSerializer) StateToTensor(state *game.GameState, playerID int)
 				// Neutral territory
 				tensor[channelOffsets[ChannelNeutralTerritory]+baseIdx] = 1.0
 			}
-			
+
 			tileIdx++
 		}
 	}
-	
+
 	return tensor
 }
 
@@ -215,29 +215,29 @@ func (s *OptimizedSerializer) getVisibility(state *game.GameState, playerID int)
 		}
 		return visibility
 	}
-	
+
 	// Check cache
 	key := s.visibilityCacheKey(state, playerID)
 	s.visibilityCache.mu.RLock()
 	cached, exists := s.visibilityCache.cache[key]
 	s.visibilityCache.mu.RUnlock()
-	
+
 	if exists {
 		return cached
 	}
-	
+
 	// Calculate visibility
 	visibility := make([]bool, len(state.Board.T))
 	for i, tile := range state.Board.T {
 		visibility[i] = tile.IsVisibleTo(playerID)
 	}
-	
+
 	// Cache it
 	s.visibilityCache.mu.Lock()
 	s.visibilityCache.cache[key] = visibility
 	// TODO: Implement cache eviction based on TTL
 	s.visibilityCache.mu.Unlock()
-	
+
 	return visibility
 }
 
@@ -250,7 +250,7 @@ func (s *OptimizedSerializer) visibilityCacheKey(state *game.GameState, playerID
 // GenerateActionMask creates a boolean mask of legal actions using pooled memory
 func (s *OptimizedSerializer) GenerateActionMask(state *game.GameState, playerID int) []bool {
 	info := s.getBoardSizeInfo(state.Board.W, state.Board.H)
-	
+
 	// Get mask from pool and resize if needed
 	maskInterface := s.actionMaskPool.Get()
 	mask := maskInterface.([]bool)
@@ -263,29 +263,29 @@ func (s *OptimizedSerializer) GenerateActionMask(state *game.GameState, playerID
 			mask[i] = false
 		}
 	}
-	
+
 	// Pre-compute direction offsets
 	dirOffsets := [4]int{
-		-info.width,    // Up
-		info.width,     // Down
-		-1,             // Left
-		1,              // Right
+		-info.width, // Up
+		info.width,  // Down
+		-1,          // Left
+		1,           // Right
 	}
-	
+
 	// Check each tile
 	tileIdx := 0
 	for y := 0; y < info.height; y++ {
 		for x := 0; x < info.width; x++ {
 			tile := &state.Board.T[tileIdx]
-			
+
 			// Can only move from tiles we own with at least 2 armies
 			if tile.Owner != playerID || tile.Army < 2 {
 				tileIdx++
 				continue
 			}
-			
+
 			baseActionIdx := tileIdx * 4
-			
+
 			// Check each direction with optimized bounds checking
 			// Up
 			if y > 0 {
@@ -294,7 +294,7 @@ func (s *OptimizedSerializer) GenerateActionMask(state *game.GameState, playerID
 					mask[baseActionIdx] = true
 				}
 			}
-			
+
 			// Down
 			if y < info.height-1 {
 				targetIdx := tileIdx + dirOffsets[1]
@@ -302,7 +302,7 @@ func (s *OptimizedSerializer) GenerateActionMask(state *game.GameState, playerID
 					mask[baseActionIdx+1] = true
 				}
 			}
-			
+
 			// Left
 			if x > 0 {
 				targetIdx := tileIdx + dirOffsets[2]
@@ -310,7 +310,7 @@ func (s *OptimizedSerializer) GenerateActionMask(state *game.GameState, playerID
 					mask[baseActionIdx+2] = true
 				}
 			}
-			
+
 			// Right
 			if x < info.width-1 {
 				targetIdx := tileIdx + dirOffsets[3]
@@ -318,11 +318,11 @@ func (s *OptimizedSerializer) GenerateActionMask(state *game.GameState, playerID
 					mask[baseActionIdx+3] = true
 				}
 			}
-			
+
 			tileIdx++
 		}
 	}
-	
+
 	return mask
 }
 
@@ -354,19 +354,19 @@ func normalizeArmy(army int) float32 {
 // BatchStateToTensor processes multiple states in parallel
 func (s *OptimizedSerializer) BatchStateToTensor(states []*game.GameState, playerID int) [][]float32 {
 	results := make([][]float32, len(states))
-	
+
 	// Process in parallel for large batches
 	if len(states) > 4 {
 		var wg sync.WaitGroup
 		wg.Add(len(states))
-		
+
 		for i, state := range states {
 			go func(idx int, st *game.GameState) {
 				defer wg.Done()
 				results[idx] = s.StateToTensor(st, playerID)
 			}(i, state)
 		}
-		
+
 		wg.Wait()
 	} else {
 		// Sequential for small batches
@@ -374,7 +374,7 @@ func (s *OptimizedSerializer) BatchStateToTensor(states []*game.GameState, playe
 			results[i] = s.StateToTensor(state, playerID)
 		}
 	}
-	
+
 	return results
 }
 
@@ -383,7 +383,7 @@ func (s *OptimizedSerializer) ActionToIndex(action *game.Action, boardWidth int)
 	dirIdx := 0
 	dx := action.To.X - action.From.X
 	dy := action.To.Y - action.From.Y
-	
+
 	if dy == -1 && dx == 0 {
 		dirIdx = 0 // Up
 	} else if dy == 1 && dx == 0 {
@@ -393,17 +393,17 @@ func (s *OptimizedSerializer) ActionToIndex(action *game.Action, boardWidth int)
 	} else if dy == 0 && dx == 1 {
 		dirIdx = 3 // Right
 	}
-	
+
 	return (action.From.Y*boardWidth+action.From.X)*4 + dirIdx
 }
 
 func (s *OptimizedSerializer) IndexToAction(index int, boardWidth, boardHeight int) (fromX, fromY, toX, toY int) {
 	dirIdx := index % 4
 	tileIdx := index / 4
-	
+
 	fromX = tileIdx % boardWidth
 	fromY = tileIdx / boardWidth
-	
+
 	toX, toY = fromX, fromY
 	switch dirIdx {
 	case 0: // Up
@@ -415,7 +415,7 @@ func (s *OptimizedSerializer) IndexToAction(index int, boardWidth, boardHeight i
 	case 3: // Right
 		toX = fromX + 1
 	}
-	
+
 	return fromX, fromY, toX, toY
 }
 
@@ -434,10 +434,10 @@ func (s *OptimizedSerializer) GetTensorShape(boardWidth, boardHeight int) []int3
 
 func (s *OptimizedSerializer) ExtractFeatures(state *game.GameState, playerID int) map[string]float32 {
 	features := make(map[string]float32)
-	
+
 	playerArmies := float32(0)
 	enemyArmies := float32(0)
-	
+
 	for _, tile := range state.Board.T {
 		if tile.Owner == playerID {
 			playerArmies += float32(tile.Army)
@@ -445,15 +445,15 @@ func (s *OptimizedSerializer) ExtractFeatures(state *game.GameState, playerID in
 			enemyArmies += float32(tile.Army)
 		}
 	}
-	
+
 	if enemyArmies > 0 {
 		features["army_ratio"] = playerArmies / enemyArmies
 	} else {
 		features["army_ratio"] = float32(math.Inf(1))
 	}
-	
+
 	features["turn_number"] = float32(state.Turn)
 	features["total_armies"] = playerArmies
-	
+
 	return features
 }

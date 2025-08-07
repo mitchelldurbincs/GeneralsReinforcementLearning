@@ -1,11 +1,11 @@
 package mapgen
 
 import (
-	"math/rand"
-	"testing"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"math/rand"
+	"testing"
 )
 
 // newTestRNG provides a random number generator with a fixed seed for deterministic tests.
@@ -139,7 +139,7 @@ func TestPlaceMountains(t *testing.T) {
 func TestPlaceCities(t *testing.T) {
 	t.Run("BasicCityPlacement", func(t *testing.T) {
 		config := DefaultMapConfig(20, 20, 0) // W*H = 400
-		config.CityRatio = 20                  // Expected cities: 400 / 20 = 20
+		config.CityRatio = 20                 // Expected cities: 400 / 20 = 20
 		config.CityStartArmy = 50
 		rng := newTestRNG()
 		generator := NewGenerator(config, rng)
@@ -332,45 +332,49 @@ func TestPlaceGenerals(t *testing.T) {
 		assert.Contains(t, err.Error(), "unable to place general")
 	})
 
-    t.Run("FallbackGeneralPlacementWhenInitialAttemptsFail", func(t *testing.T) {
-        // This test aims to verify the fallback logic by making initial random placements likely to fail.
-        config := DefaultMapConfig(3, 3, 2) // 9 tiles, 2 players
-        config.MinGeneralSpacing = 1         // Easy spacing
-        rng := newTestRNG() // Seeded RNG
-        generator := NewGenerator(config, rng)
-        board := core.NewBoard(config.Width, config.Height)
+	t.Run("FallbackGeneralPlacementWhenInitialAttemptsFail", func(t *testing.T) {
+		// This test aims to verify the fallback logic by making initial random placements likely to fail.
+		config := DefaultMapConfig(3, 3, 2) // 9 tiles, 2 players
+		config.MinGeneralSpacing = 1        // Easy spacing
+		rng := newTestRNG()                 // Seeded RNG
+		generator := NewGenerator(config, rng)
+		board := core.NewBoard(config.Width, config.Height)
 
-        // Make most tiles unusable, leaving specific spots for generals
-        // that the initial random attempts (controlled by fixed seed) might miss.
-        // The fallback scan should then find these.
-        validSpot1 := board.Idx(0,0)
-        validSpot2 := board.Idx(config.Width-1, config.Height-1)
+		// Make most tiles unusable, leaving specific spots for generals
+		// that the initial random attempts (controlled by fixed seed) might miss.
+		// The fallback scan should then find these.
+		validSpot1 := board.Idx(0, 0)
+		validSpot2 := board.Idx(config.Width-1, config.Height-1)
 
-        for i := range board.T {
-            if i == validSpot1 || i == validSpot2 {
-                board.T[i].Type = core.TileNormal // Keep these two normal
-            } else {
-                board.T[i].Type = core.TileMountain // Make others unusable
-            }
-        }
-        // Check Manhatten distance between (0,0) and (2,2) on 3x3 is (2-0) + (2-0) = 4
-        // This is >= MinGeneralSpacing of 1.
-        // If MinGeneralSpacing was, e.g., 5, this test setup would panic.
-        config.MinGeneralSpacing = 4 // This is exactly the distance.
+		for i := range board.T {
+			if i == validSpot1 || i == validSpot2 {
+				board.T[i].Type = core.TileNormal // Keep these two normal
+			} else {
+				board.T[i].Type = core.TileMountain // Make others unusable
+			}
+		}
+		// Check Manhatten distance between (0,0) and (2,2) on 3x3 is (2-0) + (2-0) = 4
+		// This is >= MinGeneralSpacing of 1.
+		// If MinGeneralSpacing was, e.g., 5, this test setup would panic.
+		config.MinGeneralSpacing = 4 // This is exactly the distance.
 
-        placements, err := generator.placeGenerals(board)
-        assert.NoError(t, err, "placeGenerals should not return error if fallback can find spots")
-        require.Len(t, placements, 2, "Should place two generals")
+		placements, err := generator.placeGenerals(board)
+		assert.NoError(t, err, "placeGenerals should not return error if fallback can find spots")
+		require.Len(t, placements, 2, "Should place two generals")
 
-        foundSpot1 := false
-        foundSpot2 := false
-        for _, p := range placements {
-            if p.Idx == validSpot1 { foundSpot1 = true }
-            if p.Idx == validSpot2 { foundSpot2 = true }
-        }
-        assert.True(t, foundSpot1, "General should be placed at the first valid spot (0,0)")
-        assert.True(t, foundSpot2, "General should be placed at the second valid spot (W-1,H-1)")
-    })
+		foundSpot1 := false
+		foundSpot2 := false
+		for _, p := range placements {
+			if p.Idx == validSpot1 {
+				foundSpot1 = true
+			}
+			if p.Idx == validSpot2 {
+				foundSpot2 = true
+			}
+		}
+		assert.True(t, foundSpot1, "General should be placed at the first valid spot (0,0)")
+		assert.True(t, foundSpot2, "General should be placed at the second valid spot (W-1,H-1)")
+	})
 }
 
 // Full Map Generation (Integration) Test
@@ -403,23 +407,23 @@ func TestGenerateMap_FullIntegration(t *testing.T) {
 		switch tile.Type {
 		case core.TileGeneral:
 			generalCount++
-			assert.Equal(t, 1, tile.Army, "General army should be 1 at (%d,%d)", x,y)
-			require.Less(t, tile.Owner, config.PlayerCount, "General owner ID %d out of range at (%d,%d)", tile.Owner, x,y)
-			require.GreaterOrEqual(t, tile.Owner, 0, "General owner ID %d should be non-negative at (%d,%d)", tile.Owner, x,y)
+			assert.Equal(t, 1, tile.Army, "General army should be 1 at (%d,%d)", x, y)
+			require.Less(t, tile.Owner, config.PlayerCount, "General owner ID %d out of range at (%d,%d)", tile.Owner, x, y)
+			require.GreaterOrEqual(t, tile.Owner, 0, "General owner ID %d should be non-negative at (%d,%d)", tile.Owner, x, y)
 			// Store general info for spacing check
 			playerGeneralLocations = append(playerGeneralLocations, GeneralPlacement{PlayerID: tile.Owner, Idx: idx, X: x, Y: y})
 		case core.TileCity:
 			cityCount++
-			assert.Equal(t, config.CityStartArmy, tile.Army, "City army incorrect at (%d,%d)", x,y)
-			assert.True(t, tile.IsNeutral(), "Newly generated city should be neutral at (%d,%d)", x,y)
+			assert.Equal(t, config.CityStartArmy, tile.Army, "City army incorrect at (%d,%d)", x, y)
+			assert.True(t, tile.IsNeutral(), "Newly generated city should be neutral at (%d,%d)", x, y)
 		case core.TileMountain:
 			mountainCount++
-			assert.Equal(t, 0, tile.Army, "Mountain army should be 0 at (%d,%d)", x,y)
-			assert.True(t, tile.IsNeutral(), "Mountain should be neutral at (%d,%d)", x,y)
+			assert.Equal(t, 0, tile.Army, "Mountain army should be 0 at (%d,%d)", x, y)
+			assert.True(t, tile.IsNeutral(), "Mountain should be neutral at (%d,%d)", x, y)
 		case core.TileNormal:
 			// Normal tiles should be neutral and have 0 army after initial generation
-			assert.True(t, tile.IsNeutral(), "Normal tile should be neutral at (%d,%d) unless it's a general", x,y)
-			assert.Equal(t, 0, tile.Army, "Neutral normal tile army should be 0 at (%d,%d)", x,y)
+			assert.True(t, tile.IsNeutral(), "Normal tile should be neutral at (%d,%d) unless it's a general", x, y)
+			assert.Equal(t, 0, tile.Army, "Neutral normal tile army should be 0 at (%d,%d)", x, y)
 		default:
 			t.Errorf("Unknown tile type %v at (%d,%d)", tile.Type, x, y)
 		}
@@ -434,7 +438,6 @@ func TestGenerateMap_FullIntegration(t *testing.T) {
 	// Mountain count: With seed 12345 and current config, it's 55.
 	assert.Equal(t, 58, mountainCount, "Mountain count not as expected for the seed. Got %d", mountainCount)
 	assert.LessOrEqual(t, mountainCount, config.NumMountainVeins*config.MaxVeinLength, "Mountain count seems too high relative to vein potential")
-
 
 	// Verify general spacing with collected general locations
 	require.Len(t, playerGeneralLocations, config.PlayerCount, "Collected general locations count mismatch")

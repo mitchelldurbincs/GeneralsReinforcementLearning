@@ -15,7 +15,7 @@ type EventPublisher interface {
 
 // ActionProcessor handles the processing of player actions during each game tick
 type ActionProcessor struct {
-	logger        zerolog.Logger
+	logger         zerolog.Logger
 	eventPublisher EventPublisher
 }
 

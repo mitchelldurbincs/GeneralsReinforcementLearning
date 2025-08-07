@@ -16,16 +16,16 @@ import (
 // CollectorConfig contains configuration for the enhanced collector
 type CollectorConfig struct {
 	// Buffer configuration
-	BufferCapacity   int
-	BatchSize        int
-	FlushInterval    time.Duration
-	
+	BufferCapacity int
+	BatchSize      int
+	FlushInterval  time.Duration
+
 	// Persistence configuration
 	PersistenceConfig PersistenceConfig
-	
+
 	// Metrics configuration
-	MetricsEnabled   bool
-	MetricsInterval  time.Duration
+	MetricsEnabled  bool
+	MetricsInterval time.Duration
 }
 
 // DefaultCollectorConfig returns a default collector configuration
@@ -42,53 +42,53 @@ func DefaultCollectorConfig() CollectorConfig {
 
 // EnhancedCollector implements an experience collector with ring buffer, persistence, and batching
 type EnhancedCollector struct {
-	config     CollectorConfig
-	gameID     string
-	buffer     *Buffer
-	serializer *Serializer
+	config      CollectorConfig
+	gameID      string
+	buffer      *Buffer
+	serializer  *Serializer
 	persistence PersistenceLayer
-	logger     zerolog.Logger
-	
+	logger      zerolog.Logger
+
 	// Batching
 	batchChan  chan []*experiencepb.Experience
 	flushTimer *time.Timer
-	
+
 	// Lifecycle
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	closeChan  chan struct{}
-	
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	closeChan chan struct{}
+
 	// Metrics
-	mu         sync.RWMutex
-	metrics    CollectorMetrics
+	mu      sync.RWMutex
+	metrics CollectorMetrics
 }
 
 // CollectorMetrics contains metrics for the collector
 type CollectorMetrics struct {
-	ExperiencesCollected   int64
-	ExperiencesPersisted   int64
-	ExperiencesDropped     int64
-	BatchesFlushed         int64
-	PersistenceErrors      int64
-	OverflowEvents         int64
-	LastCollectionTime     time.Time
-	LastPersistenceTime    time.Time
+	ExperiencesCollected int64
+	ExperiencesPersisted int64
+	ExperiencesDropped   int64
+	BatchesFlushed       int64
+	PersistenceErrors    int64
+	OverflowEvents       int64
+	LastCollectionTime   time.Time
+	LastPersistenceTime  time.Time
 }
 
 // NewEnhancedCollector creates a new enhanced experience collector
 func NewEnhancedCollector(config CollectorConfig, gameID string, logger zerolog.Logger) (*EnhancedCollector, error) {
 	// Create buffer
 	buffer := NewBuffer(config.BufferCapacity, logger)
-	
+
 	// Create persistence layer
 	persistence, err := NewPersistenceLayer(config.PersistenceConfig, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create persistence layer: %w", err)
 	}
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	ec := &EnhancedCollector{
 		config:      config,
 		gameID:      gameID,
@@ -101,24 +101,24 @@ func NewEnhancedCollector(config CollectorConfig, gameID string, logger zerolog.
 		ctx:         ctx,
 		cancel:      cancel,
 	}
-	
+
 	// Start background workers
 	ec.wg.Add(2)
 	go ec.batchProcessor()
 	go ec.persistenceWorker()
-	
+
 	// Start metrics reporter if enabled
 	if config.MetricsEnabled {
 		ec.wg.Add(1)
 		go ec.metricsReporter()
 	}
-	
+
 	ec.logger.Info().
 		Str("game_id", gameID).
 		Int("buffer_capacity", config.BufferCapacity).
 		Str("overflow_strategy", string(config.PersistenceConfig.OverflowStrategy)).
 		Msg("Enhanced collector initialized")
-	
+
 	return ec, nil
 }
 
@@ -127,16 +127,16 @@ func (ec *EnhancedCollector) OnStateTransition(prevState, currState *game.GameSt
 	ec.mu.Lock()
 	ec.metrics.LastCollectionTime = time.Now()
 	ec.mu.Unlock()
-	
+
 	// Process experience for each player that took an action
 	for playerID, action := range actions {
 		if action == nil {
 			continue
 		}
-		
+
 		// Generate experience
 		exp := ec.createExperience(prevState, currState, playerID, action)
-		
+
 		// Handle buffer overflow based on strategy
 		if ec.buffer.IsFull() {
 			if ec.config.PersistenceConfig.OverflowStrategy == OverflowStrategyDropNewest {
@@ -145,7 +145,7 @@ func (ec *EnhancedCollector) OnStateTransition(prevState, currState *game.GameSt
 				ec.metrics.ExperiencesDropped++
 				ec.metrics.OverflowEvents++
 				ec.mu.Unlock()
-				
+
 				ec.logger.Debug().
 					Str("experience_id", exp.ExperienceId).
 					Msg("Dropped new experience due to buffer overflow")
@@ -153,7 +153,7 @@ func (ec *EnhancedCollector) OnStateTransition(prevState, currState *game.GameSt
 			}
 			ec.handleOverflow()
 		}
-		
+
 		// Add to buffer
 		if err := ec.buffer.Add(exp); err != nil {
 			ec.logger.Error().
@@ -162,11 +162,11 @@ func (ec *EnhancedCollector) OnStateTransition(prevState, currState *game.GameSt
 				Msg("Failed to add experience to buffer")
 			continue
 		}
-		
+
 		ec.mu.Lock()
 		ec.metrics.ExperiencesCollected++
 		ec.mu.Unlock()
-		
+
 		ec.logger.Debug().
 			Str("experience_id", exp.ExperienceId).
 			Int("player_id", playerID).
@@ -181,23 +181,23 @@ func (ec *EnhancedCollector) OnStateTransition(prevState, currState *game.GameSt
 func (ec *EnhancedCollector) createExperience(prevState, currState *game.GameState, playerID int, action *game.Action) *experiencepb.Experience {
 	// Generate unique experience ID
 	expID := uuid.New().String()
-	
+
 	// Serialize states from player's perspective
 	stateTensor := ec.serializer.StateToTensor(prevState, playerID)
 	nextStateTensor := ec.serializer.StateToTensor(currState, playerID)
-	
+
 	// Calculate reward
 	reward := CalculateReward(prevState, currState, playerID)
-	
+
 	// Generate action mask for legal moves
 	actionMask := ec.serializer.GenerateActionMask(prevState, playerID)
-	
+
 	// Convert action to flattened index
 	actionIndex := ec.serializer.ActionToIndex(action, prevState.Board.W)
-	
+
 	// Check if game ended
 	done := currState.IsGameOver()
-	
+
 	return &experiencepb.Experience{
 		ExperienceId: expID,
 		GameId:       ec.gameID,
@@ -228,7 +228,7 @@ func (ec *EnhancedCollector) handleOverflow() {
 	ec.mu.Lock()
 	ec.metrics.OverflowEvents++
 	ec.mu.Unlock()
-	
+
 	switch ec.config.PersistenceConfig.OverflowStrategy {
 	case OverflowStrategyPersist:
 		// Flush some experiences to persistence
@@ -246,11 +246,11 @@ func (ec *EnhancedCollector) handleOverflow() {
 				ec.mu.Unlock()
 			}
 		}
-		
+
 	case OverflowStrategyDropOldest:
 		// Ring buffer already handles this by default
 		ec.logger.Debug().Msg("Buffer overflow - dropping oldest experiences")
-		
+
 	case OverflowStrategyDropNewest:
 		// Handled in OnStateTransition
 		ec.logger.Debug().Msg("Buffer overflow - will drop new experiences")
@@ -260,11 +260,11 @@ func (ec *EnhancedCollector) handleOverflow() {
 // batchProcessor processes batches of experiences
 func (ec *EnhancedCollector) batchProcessor() {
 	defer ec.wg.Done()
-	
+
 	batch := make([]*experiencepb.Experience, 0, ec.config.BatchSize)
 	flushTimer := time.NewTimer(ec.config.FlushInterval)
 	defer flushTimer.Stop()
-	
+
 	for {
 		select {
 		case <-ec.ctx.Done():
@@ -274,10 +274,10 @@ func (ec *EnhancedCollector) batchProcessor() {
 			}
 			close(ec.batchChan)
 			return
-			
+
 		case exp := <-ec.buffer.StreamChannel():
 			batch = append(batch, exp)
-			
+
 			if len(batch) >= ec.config.BatchSize {
 				// Batch full, send it
 				select {
@@ -288,7 +288,7 @@ func (ec *EnhancedCollector) batchProcessor() {
 					return
 				}
 			}
-			
+
 		case <-flushTimer.C:
 			// Flush partial batch
 			if len(batch) > 0 {
@@ -307,23 +307,23 @@ func (ec *EnhancedCollector) batchProcessor() {
 // persistenceWorker handles persistence of experience batches
 func (ec *EnhancedCollector) persistenceWorker() {
 	defer ec.wg.Done()
-	
+
 	for batch := range ec.batchChan {
 		if len(batch) == 0 {
 			continue
 		}
-		
+
 		// Persist batch
 		if err := ec.persistence.Write(ec.ctx, batch); err != nil {
 			ec.mu.Lock()
 			ec.metrics.PersistenceErrors++
 			ec.mu.Unlock()
-			
+
 			ec.logger.Error().
 				Err(err).
 				Int("batch_size", len(batch)).
 				Msg("Failed to persist experience batch")
-			
+
 			// Return experiences to buffer if possible
 			if ec.config.PersistenceConfig.OverflowStrategy != OverflowStrategyDropOldest {
 				if err := ec.buffer.AddBatch(batch); err != nil {
@@ -338,7 +338,7 @@ func (ec *EnhancedCollector) persistenceWorker() {
 			ec.metrics.BatchesFlushed++
 			ec.metrics.LastPersistenceTime = time.Now()
 			ec.mu.Unlock()
-			
+
 			ec.logger.Debug().
 				Int("batch_size", len(batch)).
 				Msg("Persisted experience batch")
@@ -349,15 +349,15 @@ func (ec *EnhancedCollector) persistenceWorker() {
 // metricsReporter periodically reports metrics
 func (ec *EnhancedCollector) metricsReporter() {
 	defer ec.wg.Done()
-	
+
 	ticker := time.NewTicker(ec.config.MetricsInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ec.ctx.Done():
 			return
-			
+
 		case <-ticker.C:
 			ec.reportMetrics()
 		}
@@ -369,10 +369,10 @@ func (ec *EnhancedCollector) reportMetrics() {
 	ec.mu.RLock()
 	metrics := ec.metrics
 	ec.mu.RUnlock()
-	
+
 	bufferStats := ec.buffer.Stats()
 	persistenceStats := ec.persistence.Stats()
-	
+
 	ec.logger.Info().
 		Int64("experiences_collected", metrics.ExperiencesCollected).
 		Int64("experiences_persisted", metrics.ExperiencesPersisted).
@@ -404,7 +404,7 @@ func (ec *EnhancedCollector) OnGameEnd(finalState *game.GameState) {
 				Msg("Failed to flush final experiences - batch channel full")
 		}
 	}
-	
+
 	ec.logger.Info().
 		Str("game_id", ec.gameID).
 		Int("winner", finalState.GetWinner()).
@@ -452,7 +452,7 @@ func (ec *EnhancedCollector) FlushToPersistence() error {
 	if len(experiences) == 0 {
 		return nil
 	}
-	
+
 	if err := ec.persistence.Write(ec.ctx, experiences); err != nil {
 		// Return experiences to buffer
 		if err := ec.buffer.AddBatch(experiences); err != nil {
@@ -463,12 +463,12 @@ func (ec *EnhancedCollector) FlushToPersistence() error {
 		}
 		return fmt.Errorf("failed to persist experiences: %w", err)
 	}
-	
+
 	ec.mu.Lock()
 	ec.metrics.ExperiencesPersisted += int64(len(experiences))
 	ec.metrics.BatchesFlushed++
 	ec.mu.Unlock()
-	
+
 	return nil
 }
 
@@ -478,41 +478,41 @@ func (ec *EnhancedCollector) LoadFromPersistence(limit int) error {
 	if err != nil {
 		return fmt.Errorf("failed to read from persistence: %w", err)
 	}
-	
+
 	if err := ec.buffer.AddBatch(experiences); err != nil {
 		return fmt.Errorf("failed to add experiences to buffer: %w", err)
 	}
-	
+
 	ec.logger.Info().
 		Int("loaded_count", len(experiences)).
 		Msg("Loaded experiences from persistence")
-	
+
 	return nil
 }
 
 // Close cleanly shuts down the collector
 func (ec *EnhancedCollector) Close() error {
 	ec.logger.Info().Msg("Closing enhanced collector")
-	
+
 	// Cancel context to stop workers
 	ec.cancel()
-	
+
 	// Wait for workers to finish
 	ec.wg.Wait()
-	
+
 	// Final metrics report
 	ec.reportMetrics()
-	
+
 	// Close buffer and persistence
 	if err := ec.buffer.Close(); err != nil {
 		ec.logger.Error().Err(err).Msg("Failed to close buffer")
 	}
-	
+
 	if err := ec.persistence.Close(); err != nil {
 		ec.logger.Error().Err(err).Msg("Failed to close persistence layer")
 	}
-	
+
 	close(ec.closeChan)
-	
+
 	return nil
 }

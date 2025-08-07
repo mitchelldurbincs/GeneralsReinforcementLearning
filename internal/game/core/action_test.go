@@ -41,8 +41,8 @@ func TestMoveAction_Validate(t *testing.T) {
 		action := MoveAction{
 			PlayerID: playerID,
 			FromX:    1, FromY: 1,
-			ToX:      1, ToY: 2,
-			MoveAll:  true,
+			ToX: 1, ToY: 2,
+			MoveAll: true,
 		}
 		err := action.Validate(board, playerID)
 		assert.NoError(t, err, "Valid move should not produce an error")
@@ -83,7 +83,7 @@ func TestMoveAction_Validate(t *testing.T) {
 		action := MoveAction{
 			PlayerID: playerID,
 			FromX:    1, FromY: 1,
-			ToX:      1, ToY: 1, // Moving to self
+			ToX: 1, ToY: 1, // Moving to self
 		}
 		err := action.Validate(board, playerID)
 		assert.ErrorIs(t, err, ErrMoveToSelf, "Expected ErrMoveToSelf")
@@ -95,23 +95,22 @@ func TestMoveAction_Validate(t *testing.T) {
 		action := MoveAction{
 			PlayerID: playerID,
 			FromX:    1, FromY: 1,
-			ToX:      3, ToY: 3, // Diagonal and not adjacent
+			ToX: 3, ToY: 3, // Diagonal and not adjacent
 		}
 		err := action.Validate(board, playerID)
 		assert.ErrorIs(t, err, ErrNotAdjacent, "Expected ErrNotAdjacent")
 	})
-    
-    	t.Run("NotAdjacentButSameRowFar", func(t *testing.T) {
+
+	t.Run("NotAdjacentButSameRowFar", func(t *testing.T) {
 		board := setupBoardForActionTests(boardWidth, boardHeight)
 		action := MoveAction{
 			PlayerID: playerID,
 			FromX:    1, FromY: 1,
-			ToX:      3, ToY: 1, // Same row, but not adjacent
+			ToX: 3, ToY: 1, // Same row, but not adjacent
 		}
 		err := action.Validate(board, playerID)
 		assert.ErrorIs(t, err, ErrNotAdjacent, "Expected ErrNotAdjacent for same row, non-adjacent")
 	})
-
 
 	// Test Case: Not Owned
 	t.Run("NotOwned", func(t *testing.T) {
@@ -125,17 +124,16 @@ func TestMoveAction_Validate(t *testing.T) {
 		toIdx := board.Idx(1, 2) // Valid target tile
 		board.T[toIdx].Type = TileNormal
 
-
 		action := MoveAction{
 			PlayerID: playerID, // Player 0 trying to move
 			FromX:    1, FromY: 1,
-			ToX:      1, ToY: 2,
+			ToX: 1, ToY: 2,
 		}
 		err := action.Validate(board, playerID)
 		assert.ErrorIs(t, err, ErrNotOwned, "Expected ErrNotOwned")
 	})
 
-		insufficientArmyTests := []struct {
+	insufficientArmyTests := []struct {
 		name      string
 		armyCount int
 	}{
@@ -151,13 +149,12 @@ func TestMoveAction_Validate(t *testing.T) {
 			board.T[fromIdx].Type = TileNormal
 
 			toIdx := board.Idx(1, 2)
-            board.T[toIdx].Type = TileNormal
-
+			board.T[toIdx].Type = TileNormal
 
 			action := MoveAction{
 				PlayerID: playerID,
 				FromX:    1, FromY: 1,
-				ToX:      1, ToY: 2,
+				ToX: 1, ToY: 2,
 			}
 			err := action.Validate(board, playerID)
 			assert.ErrorIs(t, err, ErrInsufficientArmy, "Expected ErrInsufficientArmy")
@@ -181,7 +178,7 @@ func TestMoveAction_Validate(t *testing.T) {
 		action := MoveAction{
 			PlayerID: playerID,
 			FromX:    1, FromY: 1,
-			ToX:      1, ToY: 2,
+			ToX: 1, ToY: 2,
 		}
 		err := action.Validate(board, playerID)
 		assert.ErrorIs(t, err, ErrTargetIsMountain, "Expected ErrTargetIsMountain")

@@ -45,7 +45,7 @@ func (s *Serializer) StateToTensor(state *game.GameState, playerID int) []float3
 		for x := 0; x < width; x++ {
 			tileIdx := y*width + x
 			tile := &state.Board.T[tileIdx]
-			
+
 			// Check if tile is visible to player (if fog of war is disabled, all tiles are visible)
 			isVisible := !state.FogOfWarEnabled || tile.IsVisibleTo(playerID)
 
@@ -112,7 +112,7 @@ func (s *Serializer) StateToTensor(state *game.GameState, playerID int) []float3
 func (s *Serializer) GenerateActionMask(state *game.GameState, playerID int) []bool {
 	width := state.Board.W
 	height := state.Board.H
-	
+
 	// Actions are encoded as: (y * width + x) * 4 + direction
 	// 4 directions per tile: Up, Down, Left, Right
 	numActions := width * height * 4
@@ -123,7 +123,7 @@ func (s *Serializer) GenerateActionMask(state *game.GameState, playerID int) []b
 		for x := 0; x < width; x++ {
 			tileIdx := y*width + x
 			tile := &state.Board.T[tileIdx]
-			
+
 			// Can only move from tiles we own with at least 2 armies
 			if tile.Owner != playerID || tile.Army < 2 {
 				continue
@@ -153,7 +153,7 @@ func (s *Serializer) GenerateActionMask(state *game.GameState, playerID int) []b
 			// Left
 			if x > 0 {
 				idx := s.actionToFlatIndex(x, y, 2, width)
-				targetIdx := y*width + (x-1)
+				targetIdx := y*width + (x - 1)
 				targetTile := &state.Board.T[targetIdx]
 				if !targetTile.IsMountain() {
 					mask[idx] = true
@@ -163,7 +163,7 @@ func (s *Serializer) GenerateActionMask(state *game.GameState, playerID int) []b
 			// Right
 			if x < width-1 {
 				idx := s.actionToFlatIndex(x, y, 3, width)
-				targetIdx := y*width + (x+1)
+				targetIdx := y*width + (x + 1)
 				targetTile := &state.Board.T[targetIdx]
 				if !targetTile.IsMountain() {
 					mask[idx] = true
@@ -180,10 +180,10 @@ func (s *Serializer) ActionToIndex(action *game.Action, boardWidth int) int {
 	// Calculate direction from From and To coordinates
 	// Map direction to index: Up=0, Down=1, Left=2, Right=3
 	dirIdx := 0
-	
+
 	dx := action.To.X - action.From.X
 	dy := action.To.Y - action.From.Y
-	
+
 	if dy == -1 && dx == 0 {
 		dirIdx = 0 // Up
 	} else if dy == 1 && dx == 0 {
@@ -202,7 +202,7 @@ func (s *Serializer) IndexToAction(index int, boardWidth, boardHeight int) (from
 	// Reverse the encoding: index = (y * width + x) * 4 + direction
 	dirIdx := index % 4
 	tileIdx := index / 4
-	
+
 	fromX = tileIdx % boardWidth
 	fromY = tileIdx / boardWidth
 
@@ -260,7 +260,7 @@ func (s *Serializer) ExtractFeatures(state *game.GameState, playerID int) map[st
 	// Calculate relative army strength
 	playerArmies := float32(0)
 	enemyArmies := float32(0)
-	
+
 	for _, tile := range state.Board.T {
 		if tile.Owner == playerID {
 			playerArmies += float32(tile.Army)

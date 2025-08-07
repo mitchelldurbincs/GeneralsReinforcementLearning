@@ -16,9 +16,9 @@ type MapConfig struct {
 	CityRatio         int // 1 city per N tiles
 	CityStartArmy     int
 	MinGeneralSpacing int
-	NumMountainVeins  int     // Number of mountain veins/ranges to generate
-	MinVeinLength     int     // Minimum length of a mountain vein
-	MaxVeinLength     int     // Maximum length of a mountain vein
+	NumMountainVeins  int // Number of mountain veins/ranges to generate
+	MinVeinLength     int // Minimum length of a mountain vein
+	MaxVeinLength     int // Maximum length of a mountain vein
 }
 
 // DefaultMapConfig returns a sensible default configuration
@@ -33,7 +33,7 @@ func DefaultMapConfig(w, h, players int) MapConfig {
 		MinGeneralSpacing: cfg.Game.Map.MinGeneralSpacing,
 		NumMountainVeins:  (w * h) / 50, // Example: 1 vein per 100 tiles
 		MinVeinLength:     3,
-		MaxVeinLength:     w / 4,        // Example: Max vein length is a quarter of the width
+		MaxVeinLength:     w / 4, // Example: Max vein length is a quarter of the width
 	}
 }
 
@@ -107,7 +107,6 @@ func (g *Generator) placeMountains(b *core.Board) {
 			// Shuffle directions to make veins more random
 			g.rng.Shuffle(len(dx), func(i, j int) { dx[i], dx[j] = dx[j], dx[i]; dy[i], dy[j] = dy[j], dy[i] })
 
-
 			for j := range 4 {
 				nx, ny := currentX+dx[j], currentY+dy[j]
 				if nx >= 0 && nx < b.W && ny >= 0 && ny < b.H {
@@ -176,7 +175,7 @@ func (g *Generator) placeGenerals(b *core.Board) ([]GeneralPlacement, error) {
 }
 
 func (g *Generator) findGeneralLocation(b *core.Board, existing []GeneralPlacement) (GeneralPlacement, error) {
-	maxAttempts := b.W * b.H 
+	maxAttempts := b.W * b.H
 
 	for range maxAttempts {
 		x, y := g.rng.Intn(b.W), g.rng.Intn(b.H)

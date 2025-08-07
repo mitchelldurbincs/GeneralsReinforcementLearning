@@ -2,7 +2,7 @@ package game
 
 import (
 	"strings"
-	
+
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 )
 
@@ -38,24 +38,24 @@ func (e *Engine) Board(playerID int) string {
 		GeneralSymbol  = "♔"
 		MountainSymbol = "▲"
 	)
-	
+
 	// Pre-allocate buffer size based on board dimensions
 	// Each cell takes roughly: 2 chars for symbol + ~20 chars for ANSI codes
 	// Plus headers and legend
 	width := e.gs.Board.W
 	height := e.gs.Board.H
-	estimatedSize := (width*22 + 10) * (height + 3) + 100 // Extra for headers and legend
-	
+	estimatedSize := (width*22+10)*(height+3) + 100 // Extra for headers and legend
+
 	var sb strings.Builder
 	sb.Grow(estimatedSize)
-	
+
 	// Header row
 	sb.WriteString("    ")
 	for x := 0; x < width; x++ {
 		sb.WriteString(core.IntToStringFixedWidth(x, 2))
 	}
 	sb.WriteString("\n")
-	
+
 	// Board rows
 	for y := 0; y < height; y++ {
 		sb.WriteString(core.IntToStringFixedWidth(y, 2))
@@ -66,7 +66,7 @@ func (e *Engine) Board(playerID int) string {
 		}
 		sb.WriteString("\n")
 	}
-	
+
 	// Legend
 	sb.WriteString("\n")
 	sb.WriteString(EmptySymbol)
@@ -77,7 +77,7 @@ func (e *Engine) Board(playerID int) string {
 	sb.WriteString("=general ")
 	sb.WriteString(MountainSymbol)
 	sb.WriteString("=mountain A-H=players\n")
-	
+
 	return sb.String()
 }
 

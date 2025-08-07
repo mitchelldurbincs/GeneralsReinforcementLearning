@@ -10,10 +10,10 @@ import (
 
 // OptimizedCollector uses the optimized serializer for better performance
 type OptimizedCollector struct {
-	buffer      *Buffer
-	gameID      string
-	serializer  *OptimizedSerializer
-	logger      zerolog.Logger
+	buffer     *Buffer
+	gameID     string
+	serializer *OptimizedSerializer
+	logger     zerolog.Logger
 }
 
 // NewOptimizedCollector creates a new collector with optimized serialization

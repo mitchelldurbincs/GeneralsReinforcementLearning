@@ -36,7 +36,7 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 	ctx context.Context,
 	req *gamev1.SubmitActionRequest,
 ) (*ValidationResult, *gameInstance) {
-	
+
 	// 1. Validate game exists
 	game, exists := v.gameManager.GetGame(req.GameId)
 	if !exists {
@@ -46,7 +46,7 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 			ErrorMessage: fmt.Sprintf("game %s not found", req.GameId),
 		}, nil
 	}
-	
+
 	// 2. Check idempotency
 	if req.IdempotencyKey != "" {
 		if cached := game.idempotencyManager.Check(req.IdempotencyKey); cached != nil {
@@ -60,7 +60,7 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 			}, game
 		}
 	}
-	
+
 	// 3. Validate game phase
 	currentPhase := game.CurrentPhase()
 	if currentPhase != commonv1.GamePhase_GAME_PHASE_RUNNING {
@@ -68,14 +68,14 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 		if currentPhase == commonv1.GamePhase_GAME_PHASE_ENDED {
 			errorCode = commonv1.ErrorCode_ERROR_CODE_GAME_OVER
 		}
-		
+
 		return &ValidationResult{
 			Valid:        false,
 			ErrorCode:    errorCode,
 			ErrorMessage: fmt.Sprintf("game %s cannot accept actions in %s phase", req.GameId, currentPhase.String()),
 		}, game
 	}
-	
+
 	// 4. Authenticate player
 	authenticated := false
 	for _, p := range game.players {
@@ -84,7 +84,7 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 			break
 		}
 	}
-	
+
 	if !authenticated {
 		return &ValidationResult{
 			Valid:        false,
@@ -92,12 +92,12 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 			ErrorMessage: fmt.Sprintf("invalid player credentials for game %s: player %d", req.GameId, req.PlayerId),
 		}, game
 	}
-	
+
 	// 5. Validate turn number
 	game.actionMu.Lock()
 	currentTurn := game.currentTurn
 	game.actionMu.Unlock()
-	
+
 	if req.Action != nil && req.Action.TurnNumber != currentTurn {
 		return &ValidationResult{
 			Valid:        false,
@@ -105,7 +105,7 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 			ErrorMessage: fmt.Sprintf("invalid turn number for game %s: expected %d, got %d", req.GameId, currentTurn, req.Action.TurnNumber),
 		}, game
 	}
-	
+
 	return &ValidationResult{Valid: true}, game
 }
 
@@ -116,16 +116,16 @@ func (v *ActionValidator) ValidateCoreAction(
 	playerID int32,
 	currentTurn int32,
 ) *ValidationResult {
-	
+
 	if action == nil {
 		return &ValidationResult{Valid: true} // No action is valid (wait/skip)
 	}
-	
+
 	game.mu.Lock()
 	engineState := game.engine.GameState()
 	err := action.Validate(engineState.Board, int(playerID))
 	game.mu.Unlock()
-	
+
 	if err != nil {
 		return &ValidationResult{
 			Valid:        false,
@@ -133,6 +133,6 @@ func (v *ActionValidator) ValidateCoreAction(
 			ErrorMessage: fmt.Sprintf("action validation failed for game %s player %d turn %d: %v", game.id, playerID, currentTurn, err),
 		}
 	}
-	
+
 	return &ValidationResult{Valid: true}
 }

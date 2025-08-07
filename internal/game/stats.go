@@ -69,13 +69,13 @@ func (e *Engine) performIncrementalStatsUpdate() {
 	for k := range e.tempTileOwnership {
 		delete(e.tempTileOwnership, k)
 	}
-	
+
 	// Scan changed tiles and build ownership map
 	for tileIdx := range e.gs.ChangedTiles {
 		tile := &e.gs.Board.T[tileIdx]
 		e.tempTileOwnership[tileIdx] = tile.Owner
 	}
-	
+
 	// Second pass: rebuild OwnedTiles for affected players
 	affectedPlayers := make(map[int]bool)
 	for _, currentOwner := range e.tempTileOwnership {
@@ -84,14 +84,14 @@ func (e *Engine) performIncrementalStatsUpdate() {
 		}
 		// We don't know previous owners, so we need to rebuild all players' OwnedTiles
 	}
-	
+
 	// For simplicity in incremental update, rebuild stats for all players
 	// This is still more efficient than scanning all tiles
 	for pid := range e.gs.Players {
 		e.gs.Players[pid].ArmyCount = 0
 		e.gs.Players[pid].GeneralIdx = -1
 		newOwnedTiles := e.gs.Players[pid].OwnedTiles[:0] // Reuse backing array
-		
+
 		// Re-scan only this player's previously owned tiles
 		for _, tileIdx := range e.gs.Players[pid].OwnedTiles {
 			if e.gs.Board.T[tileIdx].Owner == pid {
@@ -103,7 +103,7 @@ func (e *Engine) performIncrementalStatsUpdate() {
 				}
 			}
 		}
-		
+
 		// Add any newly owned tiles
 		for tileIdx, owner := range e.tempTileOwnership {
 			if owner == pid {
@@ -125,10 +125,10 @@ func (e *Engine) performIncrementalStatsUpdate() {
 				}
 			}
 		}
-		
+
 		e.gs.Players[pid].OwnedTiles = newOwnedTiles
 	}
-	
+
 	// Update alive status
 	for pid := range e.gs.Players {
 		oldAliveStatus := e.gs.Players[pid].Alive

@@ -14,7 +14,7 @@ func (e *Engine) updateFogOfWar() {
 		e.updateFogOfWarOptimized()
 		return
 	}
-	
+
 	// Original implementation
 	if !e.gs.FogOfWarEnabled {
 		return
@@ -49,7 +49,7 @@ func (e *Engine) performFullVisibilityUpdate() {
 			e.setVisibilityAround(tileIdx, pid)
 		}
 	}
-	
+
 	e.logger.Debug().Msg("Performed full visibility update")
 }
 
@@ -60,35 +60,35 @@ func (e *Engine) performIncrementalVisibilityUpdate() {
 		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
 			continue
 		}
-		
+
 		// Get the current owner of the tile
 		currentOwner := e.gs.Board.T[tileIdx].Owner
-		
+
 		// Clear visibility for all players around this tile first
 		// This is necessary because we don't track previous owners
 		e.clearVisibilityAround(tileIdx)
-		
+
 		// If tile has a new owner, grant visibility
 		if currentOwner >= 0 && currentOwner < len(e.gs.Players) && e.gs.Players[currentOwner].Alive {
 			e.setVisibilityAround(tileIdx, currentOwner)
 		}
 	}
-	
+
 	// Re-establish visibility from all owned tiles of affected players
 	// This prevents removing visibility that should still exist from other tiles
-	
+
 	// Clear and reuse temporary map
 	for k := range e.tempAffectedPlayers {
 		delete(e.tempAffectedPlayers, k)
 	}
-	
+
 	for tileIdx := range e.gs.VisibilityChangedTiles {
 		tile := &e.gs.Board.T[tileIdx]
 		if tile.Owner >= 0 {
 			e.tempAffectedPlayers[tile.Owner] = struct{}{}
 		}
 	}
-	
+
 	for pid := range e.tempAffectedPlayers {
 		if !e.gs.Players[pid].Alive {
 			continue
@@ -97,7 +97,7 @@ func (e *Engine) performIncrementalVisibilityUpdate() {
 			e.setVisibilityAround(ownedTileIdx, pid)
 		}
 	}
-	
+
 	e.logger.Debug().Int("changed_tiles", len(e.gs.VisibilityChangedTiles)).Msg("Performed incremental visibility update")
 }
 
@@ -143,14 +143,14 @@ func (e *Engine) ComputePlayerVisibility(playerID int) PlayerVisibility {
 	if config.Get().Features.UseOptimizedVisibility {
 		return e.ComputePlayerVisibilityOptimized(playerID)
 	}
-	
+
 	// Original implementation
 	numTiles := len(e.gs.Board.T)
 	vis := PlayerVisibility{
 		VisibleTiles: make([]bool, numTiles),
 		FogTiles:     make([]bool, numTiles),
 	}
-	
+
 	// If fog of war is disabled, all tiles are visible
 	if !e.gs.FogOfWarEnabled {
 		for i := range vis.VisibleTiles {
@@ -158,11 +158,11 @@ func (e *Engine) ComputePlayerVisibility(playerID int) PlayerVisibility {
 		}
 		return vis
 	}
-	
+
 	// Copy current visibility from tiles
 	for i, tile := range e.gs.Board.T {
 		vis.VisibleTiles[i] = tile.IsVisibleTo(playerID)
-		
+
 		// A tile is in fog if it was previously discovered (has a type or we've seen it before)
 		// but is not currently visible
 		if !vis.VisibleTiles[i] {
@@ -173,6 +173,6 @@ func (e *Engine) ComputePlayerVisibility(playerID int) PlayerVisibility {
 			}
 		}
 	}
-	
+
 	return vis
 }

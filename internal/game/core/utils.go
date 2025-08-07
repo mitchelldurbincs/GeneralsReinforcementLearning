@@ -12,8 +12,8 @@ func IntToStringFixedWidth(num int, width int) string {
 }
 
 func GetActionType(action Action) string {
-    if action == nil {
-        return "nil"
-    }
-    return fmt.Sprintf("%T", action)
+	if action == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("%T", action)
 }

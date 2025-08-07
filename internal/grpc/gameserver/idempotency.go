@@ -31,20 +31,20 @@ func (im *IdempotencyManager) Check(key string) *gamev1.SubmitActionResponse {
 	if key == "" {
 		return nil
 	}
-	
+
 	im.mu.RLock()
 	defer im.mu.RUnlock()
-	
+
 	entry, exists := im.cache[key]
 	if !exists {
 		return nil
 	}
-	
+
 	// Check if entry is still valid (24 hours)
 	if time.Since(entry.createdAt) > 24*time.Hour {
 		return nil
 	}
-	
+
 	return entry.response
 }
 
@@ -53,15 +53,15 @@ func (im *IdempotencyManager) Store(key string, resp *gamev1.SubmitActionRespons
 	if key == "" {
 		return
 	}
-	
+
 	im.mu.Lock()
 	defer im.mu.Unlock()
-	
+
 	im.cache[key] = &idempotencyEntry{
 		response:  resp,
 		createdAt: time.Now(),
 	}
-	
+
 	// Clean up old entries if cache is getting large
 	if len(im.cache) > 1000 {
 		im.cleanupOldEntriesLocked()
@@ -73,7 +73,7 @@ func (im *IdempotencyManager) Store(key string, resp *gamev1.SubmitActionRespons
 func (im *IdempotencyManager) cleanupOldEntriesLocked() {
 	now := time.Now()
 	cutoff := now.Add(-24 * time.Hour)
-	
+
 	for key, entry := range im.cache {
 		if entry.createdAt.Before(cutoff) {
 			delete(im.cache, key)

@@ -6,33 +6,33 @@ import (
 
 // RewardConfig holds configurable reward values
 type RewardConfig struct {
-	WinGame          float32
-	LoseGame         float32
-	CaptureCity      float32
-	LoseCity         float32
-	CaptureGeneral   float32
-	LoseGeneral      float32
-	TerritoryGained  float32
-	TerritoryLost    float32
-	ArmyGained       float32
-	ArmyLost         float32
-	ArmyAdvantage    float32 // Scaling factor for army advantage
+	WinGame         float32
+	LoseGame        float32
+	CaptureCity     float32
+	LoseCity        float32
+	CaptureGeneral  float32
+	LoseGeneral     float32
+	TerritoryGained float32
+	TerritoryLost   float32
+	ArmyGained      float32
+	ArmyLost        float32
+	ArmyAdvantage   float32 // Scaling factor for army advantage
 }
 
 // DefaultRewardConfig returns the default reward configuration
 func DefaultRewardConfig() *RewardConfig {
 	return &RewardConfig{
-		WinGame:          1.0,
-		LoseGame:         -1.0,
-		CaptureCity:      0.1,
-		LoseCity:         -0.1,
-		CaptureGeneral:   0.5,
-		LoseGeneral:      -0.5,
-		TerritoryGained:  0.01,
-		TerritoryLost:    -0.01,
-		ArmyGained:       0.001,
-		ArmyLost:         -0.001,
-		ArmyAdvantage:    0.05, // Max reward/penalty for army advantage
+		WinGame:         1.0,
+		LoseGame:        -1.0,
+		CaptureCity:     0.1,
+		LoseCity:        -0.1,
+		CaptureGeneral:  0.5,
+		LoseGeneral:     -0.5,
+		TerritoryGained: 0.01,
+		TerritoryLost:   -0.01,
+		ArmyGained:      0.001,
+		ArmyLost:        -0.001,
+		ArmyAdvantage:   0.05, // Max reward/penalty for army advantage
 	}
 }
 
@@ -114,12 +114,12 @@ func countCityChanges(prevState, currState *game.GameState, playerID int) (gaine
 		}
 
 		prevTile := &prevState.Board.T[i]
-		
+
 		// City gained
 		if prevTile.Owner != playerID && currTile.Owner == playerID {
 			gained++
 		}
-		
+
 		// City lost
 		if prevTile.Owner == playerID && currTile.Owner != playerID {
 			lost++
@@ -136,12 +136,12 @@ func countGeneralChanges(prevState, currState *game.GameState, playerID int) (ga
 		}
 
 		prevTile := &prevState.Board.T[i]
-		
+
 		// General captured (enemy general)
 		if prevTile.Owner != playerID && prevTile.Owner >= 0 && currTile.Owner == playerID {
 			gained++
 		}
-		
+
 		// General lost (our general)
 		if prevTile.Owner == playerID && currTile.Owner != playerID {
 			lost++
@@ -190,9 +190,9 @@ func CalculatePotentialReward(state *game.GameState, playerID int, targetX, targ
 	if tileIdx < 0 || tileIdx >= len(state.Board.T) {
 		return 0.0
 	}
-	
+
 	tile := &state.Board.T[tileIdx]
-	
+
 	// Potential city capture
 	if tile.IsCity() && tile.Owner != playerID {
 		reward += config.CaptureCity

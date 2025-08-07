@@ -87,15 +87,15 @@ func TestMathFunctionsConsistency(t *testing.T) {
 			{-10, 10},
 			{7, 7},
 		}
-		
+
 		for _, pair := range testPairs {
 			a, b := pair[0], pair[1]
 			minVal := Min(a, b)
 			maxVal := Max(a, b)
-			
+
 			// Min should always be <= Max
 			assert.LessOrEqual(t, minVal, maxVal)
-			
+
 			// One of them should be a, the other b (unless equal)
 			if a != b {
 				assert.True(t, (minVal == a && maxVal == b) || (minVal == b && maxVal == a))
@@ -105,19 +105,19 @@ func TestMathFunctionsConsistency(t *testing.T) {
 			}
 		}
 	})
-	
+
 	// Test Abs properties
 	t.Run("abs properties", func(t *testing.T) {
 		values := []int{-10, -1, 0, 1, 10, 100}
-		
+
 		for _, v := range values {
 			absV := Abs(v)
 			// Abs value is always non-negative
 			assert.GreaterOrEqual(t, absV, 0)
-			
+
 			// Abs(v) == Abs(-v)
 			assert.Equal(t, Abs(v), Abs(-v))
-			
+
 			// If v >= 0, Abs(v) == v
 			if v >= 0 {
 				assert.Equal(t, v, absV)
@@ -133,7 +133,7 @@ func TestMinMaxChain(t *testing.T) {
 		minOfThree := Min(Min(a, b), c)
 		assert.Equal(t, 3, minOfThree)
 	})
-	
+
 	t.Run("find max of three", func(t *testing.T) {
 		a, b, c := 5, 3, 7
 		maxOfThree := Max(Max(a, b), c)
@@ -147,7 +147,7 @@ func TestMathEdgeCases(t *testing.T) {
 		result := Min(math.MaxInt32, math.MaxInt32-1)
 		assert.Equal(t, math.MaxInt32-1, result)
 	})
-	
+
 	t.Run("max with min int", func(t *testing.T) {
 		result := Max(math.MinInt32, math.MinInt32+1)
 		assert.Equal(t, math.MinInt32+1, result)

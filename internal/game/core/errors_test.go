@@ -175,7 +175,7 @@ func TestGameError(t *testing.T) {
 	t.Run("errors.As functionality", func(t *testing.T) {
 		originalErr := fmt.Errorf("network timeout")
 		gameErr := NewGameError(50, 1, "network sync", originalErr)
-		
+
 		var extracted *GameError
 		assert.True(t, errors.As(gameErr, &extracted))
 		assert.Equal(t, 50, extracted.Turn)

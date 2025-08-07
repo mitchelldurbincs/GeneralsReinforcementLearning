@@ -21,7 +21,7 @@ func TestIsValidCoordinate(t *testing.T) {
 		{"bottom-right corner", 9, 9, 10, 10, true},
 		{"center", 5, 5, 10, 10, true},
 		{"edge cases", 0, 0, 1, 1, true},
-		
+
 		// Invalid coordinates
 		{"negative x", -1, 5, 10, 10, false},
 		{"negative y", 5, -1, 10, 10, false},
@@ -31,7 +31,7 @@ func TestIsValidCoordinate(t *testing.T) {
 		{"y greater than height", 5, 15, 10, 10, false},
 		{"both negative", -1, -1, 10, 10, false},
 		{"both out of bounds", 20, 20, 10, 10, false},
-		
+
 		// Zero dimensions
 		{"zero width", 0, 0, 0, 10, false},
 		{"zero height", 0, 0, 10, 0, false},
@@ -60,7 +60,7 @@ func TestIsAdjacent(t *testing.T) {
 		{"up adjacent", 5, 5, 5, 4, true},
 		{"edge case adjacent", 0, 0, 1, 0, true},
 		{"negative coords adjacent", -1, 0, 0, 0, true},
-		
+
 		// Non-adjacent cases
 		{"same position", 5, 5, 5, 5, false},
 		{"diagonal", 5, 5, 6, 6, false},
@@ -74,7 +74,7 @@ func TestIsAdjacent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := IsAdjacent(tt.x1, tt.y1, tt.x2, tt.y2)
 			assert.Equal(t, tt.expected, result)
-			
+
 			// Test symmetry
 			resultReverse := IsAdjacent(tt.x2, tt.y2, tt.x1, tt.y1)
 			assert.Equal(t, result, resultReverse, "adjacency should be symmetric")
@@ -103,7 +103,7 @@ func TestManhattanDistance(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ManhattanDistance(tt.x1, tt.y1, tt.x2, tt.y2)
 			assert.Equal(t, tt.expected, result)
-			
+
 			// Test symmetry
 			resultReverse := ManhattanDistance(tt.x2, tt.y2, tt.x1, tt.y1)
 			assert.Equal(t, result, resultReverse, "distance should be symmetric")
@@ -121,7 +121,7 @@ func TestValidationIntegration(t *testing.T) {
 			{0, 0, 0, 1},
 			{10, 10, 9, 10},
 		}
-		
+
 		for _, tc := range testCases {
 			if IsAdjacent(tc.x1, tc.y1, tc.x2, tc.y2) {
 				dist := ManhattanDistance(tc.x1, tc.y1, tc.x2, tc.y2)
@@ -129,7 +129,7 @@ func TestValidationIntegration(t *testing.T) {
 			}
 		}
 	})
-	
+
 	// Test that non-adjacent with distance 1 is impossible
 	t.Run("distance 1 implies adjacent", func(t *testing.T) {
 		for x1 := -2; x1 <= 2; x1++ {

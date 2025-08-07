@@ -124,7 +124,7 @@ func (tp *TurnProcessor) captureStateForExperience() *GameState {
 func (tp *TurnProcessor) initializeTurn() {
 	tp.engine.gs.Turn++
 	tp.engine.updateFogOfWar()
-	
+
 	// Clear changed tiles from previous turn (reuse the map to avoid allocation)
 	for k := range tp.engine.gs.ChangedTiles {
 		delete(tp.engine.gs.ChangedTiles, k)
@@ -142,7 +142,7 @@ func (tp *TurnProcessor) publishTurnStarted() {
 // processActionsPhase handles action processing
 func (tp *TurnProcessor) processActionsPhase(ctx context.Context, actions []core.Action, turnLogger zerolog.Logger) error {
 	turnLogger.Debug().Int("num_actions_submitted", len(actions)).Msg("Processing actions")
-	
+
 	if err := tp.engine.processActions(ctx, actions, turnLogger); err != nil {
 		// Check if the error is due to context cancellation
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -150,7 +150,7 @@ func (tp *TurnProcessor) processActionsPhase(ctx context.Context, actions []core
 		}
 		return core.WrapGameStateError(tp.engine.gs.Turn, "action processing", err)
 	}
-	
+
 	turnLogger.Debug().Msg("Finished processing actions")
 	return nil
 }
@@ -161,7 +161,7 @@ func (tp *TurnProcessor) processProductionPhase(ctx context.Context, turnLogger 
 	if err := tp.checkContext(ctx, "before production"); err != nil {
 		return core.WrapGameStateError(tp.engine.gs.Turn, "production phase", fmt.Errorf("context cancelled: %w", err))
 	}
-	
+
 	tp.engine.processTurnProduction(turnLogger)
 	return nil
 }
@@ -172,7 +172,7 @@ func (tp *TurnProcessor) processEndOfTurnPhase(ctx context.Context, turnLogger z
 	if err := tp.checkContext(ctx, "before updating/checking stats"); err != nil {
 		return core.WrapGameStateError(tp.engine.gs.Turn, "stats update", fmt.Errorf("context cancelled: %w", err))
 	}
-	
+
 	tp.engine.updatePlayerStats()
 	tp.engine.checkGameOver(turnLogger)
 	return nil
@@ -195,9 +195,9 @@ func (tp *TurnProcessor) collectExperiences(prevState *GameState, actions []core
 			}
 		}
 	}
-	
+
 	tp.engine.experienceCollector.OnStateTransition(prevState, tp.engine.gs, actionMap)
-	
+
 	// If game is over, notify collector
 	if tp.engine.gameOver {
 		tp.engine.experienceCollector.OnGameEnd(tp.engine.gs)
@@ -207,9 +207,9 @@ func (tp *TurnProcessor) collectExperiences(prevState *GameState, actions []core
 // publishTurnEnded publishes the turn ended event
 func (tp *TurnProcessor) publishTurnEnded(startTime time.Time, actionCount int) {
 	tp.engine.eventBus.Publish(events.NewTurnEndedEvent(
-		tp.engine.gameID, 
-		tp.engine.gs.Turn, 
-		actionCount, 
+		tp.engine.gameID,
+		tp.engine.gs.Turn,
+		actionCount,
 		time.Since(startTime),
 	))
 }

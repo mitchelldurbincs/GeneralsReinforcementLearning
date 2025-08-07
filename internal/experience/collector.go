@@ -10,10 +10,10 @@ import (
 
 // SimpleCollector implements a basic in-memory experience collector using a ring buffer
 type SimpleCollector struct {
-	buffer      *Buffer
-	gameID      string
-	serializer  *Serializer
-	logger      zerolog.Logger
+	buffer     *Buffer
+	gameID     string
+	serializer *Serializer
+	logger     zerolog.Logger
 }
 
 // NewSimpleCollector creates a new simple experience collector
@@ -131,6 +131,11 @@ func (c *SimpleCollector) Clear() {
 func (c *SimpleCollector) GetLatestExperiences(n int) []*experiencepb.Experience {
 	// Use GetLatest to get the most recent experiences
 	return c.buffer.GetLatest(n)
+}
+
+// GetCount returns the current number of experiences (without allocation)
+func (c *SimpleCollector) GetCount() int {
+	return c.buffer.Size()
 }
 
 // Close cleanly shuts down the collector

@@ -71,9 +71,9 @@ func (ei *EngineInitializer) Initialize(ctx context.Context) (*Engine, error) {
 
 	// Publish game started event
 	engine.eventBus.Publish(events.NewGameStartedEvent(
-		engine.gameID, 
-		ei.config.Players, 
-		ei.config.Width, 
+		engine.gameID,
+		ei.config.Players,
+		ei.config.Width,
 		ei.config.Height,
 	))
 
@@ -125,7 +125,7 @@ func (ei *EngineInitializer) initializeGameState(board *core.Board) *GameState {
 func (ei *EngineInitializer) initializePlayers(gs *GameState, board *core.Board) {
 	for i := 0; i < ei.config.Players; i++ {
 		generalIdx := ei.findPlayerGeneral(board, i)
-		
+
 		gs.Players[i] = Player{
 			ID:         i,
 			Alive:      true,
@@ -150,17 +150,17 @@ func (ei *EngineInitializer) findPlayerGeneral(board *core.Board, playerID int) 
 func (ei *EngineInitializer) createEngine(gs *GameState) *Engine {
 	// Create action processor
 	actionProc := processor.NewActionProcessor(ei.logger)
-	
+
 	// Create event bus
 	eventBus := events.NewEventBus()
-	
+
 	// Create game context for state machine
 	gameContext := states.NewGameContext(ei.config.GameID, ei.config.Players, ei.logger)
 	gameContext.PlayerCount = ei.config.Players
-	
+
 	// Create state machine
 	stateMachine := states.NewStateMachine(gameContext, eventBus)
-	
+
 	engine := &Engine{
 		gs:                  gs,
 		rng:                 ei.config.Rng,
@@ -176,11 +176,11 @@ func (ei *EngineInitializer) createEngine(gs *GameState) *Engine {
 		tempTileOwnership:   make(map[int]int),
 		tempAffectedPlayers: make(map[int]struct{}),
 	}
-	
+
 	// Create managers after engine is created
 	engine.productionManager = NewProductionManager(eventBus, ei.config.GameID, ei.logger)
 	engine.turnProcessor = NewTurnProcessor(engine)
-	
+
 	return engine
 }
 
@@ -196,7 +196,7 @@ func (ei *EngineInitializer) performInitialSetup(engine *Engine) {
 	// Initial update of player stats to populate OwnedTiles
 	engine.updatePlayerStats()
 	engine.updateFogOfWar()
-	
+
 	// Check game over (probably not needed unless a 0-player game is valid)
 	engine.checkGameOver(ei.logger.With().Str("phase", "init").Logger())
 }
@@ -205,26 +205,26 @@ func (ei *EngineInitializer) performInitialSetup(engine *Engine) {
 func (ei *EngineInitializer) initializeStateMachine(engine *Engine) error {
 	stateMachine := engine.stateMachine
 	gameContext := stateMachine.GetContext()
-	
+
 	// Transition through initial states
 	// First move to Lobby state
 	if err := stateMachine.TransitionTo(states.PhaseLobby, "Engine initialized"); err != nil {
 		ei.logger.Error().Err(err).Msg("Failed to transition to Lobby state")
 		return err
 	}
-	
+
 	// Since all players are already added during map generation, transition to Starting
 	if err := stateMachine.TransitionTo(states.PhaseStarting, "All players ready"); err != nil {
 		ei.logger.Error().Err(err).Msg("Failed to transition to Starting state")
 		return err
 	}
-	
+
 	// Map is generated and players are placed, transition to Running
 	gameContext.StartTime = time.Now() // Set start time when transitioning to running
 	if err := stateMachine.TransitionTo(states.PhaseRunning, "Game setup complete"); err != nil {
 		ei.logger.Error().Err(err).Msg("Failed to transition to Running state")
 		return err
 	}
-	
+
 	return nil
 }

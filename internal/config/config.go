@@ -28,10 +28,10 @@ type GameConfig struct {
 
 // MapConfig holds map generation settings
 type MapConfig struct {
-	CityRatio          int                `mapstructure:"city_ratio"`
-	CityStartArmy      int                `mapstructure:"city_start_army"`
-	MinGeneralSpacing  int                `mapstructure:"min_general_spacing"`
-	MountainVeins      MountainVeinConfig `mapstructure:"mountain_veins"`
+	CityRatio         int                `mapstructure:"city_ratio"`
+	CityStartArmy     int                `mapstructure:"city_start_army"`
+	MinGeneralSpacing int                `mapstructure:"min_general_spacing"`
+	MountainVeins     MountainVeinConfig `mapstructure:"mountain_veins"`
 }
 
 // MountainVeinConfig holds mountain vein generation settings
@@ -51,9 +51,9 @@ type ProductionConfig struct {
 
 // FogOfWarConfig holds fog of war settings
 type FogOfWarConfig struct {
-	Enabled           bool    `mapstructure:"enabled"`
-	VisibilityRadius  int     `mapstructure:"visibility_radius"`
-	UpdateThreshold   float64 `mapstructure:"update_threshold"`
+	Enabled          bool    `mapstructure:"enabled"`
+	VisibilityRadius int     `mapstructure:"visibility_radius"`
+	UpdateThreshold  float64 `mapstructure:"update_threshold"`
 }
 
 // ServerConfig holds server configuration
@@ -64,9 +64,9 @@ type ServerConfig struct {
 
 // GameServerConfig holds game server specific configuration
 type GameServerConfig struct {
-	LogLevel  string         `mapstructure:"log_level"`
-	LogFormat string         `mapstructure:"log_format"`
-	Demo      DemoConfig     `mapstructure:"demo"`
+	LogLevel  string     `mapstructure:"log_level"`
+	LogFormat string     `mapstructure:"log_format"`
+	Demo      DemoConfig `mapstructure:"demo"`
 }
 
 // DemoConfig holds demo mode configuration
@@ -78,19 +78,19 @@ type DemoConfig struct {
 
 // GRPCServerConfig holds gRPC server configuration
 type GRPCServerConfig struct {
-	Host                   string `mapstructure:"host"`
-	Port                   int    `mapstructure:"port"`
-	LogLevel               string `mapstructure:"log_level"`
-	TurnTimeout            int    `mapstructure:"turn_timeout"`
-	MaxGames               int    `mapstructure:"max_games"`
-	EnableReflection       bool   `mapstructure:"enable_reflection"`
-	GracefulShutdownDelay  int    `mapstructure:"graceful_shutdown_delay"`
+	Host                  string `mapstructure:"host"`
+	Port                  int    `mapstructure:"port"`
+	LogLevel              string `mapstructure:"log_level"`
+	TurnTimeout           int    `mapstructure:"turn_timeout"`
+	MaxGames              int    `mapstructure:"max_games"`
+	EnableReflection      bool   `mapstructure:"enable_reflection"`
+	GracefulShutdownDelay int    `mapstructure:"graceful_shutdown_delay"`
 }
 
 // UIConfig holds UI/client configuration
 type UIConfig struct {
-	Window   WindowConfig   `mapstructure:"window"`
-	Game     UIGameConfig   `mapstructure:"game"`
+	Window   WindowConfig     `mapstructure:"window"`
+	Game     UIGameConfig     `mapstructure:"game"`
 	Defaults UIDefaultsConfig `mapstructure:"defaults"`
 }
 
@@ -118,25 +118,25 @@ type UIDefaultsConfig struct {
 
 // ColorsConfig holds all color configurations
 type ColorsConfig struct {
-	Players   PlayerColorsConfig   `mapstructure:"players"`
-	Tiles     TileColorsConfig     `mapstructure:"tiles"`
-	UI        UIColorsConfig       `mapstructure:"ui"`
+	Players   PlayerColorsConfig    `mapstructure:"players"`
+	Tiles     TileColorsConfig      `mapstructure:"tiles"`
+	UI        UIColorsConfig        `mapstructure:"ui"`
 	Rendering RenderingColorsConfig `mapstructure:"rendering"`
 }
 
 // PlayerColorsConfig holds player color settings
 type PlayerColorsConfig struct {
-	Neutral  [3]int `mapstructure:"neutral"`
-	Player0  [3]int `mapstructure:"player_0"`
-	Player1  [3]int `mapstructure:"player_1"`
-	Player2  [3]int `mapstructure:"player_2"`
-	Player3  [3]int `mapstructure:"player_3"`
+	Neutral [3]int `mapstructure:"neutral"`
+	Player0 [3]int `mapstructure:"player_0"`
+	Player1 [3]int `mapstructure:"player_1"`
+	Player2 [3]int `mapstructure:"player_2"`
+	Player3 [3]int `mapstructure:"player_3"`
 }
 
 // TileColorsConfig holds tile color settings
 type TileColorsConfig struct {
-	Mountain     [3]int          `mapstructure:"mountain"`
-	CityHueShift int             `mapstructure:"city_hue_shift"`
+	Mountain     [3]int           `mapstructure:"mountain"`
+	CityHueShift int              `mapstructure:"city_hue_shift"`
 	Text         TextColorsConfig `mapstructure:"text"`
 }
 
@@ -150,17 +150,17 @@ type TextColorsConfig struct {
 
 // UIColorsConfig holds UI color settings
 type UIColorsConfig struct {
-	Background  [3]int `mapstructure:"background"`
-	GridLines   [3]int `mapstructure:"grid_lines"`
-	FogOfWar    [4]int `mapstructure:"fog_of_war"`
-	FogUnknown  [4]int `mapstructure:"fog_unknown"`
+	Background [3]int `mapstructure:"background"`
+	GridLines  [3]int `mapstructure:"grid_lines"`
+	FogOfWar   [4]int `mapstructure:"fog_of_war"`
+	FogUnknown [4]int `mapstructure:"fog_unknown"`
 }
 
 // RenderingColorsConfig holds rendering color settings
 type RenderingColorsConfig struct {
-	CityMarkerRatio      float64 `mapstructure:"city_marker_ratio"`
-	GeneralMarkerRatio   float64 `mapstructure:"general_marker_ratio"`
-	OwnedCityInnerRatio  float64 `mapstructure:"owned_city_inner_ratio"`
+	CityMarkerRatio     float64 `mapstructure:"city_marker_ratio"`
+	GeneralMarkerRatio  float64 `mapstructure:"general_marker_ratio"`
+	OwnedCityInnerRatio float64 `mapstructure:"owned_city_inner_ratio"`
 }
 
 // PerformanceConfig holds performance/optimization settings
@@ -171,18 +171,18 @@ type PerformanceConfig struct {
 
 // DevelopmentConfig holds development/debug settings
 type DevelopmentConfig struct {
-	VerboseLogging      bool `mapstructure:"verbose_logging"`
-	ShowAllTiles        bool `mapstructure:"show_all_tiles"`
-	ShowCoordinates     bool `mapstructure:"show_coordinates"`
+	VerboseLogging       bool `mapstructure:"verbose_logging"`
+	ShowAllTiles         bool `mapstructure:"show_all_tiles"`
+	ShowCoordinates      bool `mapstructure:"show_coordinates"`
 	ShowPerformanceStats bool `mapstructure:"show_performance_stats"`
 }
 
 // FeaturesConfig holds feature flags
 type FeaturesConfig struct {
-	EnableAI          bool `mapstructure:"enable_ai"`
-	EnableMultiplayer bool `mapstructure:"enable_multiplayer"`
-	EnableReplay      bool `mapstructure:"enable_replay"`
-	EnableSpectator   bool `mapstructure:"enable_spectator"`
+	EnableAI               bool `mapstructure:"enable_ai"`
+	EnableMultiplayer      bool `mapstructure:"enable_multiplayer"`
+	EnableReplay           bool `mapstructure:"enable_replay"`
+	EnableSpectator        bool `mapstructure:"enable_spectator"`
 	UseOptimizedVisibility bool `mapstructure:"use_optimized_visibility"`
 }
 
@@ -201,25 +201,25 @@ func setViperDefaults(v *viper.Viper) {
 	v.SetDefault("game.map.mountain_veins.ratio", 50)
 	v.SetDefault("game.map.mountain_veins.min_length", 3)
 	v.SetDefault("game.map.mountain_veins.max_length_ratio", 0.25)
-	
+
 	// Production defaults
 	v.SetDefault("game.production.general", 1)
 	v.SetDefault("game.production.city", 1)
 	v.SetDefault("game.production.normal", 1)
 	v.SetDefault("game.production.normal_growth_interval", 25)
-	
+
 	// Fog of war defaults
 	v.SetDefault("game.fog_of_war.enabled", true)
 	v.SetDefault("game.fog_of_war.visibility_radius", 1)
 	v.SetDefault("game.fog_of_war.update_threshold", 0.1)
-	
+
 	// Server defaults
 	v.SetDefault("server.game_server.log_level", "info")
 	v.SetDefault("server.game_server.log_format", "console")
 	v.SetDefault("server.game_server.demo.board_width", 8)
 	v.SetDefault("server.game_server.demo.board_height", 8)
 	v.SetDefault("server.game_server.demo.max_turns", 50)
-	
+
 	// gRPC server defaults
 	v.SetDefault("server.grpc_server.host", "0.0.0.0")
 	v.SetDefault("server.grpc_server.port", 50051)
@@ -228,7 +228,7 @@ func setViperDefaults(v *viper.Viper) {
 	v.SetDefault("server.grpc_server.max_games", 100)
 	v.SetDefault("server.grpc_server.enable_reflection", true)
 	v.SetDefault("server.grpc_server.graceful_shutdown_delay", 5)
-	
+
 	// UI defaults
 	v.SetDefault("ui.window.width", 800)
 	v.SetDefault("ui.window.height", 600)
@@ -240,40 +240,40 @@ func setViperDefaults(v *viper.Viper) {
 	v.SetDefault("ui.defaults.map_width", 20)
 	v.SetDefault("ui.defaults.map_height", 15)
 	v.SetDefault("ui.defaults.ai_only", false)
-	
+
 	// Color defaults
 	v.SetDefault("colors.players.neutral", []int{120, 120, 120})
 	v.SetDefault("colors.players.player_0", []int{200, 50, 50})
 	v.SetDefault("colors.players.player_1", []int{50, 100, 200})
 	v.SetDefault("colors.players.player_2", []int{50, 200, 50})
 	v.SetDefault("colors.players.player_3", []int{200, 200, 50})
-	
+
 	v.SetDefault("colors.tiles.mountain", []int{80, 80, 80})
 	v.SetDefault("colors.tiles.city_hue_shift", 30)
 	v.SetDefault("colors.tiles.text.general", []int{255, 255, 255})
 	v.SetDefault("colors.tiles.text.city", []int{255, 255, 255})
 	v.SetDefault("colors.tiles.text.army", []int{255, 255, 255})
 	v.SetDefault("colors.tiles.text.general_army", []int{0, 0, 0})
-	
+
 	v.SetDefault("colors.ui.background", []int{0, 0, 0})
 	v.SetDefault("colors.ui.grid_lines", []int{50, 50, 50})
 	v.SetDefault("colors.ui.fog_of_war", []int{0, 0, 0, 200})
 	v.SetDefault("colors.ui.fog_unknown", []int{25, 25, 25, 200})
-	
+
 	v.SetDefault("colors.rendering.city_marker_ratio", 0.5)
 	v.SetDefault("colors.rendering.general_marker_ratio", 0.5)
 	v.SetDefault("colors.rendering.owned_city_inner_ratio", 0.33)
-	
+
 	// Performance defaults
 	v.SetDefault("performance.preallocate_capacity", 50)
 	v.SetDefault("performance.incremental_updates", true)
-	
+
 	// Development defaults
 	v.SetDefault("development.verbose_logging", false)
 	v.SetDefault("development.show_all_tiles", false)
 	v.SetDefault("development.show_coordinates", false)
 	v.SetDefault("development.show_performance_stats", false)
-	
+
 	// Feature flags
 	v.SetDefault("features.enable_ai", true)
 	v.SetDefault("features.enable_multiplayer", true)
@@ -285,10 +285,10 @@ func setViperDefaults(v *viper.Viper) {
 // Init initializes the configuration
 func Init(configPath string) error {
 	v = viper.New()
-	
+
 	// Set defaults before loading any config
 	setViperDefaults(v)
-	
+
 	// Set config file
 	if configPath != "" {
 		v.SetConfigFile(configPath)
@@ -300,12 +300,12 @@ func Init(configPath string) error {
 		v.AddConfigPath(".")
 		v.AddConfigPath("/etc/generals-rl")
 	}
-	
+
 	// Set environment variable prefix
 	v.SetEnvPrefix("GRL")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
-	
+
 	// Read config file
 	if err := v.ReadInConfig(); err != nil {
 		// If we have a specific config path and it doesn't exist, that's ok - use defaults
@@ -317,18 +317,18 @@ func Init(configPath string) error {
 		}
 		// Config file not found; use defaults
 	}
-	
+
 	// Unmarshal into config struct
 	cfg = &Config{}
 	if err := v.Unmarshal(cfg); err != nil {
 		return fmt.Errorf("unable to decode config into struct: %w", err)
 	}
-	
+
 	// Validate configuration
 	if err := Validate(cfg); err != nil {
 		return fmt.Errorf("config validation failed: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -356,9 +356,9 @@ func LoadEnvironmentConfig(env string) error {
 	if env == "" {
 		return nil
 	}
-	
+
 	envFile := fmt.Sprintf("config.%s.yaml", env)
-	
+
 	// Try to find environment-specific config
 	v.SetConfigFile(envFile)
 	if err := v.MergeInConfig(); err != nil {
@@ -366,12 +366,12 @@ func LoadEnvironmentConfig(env string) error {
 			return fmt.Errorf("error merging environment config %s: %w", envFile, err)
 		}
 	}
-	
+
 	// Re-unmarshal with merged config
 	if err := v.Unmarshal(cfg); err != nil {
 		return fmt.Errorf("unable to decode merged config into struct: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -440,7 +440,7 @@ func Validate(c *Config) error {
 	if c.Game.FogOfWar.UpdateThreshold < 0 || c.Game.FogOfWar.UpdateThreshold > 1 {
 		return fmt.Errorf("game.fog_of_war.update_threshold must be between 0 and 1")
 	}
-	
+
 	// Validate server configuration
 	if c.Server.GRPCServer.Port <= 0 || c.Server.GRPCServer.Port > 65535 {
 		return fmt.Errorf("server.grpc_server.port must be between 1 and 65535")
@@ -454,7 +454,7 @@ func Validate(c *Config) error {
 	if c.Server.GRPCServer.GracefulShutdownDelay < 0 {
 		return fmt.Errorf("server.grpc_server.graceful_shutdown_delay must be non-negative")
 	}
-	
+
 	// Validate UI configuration
 	if c.UI.Window.Width <= 0 || c.UI.Window.Height <= 0 {
 		return fmt.Errorf("ui.window dimensions must be positive")
@@ -474,7 +474,7 @@ func Validate(c *Config) error {
 	if c.UI.Defaults.MapWidth <= 0 || c.UI.Defaults.MapHeight <= 0 {
 		return fmt.Errorf("ui.defaults map dimensions must be positive")
 	}
-	
+
 	// Validate color values
 	validateRGB := func(rgb [3]int, name string) error {
 		for i, v := range rgb {
@@ -484,7 +484,7 @@ func Validate(c *Config) error {
 		}
 		return nil
 	}
-	
+
 	if err := validateRGB(c.Colors.Players.Neutral, "colors.players.neutral"); err != nil {
 		return err
 	}
@@ -500,7 +500,7 @@ func Validate(c *Config) error {
 	if err := validateRGB(c.Colors.Players.Player3, "colors.players.player_3"); err != nil {
 		return err
 	}
-	
+
 	// Validate rendering ratios
 	if c.Colors.Rendering.CityMarkerRatio <= 0 || c.Colors.Rendering.CityMarkerRatio > 1 {
 		return fmt.Errorf("colors.rendering.city_marker_ratio must be between 0 and 1")
@@ -511,11 +511,11 @@ func Validate(c *Config) error {
 	if c.Colors.Rendering.OwnedCityInnerRatio <= 0 || c.Colors.Rendering.OwnedCityInnerRatio > 1 {
 		return fmt.Errorf("colors.rendering.owned_city_inner_ratio must be between 0 and 1")
 	}
-	
+
 	// Validate performance settings
 	if c.Performance.PreallocateCapacity < 0 {
 		return fmt.Errorf("performance.preallocate_capacity must be non-negative")
 	}
-	
+
 	return nil
 }

@@ -220,20 +220,20 @@ func TestLoggerSubscriberLogLevels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			logger := zerolog.New(&buf).Level(tc.logLevel)
-			
+
 			logSub := subscribers.NewLoggerSubscriber("level-logger", logger, tc.logLevel)
-			
+
 			// Create an event
 			event := events.NewGameStartedEvent("game1", 2, 10, 10)
 			logSub.HandleEvent(event)
-			
+
 			// The subscriber will always log events at the configured level
 			// The actual output depends on the logger's level filter
 			if buf.Len() > 0 {
 				var logLine map[string]interface{}
 				err := json.Unmarshal(buf.Bytes(), &logLine)
 				require.NoError(t, err)
-				
+
 				// The log level should match what we configured for the subscriber
 				assert.Equal(t, tc.expected, logLine["level"])
 			}
@@ -268,20 +268,20 @@ func TestLoggerSubscriberDevelopmentMode(t *testing.T) {
 
 	// In development mode, we expect event_data field
 	assert.Contains(t, logOutput, "event_data")
-	
+
 	var logLine map[string]interface{}
 	err := json.Unmarshal(buf.Bytes(), &logLine)
 	require.NoError(t, err)
-	
+
 	// event_data might be a map or object, not a string when parsed as JSON
 	eventData, ok := logLine["event_data"]
 	require.True(t, ok, "event_data should be present")
-	
+
 	// Convert back to string to check contents
 	eventDataBytes, err := json.Marshal(eventData)
 	require.NoError(t, err)
 	eventDataStr := string(eventDataBytes)
-	
+
 	// The event data should contain information about the event
 	assert.Contains(t, eventDataStr, "move.executed")
 	assert.Contains(t, eventDataStr, "PlayerID")
@@ -306,6 +306,6 @@ func TestLoggerSubscriberBenchmark(t *testing.T) {
 	eventsPerSecond := float64(numEvents) / elapsed.Seconds()
 
 	// Should be able to process at least 100k events per second with logging disabled
-	assert.Greater(t, eventsPerSecond, 100000.0, 
+	assert.Greater(t, eventsPerSecond, 100000.0,
 		"Logger should process at least 100k events/sec, got %.0f", eventsPerSecond)
 }

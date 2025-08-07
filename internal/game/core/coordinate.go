@@ -47,7 +47,7 @@ func (c Coordinate) DistanceTo(other Coordinate) int {
 func (c Coordinate) IsAdjacentTo(other Coordinate) bool {
 	dx := c.X - other.X
 	dy := c.Y - other.Y
-	
+
 	// Must be exactly one step away in either X or Y direction, but not both
 	return (dx == 0 && (dy == 1 || dy == -1)) || (dy == 0 && (dx == 1 || dx == -1))
 }
@@ -56,7 +56,7 @@ func (c Coordinate) IsAdjacentTo(other Coordinate) bool {
 func (c Coordinate) Neighbors() []Coordinate {
 	return []Coordinate{
 		{X: c.X, Y: c.Y - 1}, // North
-		{X: c.X + 1, Y: c.Y}, // East  
+		{X: c.X + 1, Y: c.Y}, // East
 		{X: c.X, Y: c.Y + 1}, // South
 		{X: c.X - 1, Y: c.Y}, // West
 	}
@@ -66,13 +66,13 @@ func (c Coordinate) Neighbors() []Coordinate {
 func (c Coordinate) ValidNeighbors(width, height int) []Coordinate {
 	neighbors := c.Neighbors()
 	valid := make([]Coordinate, 0, 4)
-	
+
 	for _, n := range neighbors {
 		if n.IsValid(width, height) {
 			valid = append(valid, n)
 		}
 	}
-	
+
 	return valid
 }
 
@@ -134,10 +134,10 @@ func (c Coordinate) DirectionTo(other Coordinate) Direction {
 	if !c.IsAdjacentTo(other) {
 		return -1
 	}
-	
+
 	dx := other.X - c.X
 	dy := other.Y - c.Y
-	
+
 	switch {
 	case dy == -1:
 		return North

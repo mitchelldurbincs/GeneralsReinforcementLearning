@@ -19,27 +19,27 @@ type Engine struct {
 	rng      *rand.Rand
 	gameOver bool
 	logger   zerolog.Logger
-	
+
 	// Extracted components
-	actionProcessor    *processor.ActionProcessor
-	winCondition       *rules.WinConditionChecker
-	legalMoves         *rules.LegalMoveCalculator
-	turnProcessor      *TurnProcessor      // Added turn processor
-	productionManager  *ProductionManager  // Added production manager
-	
+	actionProcessor   *processor.ActionProcessor
+	winCondition      *rules.WinConditionChecker
+	legalMoves        *rules.LegalMoveCalculator
+	turnProcessor     *TurnProcessor     // Added turn processor
+	productionManager *ProductionManager // Added production manager
+
 	// Event system
 	eventBus *events.EventBus
 	gameID   string
-	
+
 	// State management
 	stateMachine *states.StateMachine
-	
+
 	// Experience collection
 	experienceCollector ExperienceCollector
-	
+
 	// Reusable temporary maps to avoid allocations
-	tempTileOwnership   map[int]int        // Used in performIncrementalStatsUpdate
-	tempAffectedPlayers map[int]struct{}   // Used in performIncrementalVisibilityUpdate
+	tempTileOwnership   map[int]int      // Used in performIncrementalStatsUpdate
+	tempAffectedPlayers map[int]struct{} // Used in performIncrementalVisibilityUpdate
 }
 
 type GameConfig struct {
@@ -48,7 +48,7 @@ type GameConfig struct {
 	Players             int
 	Rng                 *rand.Rand
 	Logger              zerolog.Logger
-	GameID              string // Optional game ID, will be generated if not provided
+	GameID              string              // Optional game ID, will be generated if not provided
 	ExperienceCollector ExperienceCollector // Optional experience collector
 }
 
@@ -83,15 +83,15 @@ func (e *Engine) processActions(ctx context.Context, actions []core.Action, l ze
 	for i := range e.gs.Players {
 		playerInfos[i] = &e.gs.Players[i]
 	}
-	
+
 	// Use the ActionProcessor to handle all action processing
 	captureDetails, visibilityChangedTiles, err := e.actionProcessor.ProcessActions(ctx, e.gs.Board, playerInfos, actions, e.gs.ChangedTiles)
-	
+
 	// Merge visibility changed tiles
 	for tileIdx := range visibilityChangedTiles {
 		e.gs.VisibilityChangedTiles[tileIdx] = struct{}{}
 	}
-	
+
 	// Handle eliminations if there were captures
 	if len(captureDetails) > 0 {
 		l.Debug().Int("num_captures_this_turn", len(captureDetails)).Msg("Processing captures for eliminations")
@@ -121,7 +121,7 @@ func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminati
 		// Use the owned tiles list for efficient transfer
 		eliminatedPlayer := &e.gs.Players[order.EliminatedPlayerID]
 		tilesTransferred := 0
-		
+
 		for _, tileIdx := range eliminatedPlayer.OwnedTiles {
 			if e.gs.Board.T[tileIdx].Owner == order.EliminatedPlayerID {
 				e.gs.Board.T[tileIdx].Owner = order.NewOwnerID
@@ -130,14 +130,14 @@ func (e *Engine) handleEliminationsAndTileTurnover(orders []core.PlayerEliminati
 				tilesTransferred++
 			}
 		}
-		
+
 		// Mark the player as eliminated
 		eliminatedPlayer.Alive = false
 		eliminatedPlayer.GeneralIdx = -1
-		
+
 		// Publish PlayerEliminated event
 		e.eventBus.Publish(events.NewPlayerEliminatedEvent(e.gameID, order.EliminatedPlayerID, order.NewOwnerID, 0, e.gs.Turn))
-		
+
 		l.Debug().
 			Int("eliminated_player_id", order.EliminatedPlayerID).
 			Int("new_owner_player_id", order.NewOwnerID).
@@ -158,27 +158,27 @@ func (e *Engine) checkGameOver(l zerolog.Logger) {
 	for i := range e.gs.Players {
 		players[i] = &e.gs.Players[i]
 	}
-	
+
 	wasGameOver := e.gameOver
 	gameOver, winnerID := e.winCondition.CheckGameOver(players)
 	e.gameOver = gameOver
-	
+
 	if !wasGameOver && e.gameOver {
 		l.Info().Msg("Game over condition met")
-		
+
 		// Update game context with winner
 		e.stateMachine.GetContext().Winner = winnerID
-		
+
 		// Transition to Ending state
 		if err := e.stateMachine.TransitionTo(states.PhaseEnding, "Game over condition met"); err != nil {
 			l.Error().Err(err).Msg("Failed to transition to Ending state")
 		}
-		
+
 		// Transition to Ended state
 		if err := e.stateMachine.TransitionTo(states.PhaseEnded, "Game finalized"); err != nil {
 			l.Error().Err(err).Msg("Failed to transition to Ended state")
 		}
-		
+
 		// Publish GameEnded event
 		// TODO: Track game start time to calculate duration
 		e.eventBus.Publish(events.NewGameEndedEvent(e.gameID, winnerID, 0, e.gs.Turn))
@@ -189,9 +189,9 @@ func (e *Engine) checkGameOver(l zerolog.Logger) {
 }
 
 // Public accessors
-func (e *Engine) GameState() GameState { return *e.gs }
-func (e *Engine) IsGameOver() bool   { return e.gameOver }
-func (e *Engine) EventBus() *events.EventBus { return e.eventBus }
+func (e *Engine) GameState() GameState           { return *e.gs }
+func (e *Engine) IsGameOver() bool               { return e.gameOver }
+func (e *Engine) EventBus() *events.EventBus     { return e.eventBus }
 func (e *Engine) CurrentPhase() states.GamePhase { return e.stateMachine.CurrentPhase() }
 
 // Pause pauses the game if it's currently running
@@ -200,16 +200,16 @@ func (e *Engine) Pause(reason string) error {
 	if currentPhase != states.PhaseRunning {
 		return fmt.Errorf("cannot pause game in %s phase", currentPhase)
 	}
-	
+
 	// Update pause time in context
 	e.stateMachine.GetContext().PauseTime = time.Now()
-	
+
 	// Transition to paused state
 	if err := e.stateMachine.TransitionTo(states.PhasePaused, reason); err != nil {
 		e.logger.Error().Err(err).Msg("Failed to pause game")
 		return err
 	}
-	
+
 	e.logger.Info().Str("reason", reason).Msg("Game paused")
 	return nil
 }
@@ -220,7 +220,7 @@ func (e *Engine) Resume(reason string) error {
 	if currentPhase != states.PhasePaused {
 		return fmt.Errorf("cannot resume game in %s phase", currentPhase)
 	}
-	
+
 	// Update total pause duration
 	ctx := e.stateMachine.GetContext()
 	if !ctx.PauseTime.IsZero() {
@@ -228,13 +228,13 @@ func (e *Engine) Resume(reason string) error {
 		ctx.TotalPauseDuration += pauseDuration
 		ctx.PauseTime = time.Time{} // Reset pause time
 	}
-	
+
 	// Transition back to running state
 	if err := e.stateMachine.TransitionTo(states.PhaseRunning, reason); err != nil {
 		e.logger.Error().Err(err).Msg("Failed to resume game")
 		return err
 	}
-	
+
 	e.logger.Info().Str("reason", reason).Msg("Game resumed")
 	return nil
 }
@@ -246,20 +246,20 @@ func (e *Engine) GetWinner() int {
 		e.logger.Warn().Msg("GetWinner called but game is not actually over according to internal state.")
 		return -1
 	}
-	
+
 	// Create a slice of Player interfaces for the win condition checker
 	players := make([]rules.Player, len(e.gs.Players))
 	for i := range e.gs.Players {
 		players[i] = &e.gs.Players[i]
 	}
-	
+
 	_, winnerID := e.winCondition.CheckGameOver(players)
 	return winnerID
 }
 
 // GetLegalActionMask returns a flattened boolean mask indicating which actions are legal for the given player.
 // For a board of width W and height H:
-// - Total actions = W * H * 4 (4 directions per tile)  
+// - Total actions = W * H * 4 (4 directions per tile)
 // - Index = (y * W + x) * 4 + direction
 // - Directions: 0=up, 1=right, 2=down, 3=left
 // - true = legal move, false = illegal move
@@ -269,7 +269,7 @@ func (e *Engine) GetLegalActionMask(playerID int) []bool {
 		maskSize := e.gs.Board.W * e.gs.Board.H * 4
 		return make([]bool, maskSize)
 	}
-	
+
 	player := &e.gs.Players[playerID]
 	return e.legalMoves.GetLegalActionMask(e.gs.Board, player, player.OwnedTiles)
 }

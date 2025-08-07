@@ -1,3 +1,3 @@
-package renderer 
+package renderer
 
 // for army count rendering

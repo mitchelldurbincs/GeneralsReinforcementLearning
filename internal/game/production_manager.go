@@ -40,11 +40,11 @@ func (pm *ProductionManager) ProcessTurnProduction(gs *GameState, turn int) {
 		if !gs.Players[pid].Alive {
 			continue
 		}
-		
+
 		// Process production for each owned tile
 		for _, tileIdx := range gs.Players[pid].OwnedTiles {
 			prod := pm.processTileProduction(&gs.Board.T[tileIdx], growNormal)
-			
+
 			// Track production by type
 			switch gs.Board.T[tileIdx].Type {
 			case core.TileGeneral:
@@ -54,17 +54,17 @@ func (pm *ProductionManager) ProcessTurnProduction(gs *GameState, turn int) {
 			case core.TileNormal:
 				totalNormalProd += prod
 			}
-			
+
 			// Mark tile as changed if production occurred
 			if prod > 0 {
 				gs.ChangedTiles[tileIdx] = struct{}{}
 			}
 		}
 	}
-	
+
 	// Publish production event if any production occurred
 	pm.publishProductionEvent(totalNormalProd, totalCityProd, totalGeneralProd, turn)
-	
+
 	pm.logger.Debug().
 		Int("total_general_production", totalGeneralProd).
 		Int("total_city_production", totalCityProd).
@@ -79,24 +79,24 @@ func (pm *ProductionManager) processTileProduction(tile *core.Tile, growNormal b
 		production := GeneralProduction()
 		tile.Army += production
 		return production
-		
+
 	case core.TileCity:
 		production := CityProduction()
 		tile.Army += production
 		return production
-		
+
 	case core.TileNormal:
 		if growNormal {
 			production := NormalProduction()
 			tile.Army += production
 			return production
 		}
-		
+
 	// Mountains don't produce
 	case core.TileMountain:
 		return 0
 	}
-	
+
 	return 0
 }
 

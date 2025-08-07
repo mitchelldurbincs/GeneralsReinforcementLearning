@@ -51,11 +51,11 @@ func GenerateRandomActions(g *Engine, rng *rand.Rand) []core.Action {
 			chosen := validMoves[rng.Intn(len(validMoves))]
 			actions = append(actions, &chosen)
 			log.Debug().
-					Int("player_id", player.ID).
-					Int("from_x", chosen.FromX).Int("from_y", chosen.FromY).
-					Int("to_x", chosen.ToX).Int("to_y", chosen.ToY).
-					Bool("move_all", chosen.MoveAll).
-					Msg("Generated random action")
+				Int("player_id", player.ID).
+				Int("from_x", chosen.FromX).Int("from_y", chosen.FromY).
+				Int("to_x", chosen.ToX).Int("to_y", chosen.ToY).
+				Bool("move_all", chosen.MoveAll).
+				Msg("Generated random action")
 		}
 	}
 	return actions

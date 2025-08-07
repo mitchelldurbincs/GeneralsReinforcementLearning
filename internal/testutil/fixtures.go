@@ -46,7 +46,7 @@ func CreateTestPlayers(count int) []*game.Player {
 func CreateSimpleTestSetup() (*core.Board, []*game.Player) {
 	board := CreateTestBoard(5, 5)
 	players := CreateTestPlayers(2)
-	
+
 	// Place generals
 	idx1 := board.Idx(1, 1)
 	board.T[idx1] = core.Tile{
@@ -56,7 +56,7 @@ func CreateSimpleTestSetup() (*core.Board, []*game.Player) {
 	}
 	players[0].GeneralIdx = idx1
 	players[0].OwnedTiles = append(players[0].OwnedTiles, idx1)
-	
+
 	idx2 := board.Idx(3, 3)
 	board.T[idx2] = core.Tile{
 		Type:  core.TileGeneral,
@@ -65,6 +65,6 @@ func CreateSimpleTestSetup() (*core.Board, []*game.Player) {
 	}
 	players[1].GeneralIdx = idx2
 	players[1].OwnedTiles = append(players[1].OwnedTiles, idx2)
-	
+
 	return board, players
 }

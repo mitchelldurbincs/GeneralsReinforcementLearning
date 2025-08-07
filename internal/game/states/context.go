@@ -2,7 +2,7 @@ package states
 
 import (
 	"time"
-	
+
 	"github.com/rs/zerolog"
 )
 
@@ -10,31 +10,31 @@ import (
 type GameContext struct {
 	// GameID uniquely identifies this game instance
 	GameID string
-	
+
 	// Logger for state-specific logging
 	Logger zerolog.Logger
-	
+
 	// PlayerCount is the number of players in the game
 	PlayerCount int
-	
+
 	// MaxPlayers is the maximum number of players allowed
 	MaxPlayers int
-	
+
 	// StartTime is when the game started (PhaseRunning entered)
 	StartTime time.Time
-	
+
 	// PauseTime is when the game was paused (if paused)
 	PauseTime time.Time
-	
+
 	// TotalPauseDuration tracks total time spent paused
 	TotalPauseDuration time.Duration
-	
+
 	// Winner is the player ID of the winner (if game ended)
 	Winner int
-	
+
 	// Error holds any error that caused transition to PhaseError
 	Error error
-	
+
 	// Metadata for custom state data
 	Metadata map[string]interface{}
 }
@@ -60,7 +60,7 @@ func (gc *GameContext) GetElapsedTime() time.Duration {
 	if gc.StartTime.IsZero() {
 		return 0
 	}
-	
+
 	elapsed := time.Since(gc.StartTime)
 	return elapsed - gc.TotalPauseDuration
 }

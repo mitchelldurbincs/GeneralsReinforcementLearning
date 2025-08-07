@@ -7,8 +7,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	gamev1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/game/v1"
 	commonv1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/common/v1"
+	gamev1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/game/v1"
 )
 
 // streamClient represents a connected stream for a player
@@ -37,15 +37,15 @@ func NewStreamManager() *StreamManager {
 func (sm *StreamManager) RegisterClient(client *streamClient) {
 	sm.clientsMu.Lock()
 	defer sm.clientsMu.Unlock()
-	
+
 	// Close any existing stream for this player
 	if existing, exists := sm.clients[client.playerID]; exists {
 		existing.cancelFunc()
 		close(existing.updateChan)
 	}
-	
+
 	sm.clients[client.playerID] = client
-	
+
 	log.Debug().
 		Int32("player_id", client.playerID).
 		Int("total_streams", len(sm.clients)).
@@ -56,12 +56,12 @@ func (sm *StreamManager) RegisterClient(client *streamClient) {
 func (sm *StreamManager) UnregisterClient(playerID int32) {
 	sm.clientsMu.Lock()
 	defer sm.clientsMu.Unlock()
-	
+
 	if client, exists := sm.clients[playerID]; exists {
 		client.cancelFunc()
 		close(client.updateChan)
 		delete(sm.clients, playerID)
-		
+
 		log.Debug().
 			Int32("player_id", playerID).
 			Int("remaining_streams", len(sm.clients)).
@@ -74,11 +74,11 @@ func (sm *StreamManager) SendToClient(playerID int32, update *gamev1.GameUpdate)
 	sm.clientsMu.RLock()
 	client, exists := sm.clients[playerID]
 	sm.clientsMu.RUnlock()
-	
+
 	if !exists {
 		return
 	}
-	
+
 	// Non-blocking send to avoid blocking the game
 	select {
 	case client.updateChan <- update:
@@ -95,7 +95,7 @@ func (sm *StreamManager) SendToClient(playerID int32, update *gamev1.GameUpdate)
 func (sm *StreamManager) BroadcastToAll(update *gamev1.GameUpdate) {
 	sm.clientsMu.RLock()
 	defer sm.clientsMu.RUnlock()
-	
+
 	for playerID, client := range sm.clients {
 		select {
 		case client.updateChan <- update:
@@ -119,7 +119,7 @@ func (sm *StreamManager) GetClientCount() int {
 func (sm *StreamManager) ForEachClient(fn func(playerID int32, client *streamClient)) {
 	sm.clientsMu.RLock()
 	defer sm.clientsMu.RUnlock()
-	
+
 	for playerID, client := range sm.clients {
 		fn(playerID, client)
 	}
@@ -129,7 +129,7 @@ func (sm *StreamManager) ForEachClient(fn func(playerID int32, client *streamCli
 func (sm *StreamManager) CloseAll() {
 	sm.clientsMu.Lock()
 	defer sm.clientsMu.Unlock()
-	
+
 	for playerID, client := range sm.clients {
 		client.cancelFunc()
 		close(client.updateChan)
@@ -142,7 +142,7 @@ func (sm *StreamManager) BroadcastGameStarted() {
 	if sm.GetClientCount() == 0 {
 		return
 	}
-	
+
 	event := &gamev1.GameEvent{
 		Event: &gamev1.GameEvent_GameStarted{
 			GameStarted: &gamev1.GameStartedEvent{
@@ -150,14 +150,14 @@ func (sm *StreamManager) BroadcastGameStarted() {
 			},
 		},
 	}
-	
+
 	update := &gamev1.GameUpdate{
 		Update: &gamev1.GameUpdate_Event{
 			Event: event,
 		},
 		Timestamp: timestamppb.Now(),
 	}
-	
+
 	sm.BroadcastToAll(update)
 }
 
@@ -166,7 +166,7 @@ func (sm *StreamManager) BroadcastPlayerEliminated(playerID int32, eliminatedBy 
 	if sm.GetClientCount() == 0 {
 		return
 	}
-	
+
 	event := &gamev1.GameEvent{
 		Event: &gamev1.GameEvent_PlayerEliminated{
 			PlayerEliminated: &gamev1.PlayerEliminatedEvent{
@@ -175,14 +175,14 @@ func (sm *StreamManager) BroadcastPlayerEliminated(playerID int32, eliminatedBy 
 			},
 		},
 	}
-	
+
 	update := &gamev1.GameUpdate{
 		Update: &gamev1.GameUpdate_Event{
 			Event: event,
 		},
 		Timestamp: timestamppb.Now(),
 	}
-	
+
 	sm.BroadcastToAll(update)
 }
 
@@ -191,7 +191,7 @@ func (sm *StreamManager) BroadcastGameEnded(winnerId int32) {
 	if sm.GetClientCount() == 0 {
 		return
 	}
-	
+
 	event := &gamev1.GameEvent{
 		Event: &gamev1.GameEvent_GameEnded{
 			GameEnded: &gamev1.GameEndedEvent{
@@ -200,14 +200,14 @@ func (sm *StreamManager) BroadcastGameEnded(winnerId int32) {
 			},
 		},
 	}
-	
+
 	update := &gamev1.GameUpdate{
 		Update: &gamev1.GameUpdate_Event{
 			Event: event,
 		},
 		Timestamp: timestamppb.Now(),
 	}
-	
+
 	sm.BroadcastToAll(update)
 }
 
@@ -216,7 +216,7 @@ func (sm *StreamManager) BroadcastPhaseChanged(previousPhase, newPhase commonv1.
 	if sm.GetClientCount() == 0 {
 		return
 	}
-	
+
 	event := &gamev1.GameEvent{
 		Event: &gamev1.GameEvent_PhaseChanged{
 			PhaseChanged: &gamev1.PhaseChangedEvent{
@@ -226,16 +226,16 @@ func (sm *StreamManager) BroadcastPhaseChanged(previousPhase, newPhase commonv1.
 			},
 		},
 	}
-	
+
 	update := &gamev1.GameUpdate{
 		Update: &gamev1.GameUpdate_Event{
 			Event: event,
 		},
 		Timestamp: timestamppb.Now(),
 	}
-	
+
 	sm.BroadcastToAll(update)
-	
+
 	log.Info().
 		Str("previous_phase", previousPhase.String()).
 		Str("new_phase", newPhase.String()).

@@ -26,14 +26,14 @@ This document outlines the implementation plan for optimizing the GeneralsReinfo
 
 ### Phase 1: Optimize Resource Usage (Priority: HIGH)
 
-#### 1.1 Centralized Experience Collection Service
+#### 1.1 Centralized Experience Collection Service ✅ COMPLETED
 
 **Problem**: Each game creates a goroutine polling experiences every 100ms
 
 **Solution**: Single service managing all game experience collection
 
 **TODOs:**
-- [ ] Create `internal/grpc/gameserver/experience_aggregator.go`
+- [x] Create `internal/grpc/gameserver/experience_aggregator.go`
   ```go
   type ExperienceAggregator struct {
       games    map[string]*ExperienceCollector
@@ -41,14 +41,22 @@ This document outlines the implementation plan for optimizing the GeneralsReinfo
       updateCh chan string // game IDs needing collection
   }
   ```
-- [ ] Implement single goroutine processing experience updates
-- [ ] Replace per-game polling with event-driven collection
-- [ ] Add batching for efficient processing (collect from multiple games per cycle)
-- [ ] Update `game_manager.go` to register games with aggregator
+- [x] Implement single goroutine processing experience updates
+- [x] Replace per-game polling with event-driven collection
+- [x] Add batching for efficient processing (collect from multiple games per cycle)
+- [x] Update `game_manager.go` to register games with aggregator
 
-**Files to Modify:**
-- `internal/grpc/gameserver/game_manager.go` (lines 200-220)
-- `internal/grpc/gameserver/experience_service.go`
+**Files Modified:**
+- ✅ `internal/grpc/gameserver/game_manager.go` - Updated to use aggregator
+- ✅ `internal/grpc/gameserver/experience_aggregator.go` - New centralized service
+- ✅ `internal/experience/collector.go` - Added GetCount() method
+
+**Implementation Notes:**
+- Reduced goroutines from O(games) to 1 for experience collection
+- Event-driven collection with notification system
+- Batch processing with configurable intervals (50ms default)
+- Automatic cleanup when games are unregistered
+- Graceful shutdown with final flush of all experiences
 
 #### 1.2 Timer Wheel for Turn Management
 
@@ -291,7 +299,19 @@ async def consume_experience_batches(self):
 
 ---
 
-**Document Version**: 1.0  
+**Document Version**: 1.1  
 **Last Updated**: 2025-08-03  
 **Author**: Claude  
-**Status**: Ready for Implementation
+**Status**: Phase 1.1 Complete - Experience Aggregator Implemented
+
+## Implementation Progress
+
+### Completed ✅
+- **Phase 1.1**: Centralized Experience Collection Service
+  - Reduced per-game goroutines from 100ms polling to single aggregator
+  - Event-driven collection with batching
+  - Estimated goroutine reduction: 90%+ for experience collection
+
+### Next Steps
+- **Phase 1.2**: Timer Wheel for Turn Management (HIGH priority)
+- **Phase 1.3**: Memory Pool for Stream Managers (MEDIUM priority)

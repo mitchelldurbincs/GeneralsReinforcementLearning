@@ -48,7 +48,7 @@ func (e *Engine) performFullVisibilityUpdateOptimized() {
 	}
 
 	// No need to sync - using bitfield directly
-	
+
 	e.logger.Debug().Msg("Performed full visibility update (optimized)")
 }
 
@@ -62,10 +62,10 @@ func (e *Engine) performIncrementalVisibilityUpdateOptimized() {
 		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
 			continue
 		}
-		
+
 		// Clear visibility around this tile
 		e.clearVisibilityAroundOptimized(tileIdx, tilesToSync)
-		
+
 		// If tile has a new owner, grant visibility
 		currentOwner := e.gs.Board.T[tileIdx].Owner
 		if currentOwner >= 0 && currentOwner < len(e.gs.Players) && e.gs.Players[currentOwner].Alive {
@@ -80,14 +80,14 @@ func (e *Engine) performIncrementalVisibilityUpdateOptimized() {
 	for k := range e.tempAffectedPlayers {
 		delete(e.tempAffectedPlayers, k)
 	}
-	
+
 	for tileIdx := range e.gs.VisibilityChangedTiles {
 		tile := &e.gs.Board.T[tileIdx]
 		if tile.Owner >= 0 {
 			e.tempAffectedPlayers[tile.Owner] = struct{}{}
 		}
 	}
-	
+
 	for pid := range e.tempAffectedPlayers {
 		if !e.gs.Players[pid].Alive {
 			continue
@@ -100,16 +100,16 @@ func (e *Engine) performIncrementalVisibilityUpdateOptimized() {
 	}
 
 	// No need to sync - using bitfield directly
-	
+
 	e.logger.Debug().Int("changed_tiles", len(e.gs.VisibilityChangedTiles)).Msg("Performed incremental visibility update (optimized)")
 }
 
 // setVisibilityAroundOptimized sets visibility using bitfield operations
 func (e *Engine) setVisibilityAroundOptimized(tileIdx int, playerID int, playerBit uint32) {
 	x, y := e.gs.Board.XY(tileIdx)
-	
+
 	for _, offset := range visibilityOffsets {
-		nx, ny := x + offset.dx, y + offset.dy
+		nx, ny := x+offset.dx, y+offset.dy
 		if e.gs.Board.InBounds(nx, ny) {
 			visIdx := e.gs.Board.Idx(nx, ny)
 			e.gs.Board.T[visIdx].VisibleBitfield |= playerBit
@@ -120,16 +120,16 @@ func (e *Engine) setVisibilityAroundOptimized(tileIdx int, playerID int, playerB
 // clearVisibilityAroundOptimized clears visibility using bitfield operations
 func (e *Engine) clearVisibilityAroundOptimized(tileIdx int, tilesToSync map[int]struct{}) {
 	x, y := e.gs.Board.XY(tileIdx)
-	
+
 	// Create bitmask of all players
 	allPlayersMask := uint32(0)
 	for pid := range e.gs.Players {
 		allPlayersMask |= (1 << uint(pid))
 	}
 	clearMask := ^allPlayersMask
-	
+
 	for _, offset := range visibilityOffsets {
-		nx, ny := x + offset.dx, y + offset.dy
+		nx, ny := x+offset.dx, y+offset.dy
 		if e.gs.Board.InBounds(nx, ny) {
 			visIdx := e.gs.Board.Idx(nx, ny)
 			e.gs.Board.T[visIdx].VisibleBitfield &= clearMask
@@ -141,9 +141,9 @@ func (e *Engine) clearVisibilityAroundOptimized(tileIdx int, tilesToSync map[int
 // markVisibilityTilesForSync marks tiles that need map sync
 func (e *Engine) markVisibilityTilesForSync(tileIdx int, tilesToSync map[int]struct{}) {
 	x, y := e.gs.Board.XY(tileIdx)
-	
+
 	for _, offset := range visibilityOffsets {
-		nx, ny := x + offset.dx, y + offset.dy
+		nx, ny := x+offset.dx, y+offset.dy
 		if e.gs.Board.InBounds(nx, ny) {
 			visIdx := e.gs.Board.Idx(nx, ny)
 			tilesToSync[visIdx] = struct{}{}
@@ -158,7 +158,7 @@ func (e *Engine) ComputePlayerVisibilityOptimized(playerID int) PlayerVisibility
 		VisibleTiles: make([]bool, numTiles),
 		FogTiles:     make([]bool, numTiles),
 	}
-	
+
 	// If fog of war is disabled, all tiles are visible
 	if !e.gs.FogOfWarEnabled {
 		for i := range vis.VisibleTiles {
@@ -166,19 +166,19 @@ func (e *Engine) ComputePlayerVisibilityOptimized(playerID int) PlayerVisibility
 		}
 		return vis
 	}
-	
+
 	// Use bitfield for visibility check
 	playerBit := uint32(1 << uint(playerID))
-	
+
 	// Copy current visibility from tiles
 	for i, tile := range e.gs.Board.T {
 		vis.VisibleTiles[i] = (tile.VisibleBitfield & playerBit) != 0
-		
+
 		// A tile is in fog if it was previously discovered but not currently visible
 		if !vis.VisibleTiles[i] && tile.Type != core.TileNormal {
 			vis.FogTiles[i] = true
 		}
 	}
-	
+
 	return vis
 }

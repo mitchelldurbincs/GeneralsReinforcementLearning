@@ -9,11 +9,11 @@ import (
 
 // LoggerSubscriber logs events to structured logs
 type LoggerSubscriber struct {
-	id             string
-	logger         zerolog.Logger
-	logLevel       zerolog.Level
+	id              string
+	logger          zerolog.Logger
+	logLevel        zerolog.Level
 	eventTypeFilter map[string]bool // If non-nil, only log these event types
-	devMode        bool            // If true, log full event details
+	devMode         bool            // If true, log full event details
 }
 
 // NewLoggerSubscriber creates a new logger subscriber
@@ -36,7 +36,7 @@ func (ls *LoggerSubscriber) SetEventFilter(eventTypes []string) {
 		ls.eventTypeFilter = nil
 		return
 	}
-	
+
 	ls.eventTypeFilter = make(map[string]bool)
 	for _, eventType := range eventTypes {
 		ls.eventTypeFilter[eventType] = true
@@ -87,33 +87,33 @@ func (ls *LoggerSubscriber) HandleEvent(event events.Event) {
 			Int("num_players", e.NumPlayers).
 			Int("map_width", e.MapWidth).
 			Int("map_height", e.MapHeight)
-			
+
 	case *events.GameEndedEvent:
 		logEvent.
 			Int("winner", e.Winner).
 			Dur("duration", e.Duration).
 			Int("final_turn", e.FinalTurn)
-			
+
 	case *events.TurnStartedEvent:
 		logEvent.Int("turn", e.TurnNumber)
-		
+
 	case *events.TurnEndedEvent:
 		logEvent.
 			Int("turn", e.TurnNumber).
 			Int("actions_count", e.ActionsCount).
 			Dur("process_time", e.ProcessedTime)
-			
+
 	case *events.ActionSubmittedEvent:
 		logEvent.
 			Int("player_id", e.PlayerID).
 			Str("action_type", fmt.Sprintf("%v", e.Action.GetType()))
-			
+
 	case *events.ActionProcessedEvent:
 		logEvent.
 			Int("player_id", e.PlayerID).
 			Str("action_type", fmt.Sprintf("%v", e.Action.GetType())).
 			Str("result", e.Result)
-			
+
 	case *events.MoveExecutedEvent:
 		logEvent.
 			Int("player_id", e.PlayerID).
@@ -123,7 +123,7 @@ func (ls *LoggerSubscriber) HandleEvent(event events.Event) {
 			Int("to_y", e.To.Y).
 			Int("armies_moved", e.ArmiesMoved).
 			Bool("half", e.Half)
-			
+
 	case *events.CombatResolvedEvent:
 		logEvent.
 			Int("attacker_id", e.AttackerID).
@@ -135,13 +135,13 @@ func (ls *LoggerSubscriber) HandleEvent(event events.Event) {
 			Int("attacker_losses", e.AttackerLosses).
 			Int("defender_losses", e.DefenderLosses).
 			Bool("tile_captured", e.TileCaptured)
-			
+
 	case *events.PlayerEliminatedEvent:
 		logEvent.
 			Int("player_id", e.PlayerID).
 			Int("eliminated_by", e.EliminatedBy).
 			Int("final_rank", e.FinalRank)
-			
+
 	case *events.ProductionAppliedEvent:
 		logEvent.
 			Int("tiles_produced", e.TilesProduced).

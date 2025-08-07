@@ -264,7 +264,7 @@ func (s *ResetState) Phase() GamePhase {
 
 func (s *ResetState) Enter(ctx *GameContext) error {
 	ctx.Logger.Info().Msg("Resetting game")
-	
+
 	// Clear game-specific data
 	ctx.StartTime = time.Time{}
 	ctx.PauseTime = time.Time{}
@@ -272,12 +272,12 @@ func (s *ResetState) Enter(ctx *GameContext) error {
 	ctx.Winner = -1
 	ctx.Error = nil
 	ctx.PlayerCount = 0
-	
+
 	// Clear metadata but keep the map allocated
 	for k := range ctx.Metadata {
 		delete(ctx.Metadata, k)
 	}
-	
+
 	return nil
 }
 

@@ -14,18 +14,18 @@ import (
 
 func TestLockFreeBuffer_Creation(t *testing.T) {
 	logger := zerolog.New(zerolog.NewTestWriter(t))
-	
+
 	// Test with valid capacity
 	buf := NewLockFreeBuffer(100, logger)
 	assert.NotNil(t, buf)
 	assert.Equal(t, 128, buf.Capacity()) // Rounded up to power of 2
 	assert.Equal(t, 0, buf.Size())
 	assert.False(t, buf.IsFull())
-	
+
 	// Test with zero capacity (should use default)
 	buf2 := NewLockFreeBuffer(0, logger)
 	assert.Equal(t, 8192, buf2.Capacity())
-	
+
 	// Test power of 2 capacity
 	buf3 := NewLockFreeBuffer(256, logger)
 	assert.Equal(t, 256, buf3.Capacity())
@@ -34,30 +34,30 @@ func TestLockFreeBuffer_Creation(t *testing.T) {
 func TestLockFreeBuffer_AddAndGet(t *testing.T) {
 	logger := zerolog.New(zerolog.NewTestWriter(t))
 	buf := NewLockFreeBuffer(16, logger)
-	
+
 	// Add experiences
 	exp1 := &experiencepb.Experience{ExperienceId: "1", Reward: 1.0}
 	exp2 := &experiencepb.Experience{ExperienceId: "2", Reward: 2.0}
-	
+
 	err := buf.Add(exp1)
 	require.NoError(t, err)
 	assert.Equal(t, 1, buf.Size())
-	
+
 	err = buf.Add(exp2)
 	require.NoError(t, err)
 	assert.Equal(t, 2, buf.Size())
-	
+
 	// Get experiences
 	got1, err := buf.Get()
 	require.NoError(t, err)
 	assert.Equal(t, "1", got1.ExperienceId)
 	assert.Equal(t, 1, buf.Size())
-	
+
 	got2, err := buf.Get()
 	require.NoError(t, err)
 	assert.Equal(t, "2", got2.ExperienceId)
 	assert.Equal(t, 0, buf.Size())
-	
+
 	// Try to get from empty buffer
 	_, err = buf.Get()
 	assert.Error(t, err)
@@ -66,24 +66,24 @@ func TestLockFreeBuffer_AddAndGet(t *testing.T) {
 func TestLockFreeBuffer_Overflow(t *testing.T) {
 	logger := zerolog.New(zerolog.NewTestWriter(t))
 	buf := NewLockFreeBuffer(4, logger) // Small buffer
-	
+
 	// Fill buffer
 	for i := 0; i < 4; i++ {
 		exp := &experiencepb.Experience{ExperienceId: string(rune('A' + i))}
 		err := buf.Add(exp)
 		require.NoError(t, err)
 	}
-	
+
 	assert.True(t, buf.IsFull())
 	stats := buf.Stats()
 	assert.Equal(t, uint64(4), stats.TotalAdded)
 	assert.Equal(t, uint64(0), stats.TotalDropped)
-	
+
 	// Add one more (should drop oldest)
 	exp := &experiencepb.Experience{ExperienceId: "E"}
 	err := buf.Add(exp)
 	require.NoError(t, err)
-	
+
 	stats = buf.Stats()
 	assert.Equal(t, uint64(5), stats.TotalAdded)
 	assert.Equal(t, uint64(1), stats.TotalDropped)
@@ -93,19 +93,19 @@ func TestLockFreeBuffer_Overflow(t *testing.T) {
 func TestLockFreeBuffer_GetBatch(t *testing.T) {
 	logger := zerolog.New(zerolog.NewTestWriter(t))
 	buf := NewLockFreeBuffer(16, logger)
-	
+
 	// Add 10 experiences
 	for i := 0; i < 10; i++ {
 		exp := &experiencepb.Experience{ExperienceId: string(rune('0' + i))}
 		err := buf.Add(exp)
 		require.NoError(t, err)
 	}
-	
+
 	// Get batch of 5
 	batch := buf.GetBatch(5)
 	assert.Len(t, batch, 5)
 	assert.Equal(t, 5, buf.Size())
-	
+
 	// Get batch larger than remaining
 	batch = buf.GetBatch(10)
 	assert.Len(t, batch, 5)
@@ -115,13 +115,13 @@ func TestLockFreeBuffer_GetBatch(t *testing.T) {
 func TestLockFreeBuffer_ConcurrentAccess(t *testing.T) {
 	logger := zerolog.New(zerolog.NewTestWriter(t))
 	buf := NewLockFreeBuffer(1024, logger)
-	
+
 	const numProducers = 10
 	const numConsumers = 5
 	const itemsPerProducer = 100
-	
+
 	var wg sync.WaitGroup
-	
+
 	// Producers
 	for p := 0; p < numProducers; p++ {
 		wg.Add(1)
@@ -139,10 +139,10 @@ func TestLockFreeBuffer_ConcurrentAccess(t *testing.T) {
 			}
 		}(p)
 	}
-	
+
 	// Let producers get ahead
 	time.Sleep(10 * time.Millisecond)
-	
+
 	// Consumers
 	consumed := make([]int32, numConsumers)
 	for c := 0; c < numConsumers; c++ {
@@ -168,13 +168,13 @@ func TestLockFreeBuffer_ConcurrentAccess(t *testing.T) {
 			}
 		}(c)
 	}
-	
+
 	wg.Wait()
-	
+
 	// Verify all items were produced
 	stats := buf.Stats()
 	assert.Equal(t, uint64(numProducers*itemsPerProducer), stats.TotalAdded)
-	
+
 	// Verify consumption
 	totalConsumed := int32(0)
 	for _, count := range consumed {
@@ -187,24 +187,24 @@ func TestLockFreeBuffer_ConcurrentAccess(t *testing.T) {
 func TestLockFreeBuffer_Close(t *testing.T) {
 	logger := zerolog.New(zerolog.NewTestWriter(t))
 	buf := NewLockFreeBuffer(16, logger)
-	
+
 	// Add some experiences
 	exp1 := &experiencepb.Experience{ExperienceId: "1"}
 	err := buf.Add(exp1)
 	require.NoError(t, err)
-	
+
 	// Close buffer
 	err = buf.Close()
 	require.NoError(t, err)
-	
+
 	// Operations should fail after close
 	exp2 := &experiencepb.Experience{ExperienceId: "2"}
 	err = buf.Add(exp2)
 	assert.Equal(t, ErrBufferClosed, err)
-	
+
 	_, err = buf.Get()
 	assert.Equal(t, ErrBufferClosed, err)
-	
+
 	// Close again should be idempotent
 	err = buf.Close()
 	assert.NoError(t, err)
@@ -214,14 +214,14 @@ func BenchmarkLockFreeBuffer_Add(b *testing.B) {
 	logger := zerolog.Nop()
 	buf := NewLockFreeBuffer(8192, logger)
 	exp := &experiencepb.Experience{ExperienceId: "bench", Reward: 1.0}
-	
+
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			_ = buf.Add(exp)
 		}
 	})
-	
+
 	b.StopTimer()
 	stats := buf.Stats()
 	b.ReportMetric(float64(stats.TotalAdded)/b.Elapsed().Seconds(), "adds/sec")
@@ -230,13 +230,13 @@ func BenchmarkLockFreeBuffer_Add(b *testing.B) {
 func BenchmarkLockFreeBuffer_Get(b *testing.B) {
 	logger := zerolog.Nop()
 	buf := NewLockFreeBuffer(8192, logger)
-	
+
 	// Pre-fill buffer
 	exp := &experiencepb.Experience{ExperienceId: "bench", Reward: 1.0}
 	for i := 0; i < buf.capacity/2; i++ {
 		_ = buf.Add(exp)
 	}
-	
+
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -246,7 +246,7 @@ func BenchmarkLockFreeBuffer_Get(b *testing.B) {
 			}
 		}
 	})
-	
+
 	b.StopTimer()
 	stats := buf.Stats()
 	b.ReportMetric(float64(stats.TotalRetrieved)/b.Elapsed().Seconds(), "gets/sec")
@@ -256,7 +256,7 @@ func BenchmarkLockFreeBuffer_Mixed(b *testing.B) {
 	logger := zerolog.Nop()
 	buf := NewLockFreeBuffer(8192, logger)
 	exp := &experiencepb.Experience{ExperienceId: "bench", Reward: 1.0}
-	
+
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
@@ -269,7 +269,7 @@ func BenchmarkLockFreeBuffer_Mixed(b *testing.B) {
 			i++
 		}
 	})
-	
+
 	b.StopTimer()
 	stats := buf.Stats()
 	total := stats.TotalAdded + stats.TotalRetrieved
@@ -281,14 +281,14 @@ func BenchmarkMutexBuffer_Add(b *testing.B) {
 	logger := zerolog.Nop()
 	buf := NewBuffer(8192, logger)
 	exp := &experiencepb.Experience{ExperienceId: "bench", Reward: 1.0}
-	
+
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			_ = buf.Add(exp)
 		}
 	})
-	
+
 	b.StopTimer()
 	stats := buf.Stats()
 	b.ReportMetric(float64(stats.TotalAdded)/b.Elapsed().Seconds(), "adds/sec")
@@ -297,13 +297,13 @@ func BenchmarkMutexBuffer_Add(b *testing.B) {
 func BenchmarkMutexBuffer_Get(b *testing.B) {
 	logger := zerolog.Nop()
 	buf := NewBuffer(8192, logger)
-	
+
 	// Pre-fill buffer
 	exp := &experiencepb.Experience{ExperienceId: "bench", Reward: 1.0}
 	for i := 0; i < buf.capacity/2; i++ {
 		_ = buf.Add(exp)
 	}
-	
+
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -320,7 +320,7 @@ func BenchmarkMutexBuffer_Mixed(b *testing.B) {
 	logger := zerolog.Nop()
 	buf := NewBuffer(8192, logger)
 	exp := &experiencepb.Experience{ExperienceId: "bench", Reward: 1.0}
-	
+
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
@@ -333,7 +333,7 @@ func BenchmarkMutexBuffer_Mixed(b *testing.B) {
 			i++
 		}
 	})
-	
+
 	b.StopTimer()
 	stats := buf.Stats()
 	total := stats.TotalAdded + stats.TotalDropped

@@ -78,13 +78,13 @@ func TestIntToStringFixedWidth_EdgeCases(t *testing.T) {
 		result := IntToStringFixedWidth(123, 0)
 		assert.Equal(t, "123", result)
 	})
-	
+
 	t.Run("negative width", func(t *testing.T) {
 		result := IntToStringFixedWidth(123, -5)
 		// fmt.Sprintf with negative width adds trailing spaces
 		assert.Equal(t, "123  ", result)
 	})
-	
+
 	t.Run("very large number", func(t *testing.T) {
 		result := IntToStringFixedWidth(999999999, 5)
 		assert.Equal(t, "999999999", result)
@@ -131,7 +131,7 @@ func TestGetActionType_MultipleTypes(t *testing.T) {
 	actionType := GetActionType(moveAction)
 	assert.True(t, strings.Contains(actionType, "MoveAction"))
 	assert.True(t, strings.Contains(actionType, "*"))
-	
+
 	// Test with interface holding a value
 	var action Action = moveAction
 	actionType = GetActionType(action)

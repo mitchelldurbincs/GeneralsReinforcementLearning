@@ -66,7 +66,7 @@ func TestPlayerColors(t *testing.T) {
 			assert.True(t, exists, "color should exist for player %d", tt.playerID)
 			assert.NotNil(t, c)
 			assert.True(t, tt.checkColor(c), "color check failed for player %d", tt.playerID)
-			
+
 			// All colors should be fully opaque
 			rgba, ok := c.(color.RGBA)
 			assert.True(t, ok, "color should be RGBA type")
@@ -81,7 +81,7 @@ func TestPlayerColorsCompleteness(t *testing.T) {
 		_, exists := PlayerColors[i]
 		assert.True(t, exists, "color should exist for player %d", i)
 	}
-	
+
 	// Check that we don't have extra colors
 	assert.Len(t, PlayerColors, 5, "should have exactly 5 player colors (-1 through 3)")
 }
@@ -95,17 +95,17 @@ func TestTileColors(t *testing.T) {
 		assert.Equal(t, uint8(80), MountainColor.B)
 		assert.Equal(t, uint8(255), MountainColor.A)
 	})
-	
+
 	t.Run("city hue shift", func(t *testing.T) {
 		assert.Equal(t, 30, CityOwnedHueShift)
 	})
-	
+
 	t.Run("symbol colors", func(t *testing.T) {
 		// General and city symbols should be white
 		assert.Equal(t, color.White, GeneralSymbolColor)
 		assert.Equal(t, color.White, CitySymbolColor)
 		assert.Equal(t, color.White, ArmyTextColor)
-		
+
 		// General army text should be black for contrast
 		assert.Equal(t, color.Black, GeneralArmyTextColor)
 	})
@@ -115,7 +115,7 @@ func TestUIColors(t *testing.T) {
 	t.Run("background color", func(t *testing.T) {
 		assert.Equal(t, color.Black, BackgroundColor)
 	})
-	
+
 	t.Run("grid line color", func(t *testing.T) {
 		assert.NotNil(t, GridLineColor)
 		// Grid lines should be dark gray
@@ -124,7 +124,7 @@ func TestUIColors(t *testing.T) {
 		assert.Equal(t, uint8(50), GridLineColor.B)
 		assert.Equal(t, uint8(255), GridLineColor.A)
 	})
-	
+
 	t.Run("fog of war color", func(t *testing.T) {
 		assert.NotNil(t, FogOfWarColor)
 		// Fog should be semi-transparent black
@@ -148,7 +148,7 @@ func TestColorConsistency(t *testing.T) {
 			colorMap[rgba] = playerID
 		}
 	})
-	
+
 	// Ensure colors provide good contrast
 	t.Run("color contrast", func(t *testing.T) {
 		// Check that player colors are distinguishable from background
@@ -164,7 +164,7 @@ func TestColorConsistency(t *testing.T) {
 			if rgba.B > maxComponent {
 				maxComponent = rgba.B
 			}
-			assert.Greater(t, maxComponent, uint8(50), 
+			assert.Greater(t, maxComponent, uint8(50),
 				"player %d color should be visible against black background", playerID)
 		}
 	})

@@ -15,11 +15,11 @@ var PlayerColors = map[int]color.Color{
 
 // Tile colors
 var (
-	MountainColor      = color.RGBA{80, 80, 80, 255}
-	CityOwnedHueShift  = 30
-	GeneralSymbolColor = color.White
-	CitySymbolColor    = color.White
-	ArmyTextColor      = color.White
+	MountainColor        = color.RGBA{80, 80, 80, 255}
+	CityOwnedHueShift    = 30
+	GeneralSymbolColor   = color.White
+	CitySymbolColor      = color.White
+	ArmyTextColor        = color.White
 	GeneralArmyTextColor = color.Black
 )
 

@@ -6,14 +6,14 @@ import "fmt"
 // It is returned by ApplyMoveAction if a tile changes ownership.
 type CaptureDetails struct {
 	// Keep existing fields for backward compatibility
-	X                 int // X coordinate of the captured tile
-	Y                 int // Y coordinate of the captured tile
+	X int // X coordinate of the captured tile
+	Y int // Y coordinate of the captured tile
 	// New coordinate field
 	Location          Coordinate // Coordinate of the captured tile
-	TileType          int // Type of the tile that was captured (e.g., TileNormal, TileCity, TileGeneral)
-	CapturingPlayerID int // ID of the player who made the capture and now owns the tile
-	PreviousOwnerID   int // ID of the player who owned the tile before capture (can be NeutralID)
-	PreviousArmyCount int // Army count on the tile before capture
+	TileType          int        // Type of the tile that was captured (e.g., TileNormal, TileCity, TileGeneral)
+	CapturingPlayerID int        // ID of the player who made the capture and now owns the tile
+	PreviousOwnerID   int        // ID of the player who owned the tile before capture (can be NeutralID)
+	PreviousArmyCount int        // Army count on the tile before capture
 }
 
 // ApplyMoveAction applies a move action to the board.
@@ -48,12 +48,11 @@ func ApplyMoveAction(b *Board, action *MoveAction, changedTiles map[int]struct{}
 		}
 	}
 
-
 	var captureDetails *CaptureDetails = nil
 
 	// Apply the army reduction from the source tile
 	fromTile.Army -= armiesToMove
-	
+
 	// Track changed tiles if map provided
 	if changedTiles != nil {
 		changedTiles[fromIdx] = struct{}{}

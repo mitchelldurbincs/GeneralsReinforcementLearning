@@ -4,7 +4,7 @@ import "github.com/rs/zerolog"
 
 // WinConditionChecker handles game over detection and winner determination
 type WinConditionChecker struct {
-	logger         zerolog.Logger
+	logger          zerolog.Logger
 	originalPlayers int
 }
 
@@ -23,7 +23,7 @@ func (wc *WinConditionChecker) CheckGameOver(players []Player) (bool, int) {
 	aliveCount := 0
 	var alivePlayers []int
 	var lastAliveID int
-	
+
 	for _, p := range players {
 		if p.IsAlive() {
 			aliveCount++
@@ -52,7 +52,7 @@ func (wc *WinConditionChecker) CheckGameOver(players []Player) (bool, int) {
 	}
 
 	wc.logger.Debug().Bool("is_game_over", gameOver).Int("alive_player_count", aliveCount).Interface("alive_players_ids", alivePlayers).Msg("Game over check complete")
-	
+
 	return gameOver, winnerID
 }
 

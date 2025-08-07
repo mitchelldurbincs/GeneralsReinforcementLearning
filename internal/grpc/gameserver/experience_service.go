@@ -36,17 +36,17 @@ func (c *BufferedExperienceCollector) OnStateTransition(prevState, currState *ga
 
 		// Calculate reward
 		reward := experience.CalculateReward(prevState, currState, playerID)
-		
+
 		// Serialize state to tensor
 		stateData := c.serializer.StateToTensor(prevState, playerID)
 		nextStateData := c.serializer.StateToTensor(currState, playerID)
-		
+
 		// Convert action to index
 		actionIndex := int32(0)
 		if action != nil && action.Type == game.ActionTypeMove {
 			actionIndex = int32(c.serializer.ActionToIndex(action, prevState.Board.W))
 		}
-		
+
 		// Determine if game is over for this player
 		done := false
 		if currState.IsGameOver() {
@@ -70,8 +70,8 @@ func (c *BufferedExperienceCollector) OnStateTransition(prevState, currState *ga
 				Data:  nextStateData,
 				Shape: c.serializer.GetTensorShape(prevState.Board.W, prevState.Board.H),
 			},
-			Reward:   reward,
-			Done:     done,
+			Reward: reward,
+			Done:   done,
 			Metadata: map[string]string{
 				"game_id":   c.gameID,
 				"player_id": fmt.Sprintf("%d", playerID),
@@ -103,14 +103,14 @@ func (c *BufferedExperienceCollector) OnGameEnd(finalState *game.GameState) {
 // ExperienceService implements the ExperienceService gRPC server
 type ExperienceService struct {
 	experiencepb.UnimplementedExperienceServiceServer
-	
+
 	// Buffer manager for experience storage
 	bufferManager *experience.BufferManager
-	
+
 	// Active streams
-	mu sync.RWMutex
+	mu            sync.RWMutex
 	activeStreams map[string]*experienceStream
-	
+
 	// Configuration
 	defaultBufferSize int
 	streamTimeout     time.Duration
@@ -133,7 +133,7 @@ func NewExperienceService(bufferManager *experience.BufferManager) *ExperienceSe
 		// Create default buffer manager if none provided
 		bufferManager = experience.NewBufferManager(10000, log.Logger)
 	}
-	
+
 	return &ExperienceService{
 		bufferManager:     bufferManager,
 		activeStreams:     make(map[string]*experienceStream),
@@ -151,11 +151,11 @@ func (s *ExperienceService) StreamExperiences(
 	if err := s.validateStreamRequest(req); err != nil {
 		return status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
 	}
-	
+
 	// Create stream context
 	ctx, cancel := context.WithCancel(stream.Context())
 	defer cancel()
-	
+
 	// Create stream info
 	streamID := uuid.New().String()
 	streamInfo := &experienceStream{
@@ -167,21 +167,21 @@ func (s *ExperienceService) StreamExperiences(
 		cancelFunc: cancel,
 		lastSent:   time.Now(),
 	}
-	
+
 	// Convert game IDs to map for efficient lookup
 	for _, gameID := range req.GameIds {
 		streamInfo.gameIDs[gameID] = true
 	}
-	
+
 	// Convert player IDs to map for efficient lookup
 	for _, playerID := range req.PlayerIds {
 		streamInfo.playerIDs[playerID] = true
 	}
-	
+
 	// Register stream
 	s.registerStream(streamID, streamInfo)
 	defer s.unregisterStream(streamID)
-	
+
 	log.Info().
 		Str("stream_id", streamID).
 		Int("game_ids", len(req.GameIds)).
@@ -189,10 +189,10 @@ func (s *ExperienceService) StreamExperiences(
 		Int32("batch_size", req.BatchSize).
 		Bool("follow", req.Follow).
 		Msg("Started experience stream")
-	
+
 	// Create merged stream from relevant buffers
 	merger := experience.NewStreamMerger(1000, log.Logger)
-	
+
 	// Add sources based on filters
 	if len(req.GameIds) > 0 {
 		// Stream from specific game buffers
@@ -207,22 +207,22 @@ func (s *ExperienceService) StreamExperiences(
 			merger.AddSource(buffer.StreamChannel())
 		}
 	}
-	
+
 	// Start merging
 	merger.Start()
 	defer merger.Close()
-	
+
 	// Stream experiences
 	batch := make([]*experiencepb.Experience, 0, req.BatchSize)
 	batchTimer := time.NewTimer(100 * time.Millisecond)
 	defer batchTimer.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
 			// Context cancelled
 			return nil
-			
+
 		case exp, ok := <-merger.Output():
 			if !ok {
 				// Channel closed
@@ -238,15 +238,15 @@ func (s *ExperienceService) StreamExperiences(
 				// In follow mode, continue waiting
 				continue
 			}
-			
+
 			// Filter experience if needed
 			if !s.shouldIncludeExperience(exp, streamInfo) {
 				continue
 			}
-			
+
 			// Add to batch
 			batch = append(batch, exp)
-			
+
 			// Send batch if full
 			if int32(len(batch)) >= req.BatchSize {
 				if err := s.sendBatch(stream, batch); err != nil {
@@ -255,7 +255,7 @@ func (s *ExperienceService) StreamExperiences(
 				batch = batch[:0]
 				batchTimer.Reset(100 * time.Millisecond)
 			}
-			
+
 		case <-batchTimer.C:
 			// Send partial batch on timeout
 			if len(batch) > 0 {
@@ -265,7 +265,7 @@ func (s *ExperienceService) StreamExperiences(
 				batch = batch[:0]
 			}
 			batchTimer.Reset(100 * time.Millisecond)
-			
+
 		case <-time.After(s.streamTimeout):
 			// Stream timeout
 			return status.Error(codes.DeadlineExceeded, "stream timeout")
@@ -282,28 +282,28 @@ func (s *ExperienceService) SubmitExperiences(
 	if len(req.Experiences) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "no experiences provided")
 	}
-	
+
 	if len(req.Experiences) > 1000 {
 		return nil, status.Error(codes.InvalidArgument, "too many experiences (max 1000)")
 	}
-	
+
 	// Get or create buffer for the game
 	gameID := ""
 	if len(req.Experiences) > 0 {
 		// Extract game ID from first experience
 		gameID = req.Experiences[0].GameId
 	}
-	
+
 	if gameID == "" {
 		return nil, status.Error(codes.InvalidArgument, "game ID required")
 	}
-	
+
 	buffer := s.bufferManager.GetOrCreateBuffer(gameID)
-	
+
 	// Add experiences to buffer
 	accepted := 0
 	rejected := 0
-	
+
 	for _, exp := range req.Experiences {
 		// Validate experience
 		if err := s.validateExperience(exp); err != nil {
@@ -315,7 +315,7 @@ func (s *ExperienceService) SubmitExperiences(
 			rejected++
 			continue
 		}
-		
+
 		// Add to buffer
 		if err := buffer.Add(exp); err != nil {
 			if errors.Is(err, experience.ErrBufferFull) {
@@ -326,16 +326,16 @@ func (s *ExperienceService) SubmitExperiences(
 			rejected++
 			continue
 		}
-		
+
 		accepted++
 	}
-	
+
 	log.Info().
 		Str("game_id", gameID).
 		Int("accepted", accepted).
 		Int("rejected", rejected).
 		Msg("Submitted experiences")
-	
+
 	return &experiencepb.SubmitExperiencesResponse{
 		Accepted: int32(accepted),
 		Rejected: int32(rejected),
@@ -352,23 +352,23 @@ func (s *ExperienceService) GetExperienceStats(
 		TotalExperiences: 0,
 		TotalGames:       0,
 	}
-	
+
 	// Aggregate stats from all buffers
 	totalSize := int64(0)
 	totalCapacity := int64(0)
 	totalAdded := int64(0)
 	totalDropped := int64(0)
 	totalStreamed := int64(0)
-	
+
 	buffers := s.bufferManager.GetAllBuffers()
-	
+
 	// Filter by game IDs if specified
 	if len(req.GameIds) > 0 {
 		gameIDSet := make(map[string]bool)
 		for _, id := range req.GameIds {
 			gameIDSet[id] = true
 		}
-		
+
 		filtered := make(map[string]*experience.Buffer)
 		for key, buffer := range buffers {
 			if gameIDSet[key] {
@@ -377,7 +377,7 @@ func (s *ExperienceService) GetExperienceStats(
 		}
 		buffers = filtered
 	}
-	
+
 	// Collect stats
 	for _, buffer := range buffers {
 		bufferStats := buffer.Stats()
@@ -387,17 +387,17 @@ func (s *ExperienceService) GetExperienceStats(
 		totalDropped += bufferStats.TotalDropped
 		totalStreamed += bufferStats.TotalStreamed
 	}
-	
+
 	resp.TotalExperiences = totalAdded
 	resp.TotalGames = int64(len(buffers))
-	
+
 	// TODO: Add more detailed statistics
 	// - experiences_per_game
 	// - experiences_per_player
 	// - average_reward
 	// - min/max rewards
 	// - oldest/newest experience timestamps
-	
+
 	return resp, nil
 }
 
@@ -407,11 +407,11 @@ func (s *ExperienceService) validateStreamRequest(req *experiencepb.StreamExperi
 	if req.BatchSize <= 0 {
 		req.BatchSize = 32 // Default batch size
 	}
-	
+
 	if req.BatchSize > 1000 {
 		return fmt.Errorf("batch size too large (max 1000)")
 	}
-	
+
 	return nil
 }
 
@@ -419,19 +419,19 @@ func (s *ExperienceService) validateExperience(exp *experiencepb.Experience) err
 	if exp == nil {
 		return fmt.Errorf("experience is nil")
 	}
-	
+
 	if exp.GameId == "" {
 		return fmt.Errorf("game ID is required")
 	}
-	
+
 	if exp.State == nil || exp.NextState == nil {
 		return fmt.Errorf("state and next_state are required")
 	}
-	
+
 	if len(exp.State.Data) == 0 || len(exp.NextState.Data) == 0 {
 		return fmt.Errorf("state data cannot be empty")
 	}
-	
+
 	return nil
 }
 
@@ -440,12 +440,12 @@ func (s *ExperienceService) shouldIncludeExperience(exp *experiencepb.Experience
 	if len(stream.gameIDs) > 0 && !stream.gameIDs[exp.GameId] {
 		return false
 	}
-	
+
 	// Filter by player ID if specified
 	if len(stream.playerIDs) > 0 && !stream.playerIDs[exp.PlayerId] {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -482,7 +482,7 @@ func (s *ExperienceService) GetBufferManager() *experience.BufferManager {
 func (s *ExperienceService) CreateCollector(gameID string) *BufferedExperienceCollector {
 	// Create or get buffer for this game
 	buffer := s.bufferManager.GetOrCreateBuffer(gameID)
-	
+
 	// Create and return collector that writes to the buffer
 	return &BufferedExperienceCollector{
 		gameID:     gameID,

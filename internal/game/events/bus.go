@@ -9,10 +9,10 @@ import (
 
 // EventBus is a synchronous event bus implementation
 type EventBus struct {
-	subscribers map[string]Subscriber
+	subscribers  map[string]Subscriber
 	funcHandlers map[string][]EventHandler
-	mu          sync.RWMutex
-	logger      zerolog.Logger
+	mu           sync.RWMutex
+	logger       zerolog.Logger
 }
 
 // NewEventBus creates a new event bus instance
@@ -28,7 +28,7 @@ func NewEventBus() *EventBus {
 func (eb *EventBus) Subscribe(subscriber Subscriber) {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
-	
+
 	eb.subscribers[subscriber.ID()] = subscriber
 	eb.logger.Debug().
 		Str("subscriber_id", subscriber.ID()).
@@ -39,7 +39,7 @@ func (eb *EventBus) Subscribe(subscriber Subscriber) {
 func (eb *EventBus) Unsubscribe(subscriberID string) {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
-	
+
 	delete(eb.subscribers, subscriberID)
 	eb.logger.Debug().
 		Str("subscriber_id", subscriberID).
@@ -50,16 +50,16 @@ func (eb *EventBus) Unsubscribe(subscriberID string) {
 func (eb *EventBus) SubscribeFunc(eventType string, handler EventHandler) string {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
-	
+
 	eb.funcHandlers[eventType] = append(eb.funcHandlers[eventType], handler)
-	
+
 	// Return a simple ID for the function handler
 	handlerID := eventType + "_func_" + string(rune(len(eb.funcHandlers[eventType])))
 	eb.logger.Debug().
 		Str("event_type", eventType).
 		Str("handler_id", handlerID).
 		Msg("Function handler added to event bus")
-	
+
 	return handlerID
 }
 
@@ -67,15 +67,15 @@ func (eb *EventBus) SubscribeFunc(eventType string, handler EventHandler) string
 func (eb *EventBus) Publish(event Event) {
 	eb.mu.RLock()
 	defer eb.mu.RUnlock()
-	
+
 	eventType := event.Type()
-	
+
 	eb.logger.Debug().
 		Str("event_type", eventType).
 		Str("game_id", event.GameID()).
 		Time("timestamp", event.Timestamp()).
 		Msg("Publishing event")
-	
+
 	// Notify object subscribers
 	for id, subscriber := range eb.subscribers {
 		if subscriber.InterestedIn(eventType) {
@@ -94,7 +94,7 @@ func (eb *EventBus) Publish(event Event) {
 			}()
 		}
 	}
-	
+
 	// Notify function handlers
 	if handlers, exists := eb.funcHandlers[eventType]; exists {
 		for i, handler := range handlers {

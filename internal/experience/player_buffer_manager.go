@@ -17,18 +17,18 @@ import (
 type PlayerBufferManager struct {
 	// Player-specific buffers
 	playerBuffers sync.Map // map[int32]*PlayerBuffer
-	
+
 	// Configuration
 	bufferCapacity int
 	useLockFree    bool
-	
+
 	// Global statistics
 	totalExperiences uint64
 	activeBuffers    int32
-	
+
 	// Components
 	logger zerolog.Logger
-	
+
 	// Closed state
 	closed uint32
 }
@@ -79,7 +79,7 @@ func NewPlayerBufferManager(bufferCapacity int, useLockFree bool, logger zerolog
 	if bufferCapacity <= 0 {
 		bufferCapacity = 1000
 	}
-	
+
 	return &PlayerBufferManager{
 		bufferCapacity: bufferCapacity,
 		useLockFree:    useLockFree,
@@ -92,14 +92,14 @@ func (m *PlayerBufferManager) GetOrCreateBuffer(playerID int32) (ExperienceBuffe
 	if atomic.LoadUint32(&m.closed) == 1 {
 		return nil, ErrBufferClosed
 	}
-	
+
 	// Try to load existing buffer
 	if val, ok := m.playerBuffers.Load(playerID); ok {
 		pb := val.(*PlayerBuffer)
 		atomic.StoreInt64(&pb.LastUsed, timeNow())
 		return pb.Buffer, nil
 	}
-	
+
 	// Create new buffer
 	var buffer ExperienceBuffer
 	if m.useLockFree {
@@ -107,14 +107,14 @@ func (m *PlayerBufferManager) GetOrCreateBuffer(playerID int32) (ExperienceBuffe
 	} else {
 		buffer = &bufferAdapter{NewBuffer(m.bufferCapacity, m.logger)}
 	}
-	
+
 	pb := &PlayerBuffer{
 		PlayerID: playerID,
 		Buffer:   buffer,
 		Created:  timeNow(),
 		LastUsed: timeNow(),
 	}
-	
+
 	// Store buffer (handle race condition)
 	actual, loaded := m.playerBuffers.LoadOrStore(playerID, pb)
 	if loaded {
@@ -130,7 +130,7 @@ func (m *PlayerBufferManager) GetOrCreateBuffer(playerID int32) (ExperienceBuffe
 			Int("capacity", m.bufferCapacity).
 			Msg("Created player buffer")
 	}
-	
+
 	return pb.Buffer, nil
 }
 
@@ -140,11 +140,11 @@ func (m *PlayerBufferManager) AddExperience(playerID int32, exp *experiencepb.Ex
 	if err != nil {
 		return err
 	}
-	
+
 	if err := buffer.Add(exp); err != nil {
 		return err
 	}
-	
+
 	atomic.AddUint64(&m.totalExperiences, 1)
 	return nil
 }
@@ -165,11 +165,11 @@ func (m *PlayerBufferManager) GetExperiences(playerID int32, n int) ([]*experien
 // GetAllExperiences retrieves all experiences from all players without removing them
 func (m *PlayerBufferManager) GetAllExperiences() map[int32][]*experiencepb.Experience {
 	result := make(map[int32][]*experiencepb.Experience)
-	
+
 	m.playerBuffers.Range(func(key, value interface{}) bool {
 		playerID := key.(int32)
 		pb := value.(*PlayerBuffer)
-		
+
 		// Peek at all experiences from this player's buffer
 		experiences := pb.Buffer.PeekAll()
 		if len(experiences) > 0 {
@@ -177,21 +177,21 @@ func (m *PlayerBufferManager) GetAllExperiences() map[int32][]*experiencepb.Expe
 		}
 		return true
 	})
-	
+
 	return result
 }
 
 // MergeAllExperiences merges all player experiences into a single slice
 func (m *PlayerBufferManager) MergeAllExperiences() []*experiencepb.Experience {
 	var result []*experiencepb.Experience
-	
+
 	m.playerBuffers.Range(func(key, value interface{}) bool {
 		pb := value.(*PlayerBuffer)
 		experiences := pb.Buffer.PeekAll()
 		result = append(result, experiences...)
 		return true
 	})
-	
+
 	return result
 }
 
@@ -217,11 +217,11 @@ func (m *PlayerBufferManager) Stats() PlayerBufferStats {
 		ActiveBuffers:    int(atomic.LoadInt32(&m.activeBuffers)),
 		PlayerStats:      make(map[int32]PlayerBufferInfo),
 	}
-	
+
 	m.playerBuffers.Range(func(key, value interface{}) bool {
 		playerID := key.(int32)
 		pb := value.(*PlayerBuffer)
-		
+
 		stats.PlayerStats[playerID] = PlayerBufferInfo{
 			BufferSize: pb.Buffer.Size(),
 			Created:    pb.Created,
@@ -230,7 +230,7 @@ func (m *PlayerBufferManager) Stats() PlayerBufferStats {
 		stats.TotalBuffered += pb.Buffer.Size()
 		return true
 	})
-	
+
 	return stats
 }
 
@@ -239,9 +239,9 @@ func (m *PlayerBufferManager) Close() error {
 	if !atomic.CompareAndSwapUint32(&m.closed, 0, 1) {
 		return nil // Already closed
 	}
-	
+
 	var closeErrors []error
-	
+
 	m.playerBuffers.Range(func(key, value interface{}) bool {
 		pb := value.(*PlayerBuffer)
 		if err := pb.Buffer.Close(); err != nil {
@@ -249,18 +249,18 @@ func (m *PlayerBufferManager) Close() error {
 		}
 		return true
 	})
-	
+
 	stats := m.Stats()
 	m.logger.Info().
 		Uint64("total_experiences", stats.TotalExperiences).
 		Int("active_buffers", stats.ActiveBuffers).
 		Int("total_buffered", stats.TotalBuffered).
 		Msg("Player buffer manager closed")
-	
+
 	if len(closeErrors) > 0 {
 		return fmt.Errorf("errors closing buffers: %v", closeErrors)
 	}
-	
+
 	return nil
 }
 
@@ -306,16 +306,16 @@ func NewDistributedCollector(bufferCapacity int, useLockFree bool, gameID string
 func (c *DistributedCollector) OnStateTransition(prevState, currState *game.GameState, actions map[int]*game.Action) {
 	// Process each player's action in parallel
 	var wg sync.WaitGroup
-	
+
 	for playerID, action := range actions {
 		if action == nil {
 			continue
 		}
-		
+
 		wg.Add(1)
 		go func(pid int, act *game.Action) {
 			defer wg.Done()
-			
+
 			// Generate experience data
 			expID := uuid.New().String()
 			stateTensor := c.serializer.StateToTensor(prevState, pid)
@@ -324,7 +324,7 @@ func (c *DistributedCollector) OnStateTransition(prevState, currState *game.Game
 			actionMask := c.serializer.GenerateActionMask(prevState, pid)
 			actionIndex := c.serializer.ActionToIndex(act, prevState.Board.W)
 			done := currState.IsGameOver()
-			
+
 			// Create experience
 			exp := &experiencepb.Experience{
 				ExperienceId: expID,
@@ -348,7 +348,7 @@ func (c *DistributedCollector) OnStateTransition(prevState, currState *game.Game
 					"collector_version": "distributed-1.0.0",
 				},
 			}
-			
+
 			// Add to player-specific buffer
 			if err := c.manager.AddExperience(int32(pid), exp); err != nil {
 				c.logger.Error().
@@ -365,7 +365,7 @@ func (c *DistributedCollector) OnStateTransition(prevState, currState *game.Game
 			}
 		}(playerID, action)
 	}
-	
+
 	wg.Wait()
 }
 

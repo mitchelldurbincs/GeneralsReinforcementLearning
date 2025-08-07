@@ -265,7 +265,7 @@ func TestEngine_Step_ActionFromDeadPlayer(t *testing.T) {
 		board := engine.gs.Board
 		board.T[engine.gs.Players[player1ID].GeneralIdx] = core.Tile{Owner: core.NeutralID, Army: 0, Type: core.TileNormal}
 	}
-	
+
 	engine.gs.Players[player1ID].Alive = false
 	engine.gs.Players[player1ID].GeneralIdx = -1
 
@@ -301,4 +301,3 @@ func TestEngine_Step_ActionFromDeadPlayer(t *testing.T) {
 	assert.True(t, engine.gs.Players[player0ID].Alive, "Player 0 should be alive")
 	assert.False(t, engine.gs.Players[player1ID].Alive, "Player 1 should remain dead")
 }
-

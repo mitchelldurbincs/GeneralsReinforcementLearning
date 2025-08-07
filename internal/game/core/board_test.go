@@ -22,11 +22,11 @@ func TestNewBoard(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			board := NewBoard(tt.width, tt.height)
-			
+
 			assert.Equal(t, tt.width, board.W)
 			assert.Equal(t, tt.height, board.H)
 			assert.Len(t, board.T, tt.width*tt.height)
-			
+
 			// Verify all tiles are initialized correctly
 			for i, tile := range board.T {
 				assert.Equal(t, NeutralID, tile.Owner, "tile %d should be neutral", i)
@@ -40,7 +40,7 @@ func TestNewBoard(t *testing.T) {
 
 func TestBoard_Idx(t *testing.T) {
 	board := NewBoard(5, 5)
-	
+
 	tests := []struct {
 		x, y     int
 		expected int
@@ -51,7 +51,7 @@ func TestBoard_Idx(t *testing.T) {
 		{2, 2, 12},
 		{4, 4, 24},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
 			idx := board.Idx(tt.x, tt.y)
@@ -62,9 +62,9 @@ func TestBoard_Idx(t *testing.T) {
 
 func TestBoard_XY(t *testing.T) {
 	board := NewBoard(5, 5)
-	
+
 	tests := []struct {
-		idx      int
+		idx       int
 		expectedX int
 		expectedY int
 	}{
@@ -74,7 +74,7 @@ func TestBoard_XY(t *testing.T) {
 		{12, 2, 2},
 		{24, 4, 4},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
 			x, y := board.XY(tt.idx)
@@ -86,7 +86,7 @@ func TestBoard_XY(t *testing.T) {
 
 func TestBoard_InBounds(t *testing.T) {
 	board := NewBoard(5, 5)
-	
+
 	tests := []struct {
 		name     string
 		x, y     int
@@ -104,7 +104,7 @@ func TestBoard_InBounds(t *testing.T) {
 		{"both negative", -1, -1, false},
 		{"both too large", 10, 10, false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := board.InBounds(tt.x, tt.y)
@@ -115,16 +115,16 @@ func TestBoard_InBounds(t *testing.T) {
 
 func TestBoard_GetTile(t *testing.T) {
 	board := NewBoard(5, 5)
-	
+
 	// Set up some test tiles
 	board.T[0].Owner = 0
 	board.T[0].Army = 10
 	board.T[0].Type = TileGeneral
-	
-	board.T[12].Owner = 1  // (2,2)
+
+	board.T[12].Owner = 1 // (2,2)
 	board.T[12].Army = 5
 	board.T[12].Type = TileCity
-	
+
 	tests := []struct {
 		name     string
 		x, y     int
@@ -135,7 +135,7 @@ func TestBoard_GetTile(t *testing.T) {
 		{"out of bounds negative", -1, 0, nil},
 		{"out of bounds large", 10, 10, nil},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tile := board.GetTile(tt.x, tt.y)
@@ -153,7 +153,7 @@ func TestBoard_GetTile(t *testing.T) {
 
 func TestBoard_Distance(t *testing.T) {
 	board := NewBoard(10, 10)
-	
+
 	tests := []struct {
 		name     string
 		x1, y1   int
@@ -167,12 +167,12 @@ func TestBoard_Distance(t *testing.T) {
 		{"negative coords", 2, 2, -1, -1, 6},
 		{"large distance", 0, 0, 9, 9, 18},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dist := board.Distance(tt.x1, tt.y1, tt.x2, tt.y2)
 			assert.Equal(t, tt.expected, dist)
-			
+
 			// Distance should be symmetric
 			distReverse := board.Distance(tt.x2, tt.y2, tt.x1, tt.y1)
 			assert.Equal(t, dist, distReverse, "distance should be symmetric")
@@ -190,7 +190,7 @@ func TestTile_IsNeutral(t *testing.T) {
 		{"player 0 tile", 0, false},
 		{"player 1 tile", 1, false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tile := Tile{Owner: tt.owner}
@@ -212,7 +212,7 @@ func TestTile_TypeChecks(t *testing.T) {
 		{"general tile", TileGeneral, false, true, false},
 		{"mountain tile", TileMountain, false, false, true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tile := Tile{Type: tt.tileType}
@@ -236,7 +236,7 @@ func TestTile_IsEmpty(t *testing.T) {
 		{"neutral general", Tile{Owner: NeutralID, Type: TileGeneral, Army: 0}, false},
 		{"neutral mountain", Tile{Owner: NeutralID, Type: TileMountain, Army: 0}, false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.tile.IsEmpty())
@@ -252,7 +252,7 @@ func TestBoard_EdgeCases(t *testing.T) {
 		assert.False(t, board.InBounds(1, 0))
 		assert.False(t, board.InBounds(0, 1))
 	})
-	
+
 	t.Run("very large board", func(t *testing.T) {
 		board := NewBoard(1000, 1000)
 		assert.Equal(t, 1000000, len(board.T))
@@ -263,15 +263,15 @@ func TestBoard_EdgeCases(t *testing.T) {
 
 func TestBoard_ModifyTile(t *testing.T) {
 	board := NewBoard(5, 5)
-	
+
 	// Get a tile and modify it
 	tile := board.GetTile(2, 2)
 	require.NotNil(t, tile)
-	
+
 	tile.Owner = 1
 	tile.Army = 50
 	tile.Type = TileCity
-	
+
 	// Verify modifications persist
 	sameTile := board.GetTile(2, 2)
 	assert.Equal(t, 1, sameTile.Owner)
@@ -281,12 +281,12 @@ func TestBoard_ModifyTile(t *testing.T) {
 
 func TestBoard_VisibilityMap(t *testing.T) {
 	board := NewBoard(3, 3)
-	
+
 	// Set visibility for some tiles
 	tile := board.GetTile(1, 1)
 	tile.SetVisible(0, true)
 	tile.SetVisible(1, false)
-	
+
 	// Verify visibility settings
 	assert.True(t, tile.IsVisibleTo(0))
 	assert.False(t, tile.IsVisibleTo(1))
@@ -296,12 +296,12 @@ func TestBoard_VisibilityMap(t *testing.T) {
 func TestTileBitfieldVisibility(t *testing.T) {
 	t.Run("BasicVisibilityOperations", func(t *testing.T) {
 		tile := &Tile{VisibleBitfield: 0}
-		
+
 		// Test setting visibility
 		tile.SetVisible(0, true)
 		assert.True(t, tile.IsVisibleTo(0))
 		assert.False(t, tile.IsVisibleTo(1))
-		
+
 		// Test setting multiple players
 		tile.SetVisible(3, true)
 		tile.SetVisible(7, true)
@@ -310,7 +310,7 @@ func TestTileBitfieldVisibility(t *testing.T) {
 		assert.True(t, tile.IsVisibleTo(7))
 		assert.False(t, tile.IsVisibleTo(1))
 		assert.False(t, tile.IsVisibleTo(2))
-		
+
 		// Test clearing visibility
 		tile.SetVisible(0, false)
 		assert.False(t, tile.IsVisibleTo(0))
@@ -320,14 +320,14 @@ func TestTileBitfieldVisibility(t *testing.T) {
 
 	t.Run("BoundaryConditions", func(t *testing.T) {
 		tile := &Tile{VisibleBitfield: 0}
-		
+
 		// Test invalid player IDs
 		tile.SetVisible(-1, true)
 		assert.False(t, tile.IsVisibleTo(-1))
-		
+
 		tile.SetVisible(32, true)
 		assert.False(t, tile.IsVisibleTo(32))
-		
+
 		// Test max valid player ID (31)
 		tile.SetVisible(31, true)
 		assert.True(t, tile.IsVisibleTo(31))
@@ -335,17 +335,17 @@ func TestTileBitfieldVisibility(t *testing.T) {
 
 	t.Run("AllPlayersVisible", func(t *testing.T) {
 		tile := &Tile{VisibleBitfield: 0}
-		
+
 		// Set all 32 players as visible
 		for i := 0; i < 32; i++ {
 			tile.SetVisible(i, true)
 		}
-		
+
 		// Check all are visible
 		for i := 0; i < 32; i++ {
 			assert.True(t, tile.IsVisibleTo(i))
 		}
-		
+
 		// Clear one in the middle
 		tile.SetVisible(15, false)
 		assert.False(t, tile.IsVisibleTo(15))
@@ -353,13 +353,12 @@ func TestTileBitfieldVisibility(t *testing.T) {
 		assert.True(t, tile.IsVisibleTo(16))
 	})
 
-
 	t.Run("BitfieldDirectManipulation", func(t *testing.T) {
 		tile := &Tile{VisibleBitfield: 0}
-		
+
 		// Directly set some bits
 		tile.VisibleBitfield = 0b10101010
-		
+
 		assert.False(t, tile.IsVisibleTo(0))
 		assert.True(t, tile.IsVisibleTo(1))
 		assert.False(t, tile.IsVisibleTo(2))

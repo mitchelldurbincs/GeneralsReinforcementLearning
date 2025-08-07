@@ -24,14 +24,14 @@ func main() {
 	mapHeight := flag.Int("height", -1, "Map height (-1 to use config default)")
 	allAI := flag.Bool("ai-only", false, "Run with all AI players (original mode)")
 	flag.Parse()
-	
+
 	// Initialize configuration
 	if err := config.Init(*configPath); err != nil {
 		log.Fatalf("Failed to initialize config: %v", err)
 	}
-	
+
 	cfg := config.Get()
-	
+
 	// Use config defaults if not overridden by flags
 	if *humanPlayer == -1 {
 		*humanPlayer = cfg.UI.Defaults.HumanPlayer
@@ -49,7 +49,7 @@ func main() {
 	if !*allAI {
 		*allAI = cfg.UI.Defaults.AIOnly
 	}
-	
+
 	// Validate inputs
 	if *numPlayers < 2 || *numPlayers > 4 {
 		log.Fatal("Number of players must be between 2 and 4")
@@ -57,20 +57,20 @@ func main() {
 	if *humanPlayer >= *numPlayers {
 		log.Fatal("Human player index must be less than number of players")
 	}
-	
+
 	// Set up logging based on config
 	logLevel, err := zerolog.ParseLevel(cfg.Server.GameServer.LogLevel)
 	if err != nil {
 		logLevel = zerolog.InfoLevel
 	}
-	
+
 	var logger zerolog.Logger
 	if cfg.Server.GameServer.LogFormat == "json" || os.Getenv("APP_ENV") == "production" {
 		logger = zerolog.New(os.Stdout).Level(logLevel).With().Timestamp().Logger()
 	} else {
 		logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).Level(logLevel).With().Timestamp().Logger()
 	}
-	
+
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	gameConfig := game.GameConfig{
 		Width:   *mapWidth,
@@ -80,10 +80,10 @@ func main() {
 		Logger:  logger,
 	}
 	gameEngine := game.NewEngine(context.Background(), gameConfig)
-	
+
 	ebiten.SetWindowSize(ui.ScreenWidth(), ui.ScreenHeight())
 	ebiten.SetWindowTitle(cfg.UI.Window.Title)
-	
+
 	if *allAI {
 		// Original AI-only mode
 		uiGame, err := ui.NewUIGame(gameEngine, 0)
@@ -109,12 +109,12 @@ func main() {
 				}
 			}
 		}
-		
+
 		humanGame, err := ui.NewHumanGame(gameEngine, playerConfigs)
 		if err != nil {
 			log.Fatal(err)
 		}
-		
+
 		if err := ebiten.RunGame(humanGame); err != nil {
 			log.Fatal(err)
 		}

@@ -21,10 +21,10 @@ func WrapActionError(action Action, err error) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	switch a := action.(type) {
 	case *MoveAction:
-		return fmt.Errorf("player %d: move from (%d,%d) to (%d,%d): %w", 
+		return fmt.Errorf("player %d: move from (%d,%d) to (%d,%d): %w",
 			a.PlayerID, a.FromX, a.FromY, a.ToX, a.ToY, err)
 	default:
 		return fmt.Errorf("player action: %w", err)

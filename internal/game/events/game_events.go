@@ -8,26 +8,26 @@ import (
 
 // Event type constants
 const (
-	TypeGameStarted      = "game.started"
-	TypeGameEnded        = "game.ended"
-	TypeTurnStarted      = "turn.started"
-	TypeTurnEnded        = "turn.ended"
-	TypeActionSubmitted  = "action.submitted"
-	TypeActionProcessed  = "action.processed"
-	TypeActionRejected   = "action.rejected"
-	TypeMoveSubmitted    = "move.submitted"
-	TypeMoveValidated    = "move.validated"
-	TypeMoveExecuted     = "move.executed"
-	TypeCombatStarted    = "combat.started"
-	TypeCombatResolved   = "combat.resolved"
-	TypeTilesCaptured    = "tiles.captured"
-	TypePlayerJoined     = "player.joined"
-	TypePlayerEliminated = "player.eliminated"
-	TypePlayerWon        = "player.won"
+	TypeGameStarted       = "game.started"
+	TypeGameEnded         = "game.ended"
+	TypeTurnStarted       = "turn.started"
+	TypeTurnEnded         = "turn.ended"
+	TypeActionSubmitted   = "action.submitted"
+	TypeActionProcessed   = "action.processed"
+	TypeActionRejected    = "action.rejected"
+	TypeMoveSubmitted     = "move.submitted"
+	TypeMoveValidated     = "move.validated"
+	TypeMoveExecuted      = "move.executed"
+	TypeCombatStarted     = "combat.started"
+	TypeCombatResolved    = "combat.resolved"
+	TypeTilesCaptured     = "tiles.captured"
+	TypePlayerJoined      = "player.joined"
+	TypePlayerEliminated  = "player.eliminated"
+	TypePlayerWon         = "player.won"
 	TypeProductionApplied = "production.applied"
-	TypeCityProduced     = "city.produced"
-	TypeGeneralProduced  = "general.produced"
-	TypeStateTransition  = "state.transition"
+	TypeCityProduced      = "city.produced"
+	TypeGeneralProduced   = "general.produced"
+	TypeStateTransition   = "state.transition"
 )
 
 // GameStartedEvent is published when a new game begins
@@ -56,9 +56,9 @@ func NewGameStartedEvent(gameID string, numPlayers, width, height int) *GameStar
 // GameEndedEvent is published when a game ends
 type GameEndedEvent struct {
 	BaseEvent
-	Metadata EventMetadata
-	Winner   int
-	Duration time.Duration
+	Metadata  EventMetadata
+	Winner    int
+	Duration  time.Duration
 	FinalTurn int
 }
 
@@ -230,15 +230,15 @@ func NewMoveExecutedEvent(gameID string, playerID int, fromX, fromY, toX, toY in
 // CombatResolvedEvent is published when combat occurs
 type CombatResolvedEvent struct {
 	BaseEvent
-	Metadata        EventMetadata
-	AttackerID      int
-	DefenderID      int
-	Location        core.Coordinate
-	AttackerArmies  int
-	DefenderArmies  int
-	AttackerLosses  int
-	DefenderLosses  int
-	TileCaptured    bool
+	Metadata       EventMetadata
+	AttackerID     int
+	DefenderID     int
+	Location       core.Coordinate
+	AttackerArmies int
+	DefenderArmies int
+	AttackerLosses int
+	DefenderLosses int
+	TileCaptured   bool
 }
 
 // GetLocationX returns the X coordinate of the combat location (backward compatibility)
@@ -252,7 +252,7 @@ func (e *CombatResolvedEvent) GetLocationY() int {
 }
 
 // NewCombatResolvedEvent creates a new CombatResolvedEvent
-func NewCombatResolvedEvent(gameID string, attacker, defender int, locationX, locationY int, 
+func NewCombatResolvedEvent(gameID string, attacker, defender int, locationX, locationY int,
 	attackerArmies, defenderArmies, attackerLosses, defenderLosses int, captured bool, turn int) *CombatResolvedEvent {
 	return &CombatResolvedEvent{
 		BaseEvent: BaseEvent{
@@ -264,14 +264,14 @@ func NewCombatResolvedEvent(gameID string, attacker, defender int, locationX, lo
 			PlayerID: attacker,
 			Turn:     turn,
 		},
-		AttackerID:      attacker,
-		DefenderID:      defender,
-		Location:        core.NewCoordinate(locationX, locationY),
-		AttackerArmies:  attackerArmies,
-		DefenderArmies:  defenderArmies,
-		AttackerLosses:  attackerLosses,
-		DefenderLosses:  defenderLosses,
-		TileCaptured:    captured,
+		AttackerID:     attacker,
+		DefenderID:     defender,
+		Location:       core.NewCoordinate(locationX, locationY),
+		AttackerArmies: attackerArmies,
+		DefenderArmies: defenderArmies,
+		AttackerLosses: attackerLosses,
+		DefenderLosses: defenderLosses,
+		TileCaptured:   captured,
 	}
 }
 

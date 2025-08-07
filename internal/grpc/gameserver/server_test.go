@@ -22,7 +22,7 @@ func setupTestServer(t *testing.T) (gamev1.GameServiceClient, func()) {
 	lis := bufconn.Listen(bufSize)
 	s := grpc.NewServer()
 	gamev1.RegisterGameServiceServer(s, NewServer())
-	
+
 	go func() {
 		if err := s.Serve(lis); err != nil {
 			t.Logf("Server exited with error: %v", err)
@@ -75,9 +75,9 @@ func TestCreateGame(t *testing.T) {
 	resp2, err := client.CreateGame(ctx, req2)
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp2.GameId)
-	assert.NotEqual(t, resp.GameId, resp2.GameId) // Should be different game IDs
-	assert.Equal(t, int32(20), resp2.Config.Width) // Default width
-	assert.Equal(t, int32(20), resp2.Config.Height) // Default height
+	assert.NotEqual(t, resp.GameId, resp2.GameId)      // Should be different game IDs
+	assert.Equal(t, int32(20), resp2.Config.Width)     // Default width
+	assert.Equal(t, int32(20), resp2.Config.Height)    // Default height
 	assert.Equal(t, int32(2), resp2.Config.MaxPlayers) // Default max players
 }
 
@@ -212,7 +212,7 @@ func TestGetGameState(t *testing.T) {
 
 func TestProtoMessageSerialization(t *testing.T) {
 	// Test creating and serializing various proto messages
-	
+
 	// Test Coordinate
 	coord := &commonv1.Coordinate{X: 10, Y: 15}
 	assert.Equal(t, int32(10), coord.X)
@@ -220,12 +220,12 @@ func TestProtoMessageSerialization(t *testing.T) {
 
 	// Test PlayerState
 	playerState := &gamev1.PlayerState{
-		Id:       0,
-		Name:     "player-1",
-		Status:   commonv1.PlayerStatus_PLAYER_STATUS_ACTIVE,
+		Id:        0,
+		Name:      "player-1",
+		Status:    commonv1.PlayerStatus_PLAYER_STATUS_ACTIVE,
 		ArmyCount: 100,
 		TileCount: 25,
-		Color:    "#FF0000",
+		Color:     "#FF0000",
 	}
 	assert.Equal(t, "player-1", playerState.Name)
 	assert.Equal(t, int32(100), playerState.ArmyCount)
@@ -243,11 +243,11 @@ func TestProtoMessageSerialization(t *testing.T) {
 
 	// Test Action
 	action := &gamev1.Action{
-		Type: commonv1.ActionType_ACTION_TYPE_MOVE,
-		From: &commonv1.Coordinate{X: 5, Y: 5},
-		To:   &commonv1.Coordinate{X: 5, Y: 6},
+		Type:       commonv1.ActionType_ACTION_TYPE_MOVE,
+		From:       &commonv1.Coordinate{X: 5, Y: 5},
+		To:         &commonv1.Coordinate{X: 5, Y: 6},
 		TurnNumber: 42,
-		Half: false,
+		Half:       false,
 	}
 	assert.Equal(t, commonv1.ActionType_ACTION_TYPE_MOVE, action.Type)
 	assert.NotNil(t, action.From)
@@ -269,16 +269,16 @@ func TestProtoMessageSerialization(t *testing.T) {
 
 func TestServerState(t *testing.T) {
 	server := NewServer()
-	
+
 	// Initially no games
 	assert.Equal(t, 0, server.GetActiveGames())
-	
+
 	// Create a game
 	ctx := context.Background()
 	resp, err := server.CreateGame(ctx, &gamev1.CreateGameRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, server.GetActiveGames())
-	
+
 	// Join the game
 	_, err = server.JoinGame(ctx, &gamev1.JoinGameRequest{
 		GameId:     resp.GameId,

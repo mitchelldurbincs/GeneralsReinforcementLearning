@@ -1,32 +1,32 @@
-package core 
+package core
 
 // Tile represents a single cell on the map.
 // Owner: -1 means neutral; 0..N-1 are player IDs.
 // Army: number of units on that tile.
 // Type - 0 = normal, 1 = general, 2 = city.
 type Tile struct {
-    Owner   int
-    Army    int
-    Type    int
-    VisibleBitfield uint32 // Bit i = 1 if player i can see this tile (supports up to 32 players)
+	Owner           int
+	Army            int
+	Type            int
+	VisibleBitfield uint32 // Bit i = 1 if player i can see this tile (supports up to 32 players)
 }
 
 type Board struct {
-    W, H int
-    T    []Tile // length = W*H (row‑major)
+	W, H int
+	T    []Tile // length = W*H (row‑major)
 }
 
 const (
-    TileNormal   = 0
-    TileGeneral  = 1
-    TileCity     = 2
+	TileNormal   = 0
+	TileGeneral  = 1
+	TileCity     = 2
 	TileMountain = 3
-    NeutralID    = -1
+	NeutralID    = -1
 )
 
-func (t *Tile) IsNeutral() bool { return t.Owner == NeutralID }
-func (t *Tile) IsCity() bool    { return t.Type == TileCity }
-func (t *Tile) IsGeneral() bool { return t.Type == TileGeneral }
+func (t *Tile) IsNeutral() bool  { return t.Owner == NeutralID }
+func (t *Tile) IsCity() bool     { return t.Type == TileCity }
+func (t *Tile) IsGeneral() bool  { return t.Type == TileGeneral }
 func (t *Tile) IsMountain() bool { return t.Type == TileMountain }
 
 // Clone creates a deep copy of the board
@@ -39,27 +39,26 @@ func (b *Board) Clone() *Board {
 	copy(clone.T, b.T)
 	return clone
 }
-func (t *Tile) IsEmpty() bool    { return t.IsNeutral() && t.Type == TileNormal && t.Army == 0 }
+func (t *Tile) IsEmpty() bool { return t.IsNeutral() && t.Type == TileNormal && t.Army == 0 }
 
 // New bitfield visibility methods
 func (t *Tile) IsVisibleTo(playerID int) bool {
-    if playerID < 0 || playerID >= 32 {
-        return false
-    }
-    return t.VisibleBitfield & (1 << uint(playerID)) != 0
+	if playerID < 0 || playerID >= 32 {
+		return false
+	}
+	return t.VisibleBitfield&(1<<uint(playerID)) != 0
 }
 
 func (t *Tile) SetVisible(playerID int, visible bool) {
-    if playerID < 0 || playerID >= 32 {
-        return
-    }
-    if visible {
-        t.VisibleBitfield |= (1 << uint(playerID))
-    } else {
-        t.VisibleBitfield &^= (1 << uint(playerID))
-    }
+	if playerID < 0 || playerID >= 32 {
+		return
+	}
+	if visible {
+		t.VisibleBitfield |= (1 << uint(playerID))
+	} else {
+		t.VisibleBitfield &^= (1 << uint(playerID))
+	}
 }
-
 
 func NewBoard(w, h int) *Board {
 	b := &Board{W: w, H: h, T: make([]Tile, w*h)}
@@ -72,8 +71,8 @@ func NewBoard(w, h int) *Board {
 	return b
 }
 
-func (b *Board) Idx(x, y int) int       { return y*b.W + x }
-func (b *Board) XY(idx int) (int, int)  { return idx % b.W, idx / b.W }
+func (b *Board) Idx(x, y int) int      { return y*b.W + x }
+func (b *Board) XY(idx int) (int, int) { return idx % b.W, idx / b.W }
 
 // InBounds checks if coordinates are within board boundaries
 func (b *Board) InBounds(x, y int) bool {

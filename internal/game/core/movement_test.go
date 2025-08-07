@@ -33,8 +33,8 @@ func TestCaptureGeneralAndEliminationOrder(t *testing.T) {
 	moveAction := MoveAction{
 		PlayerID: 0,
 		FromX:    0, FromY: 0,
-		ToX:      1, ToY: 0,
-		MoveAll:  true,
+		ToX: 1, ToY: 0,
+		MoveAll: true,
 	}
 
 	captureDetails, err := ApplyMoveAction(board, &moveAction, nil)
@@ -70,9 +70,9 @@ func TestCaptureGeneralAndEliminationOrder(t *testing.T) {
 
 func TestApplyMoveAction_BasicMovement(t *testing.T) {
 	tests := []struct {
-		name           string
-		setupBoard     func() *Board
-		action         MoveAction
+		name             string
+		setupBoard       func() *Board
+		action           MoveAction
 		expectedFromArmy int
 		expectedToArmy   int
 		expectedToOwner  int
@@ -90,7 +90,7 @@ func TestApplyMoveAction_BasicMovement(t *testing.T) {
 			},
 			action: MoveAction{
 				PlayerID: 0,
-				FromX: 0, FromY: 0,
+				FromX:    0, FromY: 0,
 				ToX: 1, ToY: 0,
 				MoveAll: true,
 			},
@@ -111,7 +111,7 @@ func TestApplyMoveAction_BasicMovement(t *testing.T) {
 			},
 			action: MoveAction{
 				PlayerID: 0,
-				FromX: 0, FromY: 0,
+				FromX:    0, FromY: 0,
 				ToX: 1, ToY: 0,
 				MoveAll: false,
 			},
@@ -132,7 +132,7 @@ func TestApplyMoveAction_BasicMovement(t *testing.T) {
 			},
 			action: MoveAction{
 				PlayerID: 0,
-				FromX: 0, FromY: 0,
+				FromX:    0, FromY: 0,
 				ToX: 1, ToY: 0,
 				MoveAll: true,
 			},
@@ -153,7 +153,7 @@ func TestApplyMoveAction_BasicMovement(t *testing.T) {
 			},
 			action: MoveAction{
 				PlayerID: 0,
-				FromX: 0, FromY: 0,
+				FromX:    0, FromY: 0,
 				ToX: 1, ToY: 0,
 				MoveAll: true,
 			},
@@ -174,7 +174,7 @@ func TestApplyMoveAction_BasicMovement(t *testing.T) {
 			},
 			action: MoveAction{
 				PlayerID: 0,
-				FromX: 0, FromY: 0,
+				FromX:    0, FromY: 0,
 				ToX: 1, ToY: 0,
 				MoveAll: true,
 			},
@@ -195,7 +195,7 @@ func TestApplyMoveAction_BasicMovement(t *testing.T) {
 			},
 			action: MoveAction{
 				PlayerID: 0,
-				FromX: 0, FromY: 0,
+				FromX:    0, FromY: 0,
 				ToX: 1, ToY: 0,
 				MoveAll: false,
 			},
@@ -210,23 +210,23 @@ func TestApplyMoveAction_BasicMovement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			board := tt.setupBoard()
 			changedTiles := make(map[int]struct{})
-			
+
 			capture, err := ApplyMoveAction(board, &tt.action, changedTiles)
 			require.NoError(t, err)
-			
+
 			fromIdx := board.Idx(tt.action.FromX, tt.action.FromY)
 			toIdx := board.Idx(tt.action.ToX, tt.action.ToY)
-			
+
 			assert.Equal(t, tt.expectedFromArmy, board.T[fromIdx].Army, "from tile army")
 			assert.Equal(t, tt.expectedToArmy, board.T[toIdx].Army, "to tile army")
 			assert.Equal(t, tt.expectedToOwner, board.T[toIdx].Owner, "to tile owner")
-			
+
 			if tt.expectCapture {
 				assert.NotNil(t, capture, "expected capture details")
 			} else {
 				assert.Nil(t, capture, "expected no capture")
 			}
-			
+
 			// Verify changed tiles tracking
 			assert.Contains(t, changedTiles, fromIdx)
 			assert.Contains(t, changedTiles, toIdx)
@@ -236,53 +236,53 @@ func TestApplyMoveAction_BasicMovement(t *testing.T) {
 
 func TestApplyMoveAction_CaptureDetails(t *testing.T) {
 	board := NewBoard(5, 5)
-	
+
 	// Set up a city owned by player 1
 	cityIdx := board.Idx(2, 2)
 	board.T[cityIdx].Owner = 1
 	board.T[cityIdx].Army = 40
 	board.T[cityIdx].Type = TileCity
-	
+
 	// Player 0 attacks with overwhelming force
 	attackerIdx := board.Idx(2, 1)
 	board.T[attackerIdx].Owner = 0
 	board.T[attackerIdx].Army = 50
-	
+
 	action := MoveAction{
 		PlayerID: 0,
-		FromX: 2, FromY: 1,
+		FromX:    2, FromY: 1,
 		ToX: 2, ToY: 2,
 		MoveAll: true,
 	}
-	
+
 	capture, err := ApplyMoveAction(board, &action, nil)
 	require.NoError(t, err)
 	require.NotNil(t, capture)
-	
+
 	assert.Equal(t, 2, capture.X)
 	assert.Equal(t, 2, capture.Y)
 	assert.Equal(t, TileCity, capture.TileType)
 	assert.Equal(t, 0, capture.CapturingPlayerID)
 	assert.Equal(t, 1, capture.PreviousOwnerID)
 	assert.Equal(t, 40, capture.PreviousArmyCount)
-	
+
 	// Verify the city now belongs to player 0
 	assert.Equal(t, 0, board.T[cityIdx].Owner)
-	assert.Equal(t, 9, board.T[cityIdx].Army) // 49 - 40
+	assert.Equal(t, 9, board.T[cityIdx].Army)        // 49 - 40
 	assert.Equal(t, TileCity, board.T[cityIdx].Type) // Type doesn't change
 }
 
 func TestApplyMoveAction_InvalidMoves(t *testing.T) {
 	board := NewBoard(5, 5)
-	
+
 	// Set up player tile
 	board.T[0].Owner = 0
 	board.T[0].Army = 10
-	
+
 	// Set up mountain
 	mountainIdx := board.Idx(1, 0)
 	board.T[mountainIdx].Type = TileMountain
-	
+
 	tests := []struct {
 		name   string
 		action MoveAction
@@ -291,7 +291,7 @@ func TestApplyMoveAction_InvalidMoves(t *testing.T) {
 			name: "move to mountain",
 			action: MoveAction{
 				PlayerID: 0,
-				FromX: 0, FromY: 0,
+				FromX:    0, FromY: 0,
 				ToX: 1, ToY: 0,
 				MoveAll: true,
 			},
@@ -300,7 +300,7 @@ func TestApplyMoveAction_InvalidMoves(t *testing.T) {
 			name: "move from unowned tile",
 			action: MoveAction{
 				PlayerID: 0,
-				FromX: 3, FromY: 3,
+				FromX:    3, FromY: 3,
 				ToX: 3, ToY: 4,
 				MoveAll: true,
 			},
@@ -309,13 +309,13 @@ func TestApplyMoveAction_InvalidMoves(t *testing.T) {
 			name: "move with insufficient army",
 			action: MoveAction{
 				PlayerID: 0,
-				FromX: 0, FromY: 0,
+				FromX:    0, FromY: 0,
 				ToX: 1, ToY: 0,
 				MoveAll: true,
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Special setup for insufficient army test
@@ -323,7 +323,7 @@ func TestApplyMoveAction_InvalidMoves(t *testing.T) {
 				board.T[0].Army = 1
 				board.T[1].Type = TileNormal // Not a mountain
 			}
-			
+
 			_, err := ApplyMoveAction(board, &tt.action, nil)
 			assert.Error(t, err, "expected error for invalid move")
 		})
@@ -332,8 +332,8 @@ func TestApplyMoveAction_InvalidMoves(t *testing.T) {
 
 func TestProcessCaptures(t *testing.T) {
 	tests := []struct {
-		name              string
-		captures          []CaptureDetails
+		name                 string
+		captures             []CaptureDetails
 		expectedEliminations []PlayerEliminationOrder
 	}{
 		{
@@ -450,11 +450,11 @@ func TestProcessCaptures(t *testing.T) {
 			expectedEliminations: []PlayerEliminationOrder{},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			eliminations := ProcessCaptures(tt.captures)
-			
+
 			if len(tt.expectedEliminations) == 0 {
 				assert.Empty(t, eliminations)
 			} else {
@@ -469,33 +469,33 @@ func TestApplyMoveAction_EdgeCases(t *testing.T) {
 		board := NewBoard(3, 3)
 		board.T[0].Owner = 0
 		board.T[0].Army = 10
-		
+
 		action := MoveAction{
 			PlayerID: 0,
-			FromX: 0, FromY: 0,
+			FromX:    0, FromY: 0,
 			ToX: 1, ToY: 0,
 			MoveAll: true,
 		}
-		
+
 		// Should not panic with nil map
 		_, err := ApplyMoveAction(board, &action, nil)
 		assert.NoError(t, err)
 	})
-	
+
 	t.Run("move minimum army with half", func(t *testing.T) {
 		board := NewBoard(3, 3)
 		board.T[0].Owner = 0
 		board.T[0].Army = 2
 		board.T[1].Owner = 0
 		board.T[1].Army = 0
-		
+
 		action := MoveAction{
 			PlayerID: 0,
-			FromX: 0, FromY: 0,
+			FromX:    0, FromY: 0,
 			ToX: 1, ToY: 0,
 			MoveAll: false,
 		}
-		
+
 		_, err := ApplyMoveAction(board, &action, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, 1, board.T[0].Army)
