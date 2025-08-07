@@ -70,8 +70,8 @@ func (tp *TensorPool) Put(tensor []float32) {
 	tp.mu.RUnlock()
 
 	if exists {
-		// Store the slice directly, not a pointer to it
-		pool.Put(tensor)
+		// Store a pointer to the slice to avoid allocations
+		pool.Put(&tensor)
 	}
 }
 
@@ -370,7 +370,7 @@ func (s *OptimizedSerializer) ReturnTensor(tensor []float32) {
 
 // ReturnActionMask returns an action mask to the pool for reuse
 func (s *OptimizedSerializer) ReturnActionMask(mask []bool) {
-	s.actionMaskPool.Put(mask)
+	s.actionMaskPool.Put(&mask)
 }
 
 // ClearVisibilityCache clears the visibility cache

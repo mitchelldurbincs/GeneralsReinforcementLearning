@@ -41,12 +41,6 @@ func (m *mockStreamServer) getUpdates() []*gamev1.GameUpdate {
 	return result
 }
 
-func (m *mockStreamServer) getUpdateCount() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return len(m.updates)
-}
-
 func TestStreamGame(t *testing.T) {
 	// Create server
 	server := NewServer()
