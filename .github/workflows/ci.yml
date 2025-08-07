@@ -1,0 +1,287 @@
+name: CI Pipeline
+
+on:
+  # Manual trigger - you can run this whenever you want from GitHub UI
+  workflow_dispatch:
+    inputs:
+      run_full_tests:
+        description: 'Run full test suite (including slow tests)'
+        required: false
+        default: 'false'
+        type: boolean
+
+  # Run on pull requests to main
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**.go'
+      - '**.py'
+      - '**.proto'
+      - 'go.mod'
+      - 'go.sum'
+      - 'python/requirements*.txt'
+      - '.github/workflows/ci.yml'
+
+  # Weekly schedule for regular health checks (Sundays at 2 AM UTC)
+  schedule:
+    - cron: '0 2 * * 0'
+
+  # Optionally, uncomment to run on specific branches when needed
+  # push:
+  #   branches: [ develop, feature/* ]
+
+jobs:
+  go-tests:
+    name: Go Tests & Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.0'
+        cache: true
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run tests with coverage
+      run: |
+        go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        go tool cover -html=coverage.out -o coverage.html
+
+    - name: Upload coverage to GitHub
+      uses: actions/upload-artifact@v4
+      with:
+        name: go-coverage
+        path: |
+          coverage.out
+          coverage.html
+
+    - name: Check coverage threshold
+      run: |
+        COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+        echo "Total coverage: ${COVERAGE}%"
+        # Uncomment to enforce minimum coverage (adjust threshold as needed)
+        # if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+        #   echo "Coverage is below 60%"
+        #   exit 1
+        # fi
+
+  go-lint:
+    name: Go Linting & Security
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.0'
+        cache: true
+
+    - name: Check formatting
+      run: |
+        if [ -n "$(gofmt -l .)" ]; then
+          echo "The following files need formatting:"
+          gofmt -l .
+          exit 1
+        fi
+
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
+        args: --timeout=5m
+
+    - name: Run gosec security scanner
+      uses: securego/gosec@master
+      with:
+        args: '-fmt sarif -out gosec-results.sarif ./...'
+
+    - name: Upload gosec results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: gosec-results.sarif
+
+    - name: Run go mod tidy check
+      run: |
+        go mod tidy
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "go mod tidy produced changes. Please run 'go mod tidy' locally and commit."
+          git diff
+          exit 1
+        fi
+
+  proto-check:
+    name: Proto Generation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.0'
+
+    - name: Install protoc
+      run: |
+        PROTOC_VERSION=28.3
+        curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip
+        unzip protoc-${PROTOC_VERSION}-linux-x86_64.zip -d $HOME/.local
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Install protoc plugins
+      run: |
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+    - name: Generate protos
+      run: |
+        chmod +x ./scripts/generate-protos.sh
+        ./scripts/generate-protos.sh
+
+    - name: Check for uncommitted changes
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Proto generation produced changes. Please regenerate protos and commit."
+          git diff
+          exit 1
+        fi
+
+  python-tests:
+    name: Python Tests & Linting
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('python/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r python/requirements.txt
+        pip install -r python/requirements-dev.txt
+
+    - name: Run Python tests
+      run: |
+        cd python
+        python -m pytest tests/ -v --cov=generals_agent --cov-report=xml --cov-report=html
+      continue-on-error: true  # Remove this once tests are set up
+
+    - name: Upload Python coverage
+      uses: actions/upload-artifact@v4
+      if: matrix.python-version == '3.11'
+      with:
+        name: python-coverage
+        path: python/htmlcov/
+
+  python-lint-security:
+    name: Python Linting & Security
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install ruff black isort mypy bandit safety
+
+    - name: Create requirements if missing
+      run: |
+        if [ ! -f python/requirements.txt ]; then
+          echo "grpcio>=1.60.0" > python/requirements.txt
+          echo "grpcio-tools>=1.60.0" >> python/requirements.txt
+          echo "protobuf>=4.25.0" >> python/requirements.txt
+        fi
+        if [ ! -f python/requirements-dev.txt ]; then
+          echo "pytest>=7.0.0" > python/requirements-dev.txt
+          echo "pytest-cov>=4.0.0" >> python/requirements-dev.txt
+          echo "pytest-asyncio>=0.21.0" >> python/requirements-dev.txt
+        fi
+
+    - name: Run ruff linter
+      run: |
+        ruff check python/ --fix --exit-non-zero-on-fix
+      continue-on-error: true
+
+    - name: Check black formatting
+      run: |
+        black --check python/
+      continue-on-error: true
+
+    - name: Check import sorting
+      run: |
+        isort --check-only python/
+      continue-on-error: true
+
+    - name: Run type checking
+      run: |
+        cd python
+        mypy generals_agent/ --ignore-missing-imports
+      continue-on-error: true
+
+    - name: Run bandit security scanner
+      run: |
+        bandit -r python/generals_agent/ -f json -o bandit-report.json
+      continue-on-error: true
+
+    - name: Check dependencies for vulnerabilities
+      run: |
+        safety check -r python/requirements.txt --json
+      continue-on-error: true
+
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [go-tests, go-lint, proto-check, python-tests, python-lint-security]
+    if: always()
+    
+    steps:
+    - name: Check job results
+      run: |
+        echo "CI Pipeline Summary:"
+        echo "==================="
+        echo "Go Tests: ${{ needs.go-tests.result }}"
+        echo "Go Linting: ${{ needs.go-lint.result }}"
+        echo "Proto Check: ${{ needs.proto-check.result }}"
+        echo "Python Tests: ${{ needs.python-tests.result }}"
+        echo "Python Linting: ${{ needs.python-lint-security.result }}"
+        
+        if [ "${{ needs.go-tests.result }}" == "failure" ] || \
+           [ "${{ needs.go-lint.result }}" == "failure" ] || \
+           [ "${{ needs.proto-check.result }}" == "failure" ]; then
+          echo "Core checks failed!"
+          exit 1
+        fi
