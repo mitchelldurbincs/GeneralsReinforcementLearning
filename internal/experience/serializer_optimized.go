@@ -40,7 +40,20 @@ func (tp *TensorPool) Get(size int) []float32 {
 		tp.mu.Unlock()
 	}
 
-	tensor := pool.Get().([]float32)
+	tensorInterface := pool.Get()
+	var tensor []float32
+	
+	// Handle both []float32 and *[]float32 types
+	switch t := tensorInterface.(type) {
+	case []float32:
+		tensor = t
+	case *[]float32:
+		tensor = *t
+	default:
+		// If neither type, create a new tensor
+		tensor = make([]float32, size)
+	}
+	
 	// Clear the tensor
 	for i := range tensor {
 		tensor[i] = 0
@@ -56,7 +69,8 @@ func (tp *TensorPool) Put(tensor []float32) {
 	tp.mu.RUnlock()
 
 	if exists {
-		pool.Put(&tensor)
+		// Store the slice directly, not a pointer to it
+		pool.Put(tensor)
 	}
 }
 
@@ -253,7 +267,18 @@ func (s *OptimizedSerializer) GenerateActionMask(state *game.GameState, playerID
 
 	// Get mask from pool and resize if needed
 	maskInterface := s.actionMaskPool.Get()
-	mask := maskInterface.([]bool)
+	var mask []bool
+	
+	// Handle both []bool and *[]bool types
+	switch m := maskInterface.(type) {
+	case []bool:
+		mask = m
+	case *[]bool:
+		mask = *m
+	default:
+		mask = make([]bool, 0)
+	}
+	
 	if cap(mask) < info.numActions {
 		mask = make([]bool, info.numActions)
 	} else {
@@ -333,7 +358,7 @@ func (s *OptimizedSerializer) ReturnTensor(tensor []float32) {
 
 // ReturnActionMask returns an action mask to the pool for reuse
 func (s *OptimizedSerializer) ReturnActionMask(mask []bool) {
-	s.actionMaskPool.Put(&mask)
+	s.actionMaskPool.Put(mask)
 }
 
 // ClearVisibilityCache clears the visibility cache

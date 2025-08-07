@@ -366,11 +366,16 @@ func TestStreamMerger(t *testing.T) {
 	// Collect from output
 	output := merger.Output()
 	received := make([]*experiencepb.Experience, 0)
+	var mu sync.Mutex
+	done := make(chan bool)
 
 	go func() {
 		for exp := range output {
+			mu.Lock()
 			received = append(received, exp)
+			mu.Unlock()
 		}
+		close(done)
 	}()
 
 	// Wait a bit for processing
@@ -379,8 +384,13 @@ func TestStreamMerger(t *testing.T) {
 	// Close merger
 	merger.Close()
 
+	// Wait for collection to complete
+	<-done
+
 	// Should have received all 5 experiences
+	mu.Lock()
 	assert.Len(t, received, 5)
+	mu.Unlock()
 }
 
 func TestTimedBatcher(t *testing.T) {
