@@ -95,8 +95,8 @@ func createTestEngine(boardSize, numPlayers int) *Engine {
 	// Create game config
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
 	cfg := GameConfig{
-		Width:   width,
-		Height:  height,
+		Width:   boardSize,
+		Height:  boardSize,
 		Players: numPlayers,
 		Logger:  logger,
 	}
