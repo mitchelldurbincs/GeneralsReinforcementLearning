@@ -10,13 +10,21 @@ build:
 
 # Test targets
 test:
-	go test ./...
+	@echo "Running tests (excluding UI packages)..."
+	@go test $$(go list ./... | grep -v '/internal/ui' | grep -v '/cmd/ui_client')
 
 test-coverage:
-	go test -cover ./...
+	@echo "Running tests with coverage (excluding UI packages)..."
+	@go test -cover $$(go list ./... | grep -v '/internal/ui' | grep -v '/cmd/ui_client')
 
 test-verbose:
-	go test -v ./...
+	@echo "Running verbose tests (excluding UI packages)..."
+	@go test -v $$(go list ./... | grep -v '/internal/ui' | grep -v '/cmd/ui_client')
+
+# Test UI packages (requires X11 libraries)
+test-ui:
+	@echo "Running UI tests (requires X11 libraries)..."
+	go test ./internal/ui/... ./cmd/ui_client/...
 
 # Proto generation
 generate-protos:
@@ -74,7 +82,7 @@ docker-logs:
 	docker-compose -f docker-compose.dev.yml logs -f
 
 docker-test:
-	docker-compose -f docker-compose.dev.yml run --rm game-server go test ./...
+	docker-compose -f docker-compose.dev.yml run --rm game-server sh -c "PACKAGES=\$$(go list ./... | grep -v '/internal/ui' | grep -v '/cmd/ui_client'); go test \$$PACKAGES"
 
 docker-clean:
 	docker-compose -f docker-compose.dev.yml down -v
