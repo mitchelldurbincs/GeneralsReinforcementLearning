@@ -4,14 +4,20 @@ This directory contains the Python client library for interacting with the Gener
 
 ## Setup
 
-### 1. Create and Activate Virtual Environment
+### 1. Activate the Existing Virtual Environment
+
+**Important**: The virtual environment `generalsrl` is already created in the project root. You must activate it before running any Python code:
 
 ```bash
 # From the project root directory
-python -m venv generalsrl
 source generalsrl/bin/activate  # On Linux/Mac
 # or
 generalsrl\Scripts\activate  # On Windows
+```
+
+If the virtual environment doesn't exist, create it first:
+```bash
+python -m venv generalsrl
 ```
 
 ### 2. Install Python Dependencies
@@ -59,7 +65,10 @@ go run cmd/game_server/main.go
 To run a match between two random agents:
 
 ```bash
-# From the project root (with virtual environment activated)
+# IMPORTANT: First activate the virtual environment
+source generalsrl/bin/activate
+
+# Then run from the project root
 python python/scripts/run_random_match.py
 
 # Run multiple games (tournament)

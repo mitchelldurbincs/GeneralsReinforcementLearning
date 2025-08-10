@@ -1,14 +1,9 @@
 """Generals.io Agent Framework"""
 
-# Core components - Original
+# Core components
 from .base_agent import BaseAgent
 from .random_agent import RandomAgent
-
-# Core components - New architecture
-from .base_agent_new import BaseAgentNew
 from .agent_runner import AgentRunner
-from .base_agent_adapter import BaseAgentAdapter, run_old_agent_with_new_architecture
-from .random_agent_new import RandomAgentNew
 
 # Infrastructure components
 from .connection import GameConnection
@@ -38,12 +33,8 @@ from .types import (
 )
 
 __all__ = [
-    # Original exports
-    'BaseAgent', 'RandomAgent',
-    
-    # New architecture core
-    'BaseAgentNew', 'AgentRunner', 'BaseAgentAdapter', 
-    'run_old_agent_with_new_architecture', 'RandomAgentNew',
+    # Core exports
+    'BaseAgent', 'RandomAgent', 'AgentRunner',
     
     # Infrastructure
     'GameConnection', 'GameClient', 'PlayerCredentials', 'GameConfig',

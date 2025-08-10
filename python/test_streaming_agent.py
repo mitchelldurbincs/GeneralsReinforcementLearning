@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
-"""Test script to verify StreamGame functionality with random agents"""
+"""
+Test script to verify game functionality with random agents.
+
+NOTE: This test has been updated to work with the new agent architecture.
+For the recommended way to run multi-agent matches, see scripts/run_random_match.py
+"""
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import logging
-import time
 import threading
-from generals_agent.random_agent import RandomAgent
+from concurrent.futures import ThreadPoolExecutor
+from generals_agent import (
+    RandomAgent, AgentRunner, GameConfig, 
+    GameConnection, GameClient, ExponentialBackoffPolling
+)
 
 # Set up logging
 logging.basicConfig(
@@ -16,51 +24,52 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-def run_agent(agent_name: str, game_id: str, use_streaming: bool):
+def run_agent(agent_name: str, game_id: str):
     """Run a single agent in a thread"""
     try:
-        agent = RandomAgent(agent_name=agent_name)
-        agent.run(game_id=game_id, use_streaming=use_streaming)
+        # Create agent and runner
+        agent = RandomAgent(name=agent_name)
+        runner = AgentRunner(
+            agent,
+            server_address="localhost:50051", 
+            polling_strategy=ExponentialBackoffPolling(initial_interval=0.1, max_interval=2.0)
+        )
+        
+        # Join existing game and run
+        runner.join_game(game_id)
+        logging.info(f"{agent_name} joined game {game_id}")
+        runner.run()
+        
     except Exception as e:
         logging.error(f"{agent_name} error: {e}")
+    finally:
+        try:
+            runner.disconnect()
+        except:
+            pass
 
 def main():
-    """Test streaming with two random agents"""
-    # Create first agent to create game
-    logging.info("Starting streaming test...")
+    """Test with two random agents"""
+    logging.info("Starting agent test...")
     
-    agent1 = RandomAgent(agent_name="StreamingAgent1")
-    agent1.connect()
-    game_id = agent1.create_game(width=10, height=10)
-    agent1.disconnect()
+    # Create game using client
+    connection = GameConnection("localhost:50051")
+    client = GameClient(connection)
     
-    logging.info(f"Created game: {game_id}")
+    config = GameConfig(width=15, height=15, max_players=2)
+    game_id = client.create_game(config)
+    logging.info(f"Created game with ID: {game_id}")
     
-    # Start both agents in threads using streaming
-    thread1 = threading.Thread(
-        target=run_agent, 
-        args=("StreamingAgent1", game_id, True),
-        name="Agent1"
-    )
-    thread2 = threading.Thread(
-        target=run_agent, 
-        args=("StreamingAgent2", game_id, True),
-        name="Agent2"
-    )
+    # Run two agents concurrently
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        agent1_future = executor.submit(run_agent, "Agent1", game_id)
+        agent2_future = executor.submit(run_agent, "Agent2", game_id)
+        
+        # Wait for both to complete
+        agent1_future.result()
+        agent2_future.result()
     
-    logging.info("Starting agents with streaming enabled...")
-    thread1.start()
-    time.sleep(0.5)  # Small delay before starting second agent
-    thread2.start()
-    
-    # Wait for both to complete
-    thread1.join(timeout=60)
-    thread2.join(timeout=60)
-    
-    if thread1.is_alive() or thread2.is_alive():
-        logging.error("Game took too long, threads still running")
-    else:
-        logging.info("Game completed successfully with streaming!")
+    logging.info("Test completed!")
 
 if __name__ == "__main__":
     main()

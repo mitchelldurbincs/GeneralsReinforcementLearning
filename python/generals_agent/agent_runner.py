@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, Future
 import threading
 
-from .base_agent_new import BaseAgentNew
+from .base_agent import BaseAgent
 from .connection import GameConnection
 from .game_client import GameClient, PlayerCredentials, GameConfig
 from .game_session import GameSession
@@ -27,7 +27,7 @@ from generals_pb.game.v1 import game_pb2
 class AgentEventHandler(BaseGameEventHandler):
     """Event handler that bridges game events to agent methods."""
     
-    def __init__(self, agent: BaseAgentNew, runner: 'AgentRunner'):
+    def __init__(self, agent: BaseAgent, runner: 'AgentRunner'):
         """Initialize the handler."""
         self.agent = agent
         self.runner = runner
@@ -95,7 +95,7 @@ class AgentRunner:
     so that agents can focus purely on game logic.
     """
     
-    def __init__(self, agent: BaseAgentNew, server_address: str = "localhost:50051",
+    def __init__(self, agent: BaseAgent, server_address: str = "localhost:50051",
                  polling_strategy: Optional[PollingStrategy] = None,
                  enable_logging: bool = True):
         """

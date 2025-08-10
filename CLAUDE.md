@@ -62,7 +62,12 @@ go run cmd/game_server/main.go
 # Start the UI client
 go run cmd/ui_client/main.go
 
-# Manage dependencies
+# Run Python agents (MUST activate virtual environment first)
+source generalsrl/bin/activate
+python python/test_grpc_client.py
+python python/generals_agent/random_agent.py
+
+# Manage Go dependencies
 go mod tidy
 go mod download
 ```
@@ -139,6 +144,10 @@ go mod download
 - **client/**: Go client library for connecting to the game server
 
 ### Python Integration (`python/`)
+**Important**: Python code requires activating the virtual environment first:
+```bash
+source generalsrl/bin/activate
+```
 - **grpc_client.py**: Python gRPC client for RL agents
 - **random_agent.py**: Basic random agent implementation (in progress)
 - **Environment classes planned**: OpenAI Gym-compatible wrappers

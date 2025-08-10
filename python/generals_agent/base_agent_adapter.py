@@ -6,7 +6,6 @@ import logging
 from typing import Optional, Dict, Any
 
 from .base_agent import BaseAgent
-from .base_agent_new import BaseAgentNew
 from .connection import GameConnection
 from .game_client import GameClient, PlayerCredentials, GameConfig
 from .agent_runner import AgentRunner
@@ -19,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 from generals_pb.game.v1 import game_pb2
 
 
-class BaseAgentAdapter(BaseAgentNew):
+class BaseAgentAdapter(BaseAgent):
     """
     Adapter that wraps the old BaseAgent to work with the new architecture.
     

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Test a single random agent with verbose logging"""
+"""
+Test a single random agent with the new architecture.
+
+NOTE: This test has been updated to work with the new agent architecture.
+For the recommended way to run agents, see scripts/run_random_match.py
+"""
 
 import logging
 import sys
@@ -7,7 +12,10 @@ import os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from generals_agent.random_agent import RandomAgent
+from generals_agent import (
+    RandomAgent, AgentRunner, GameConfig,
+    FixedIntervalPolling
+)
 
 # Set up very verbose logging
 logging.basicConfig(
@@ -15,31 +23,41 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# Create and run a single agent
-agent = RandomAgent(agent_name="TestAgent")
-agent.connect()
+def main():
+    """Run a single agent using the new architecture."""
+    # Create agent
+    agent = RandomAgent(name="TestAgent")
+    
+    # Create runner with the agent
+    runner = AgentRunner(
+        agent,
+        server_address="localhost:50051",
+        polling_strategy=FixedIntervalPolling(interval=0.5)
+    )
+    
+    try:
+        # Create and join a new game
+        config = GameConfig(width=10, height=10, max_players=2)
+        game_id, player_id = runner.create_and_join_game(config)
+        print(f"Created game: {game_id}")
+        print(f"Joined as player: {player_id}")
+        
+        # Note: In a real scenario, you'd need another agent to join
+        # before the game can start. This test will likely timeout
+        # waiting for another player.
+        print("\nWaiting for another player to join...")
+        print("(This will timeout - run another agent to actually play)")
+        
+        # Run the game (will block until game ends)
+        runner.run()
+        
+    except KeyboardInterrupt:
+        print("\nInterrupted by user")
+    except Exception as e:
+        logging.error(f"Error: {e}")
+    finally:
+        runner.disconnect()
+        print("Disconnected from server")
 
-# Create a new game
-game_id = agent.create_game(width=10, height=10)
-print(f"Created game: {game_id}")
-
-# Join and play
-try:
-    agent.join_game(game_id)
-    print(f"Joined as player {agent.player_id}")
-    
-    # Get initial state
-    state = agent.get_game_state()
-    print(f"Initial state - Turn: {state.turn}, Board size: {state.board.width}x{state.board.height}")
-    print(f"Number of tiles: {len(state.board.tiles)}")
-    
-    # Try streaming
-    agent.on_game_start()
-    agent.stream_game_updates()
-    
-except Exception as e:
-    print(f"Error: {e}")
-    import traceback
-    traceback.print_exc()
-finally:
-    agent.disconnect()
+if __name__ == "__main__":
+    main()
