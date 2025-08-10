@@ -41,12 +41,12 @@ const (
 )
 
 // NewServer creates a new game server
-func NewServer() *Server {
+func NewServer(maxGames int) *Server {
 	// Create experience service with its buffer manager
 	experienceService := NewExperienceService(nil)
 
 	// Create game manager with experience service
-	gameManager := NewGameManagerWithExperience(experienceService)
+	gameManager := NewGameManagerWithExperience(experienceService, maxGames)
 
 	return &Server{
 		gameManager:       gameManager,
@@ -58,7 +58,10 @@ func NewServer() *Server {
 // CreateGame creates a new game instance
 func (s *Server) CreateGame(ctx context.Context, req *gamev1.CreateGameRequest) (*gamev1.CreateGameResponse, error) {
 	// Create new game instance
-	game, gameID := s.gameManager.CreateGame(req.Config)
+	game, gameID, err := s.gameManager.CreateGame(req.Config)
+	if err != nil {
+		return nil, status.Errorf(codes.ResourceExhausted, "failed to create game: %v", err)
+	}
 
 	log.Info().
 		Str("game_id", gameID).

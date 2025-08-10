@@ -21,7 +21,7 @@ const bufSize = 1024 * 1024
 func setupTestServer(t *testing.T) (gamev1.GameServiceClient, func()) {
 	lis := bufconn.Listen(bufSize)
 	s := grpc.NewServer()
-	gamev1.RegisterGameServiceServer(s, NewServer())
+	gamev1.RegisterGameServiceServer(s, NewServer(10))
 
 	go func() {
 		if err := s.Serve(lis); err != nil {
@@ -268,7 +268,7 @@ func TestProtoMessageSerialization(t *testing.T) {
 }
 
 func TestServerState(t *testing.T) {
-	server := NewServer()
+	server := NewServer(10)
 
 	// Initially no games
 	assert.Equal(t, 0, server.GetActiveGames())

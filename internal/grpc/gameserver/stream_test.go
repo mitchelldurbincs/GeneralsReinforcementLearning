@@ -43,7 +43,7 @@ func (m *mockStreamServer) getUpdates() []*gamev1.GameUpdate {
 
 func TestStreamGame(t *testing.T) {
 	// Create server
-	server := NewServer()
+	server := NewServer(10)
 
 	// Create a game
 	createResp, err := server.CreateGame(context.Background(), &gamev1.CreateGameRequest{
@@ -151,7 +151,7 @@ func TestStreamGame(t *testing.T) {
 }
 
 func TestStreamGameInvalidCredentials(t *testing.T) {
-	server := NewServer()
+	server := NewServer(10)
 
 	// Create a game
 	createResp, err := server.CreateGame(context.Background(), &gamev1.CreateGameRequest{})
@@ -170,7 +170,7 @@ func TestStreamGameInvalidCredentials(t *testing.T) {
 }
 
 func TestStreamGameNonExistentGame(t *testing.T) {
-	server := NewServer()
+	server := NewServer(10)
 
 	stream := &mockStreamServer{ctx: context.Background()}
 	err := server.StreamGame(&gamev1.StreamGameRequest{

@@ -11,7 +11,7 @@ import (
 
 // TestNoDeadlock tests that the fixed cleanup code doesn't deadlock
 func TestNoDeadlock(t *testing.T) {
-	gm := NewGameManager()
+	gm := NewGameManager(10)
 
 	// Create multiple games
 	var wg sync.WaitGroup
@@ -21,11 +21,16 @@ func TestNoDeadlock(t *testing.T) {
 			defer wg.Done()
 			
 			// Create a game
-			game, _ := gm.CreateGame(&gamev1.GameConfig{
+			game, _, err := gm.CreateGame(&gamev1.GameConfig{
 				Width:      10,
 				Height:     10,
 				MaxPlayers: 2,
 			})
+			
+			// Skip if game creation failed
+			if err != nil || game == nil {
+				return
+			}
 			
 			// Simulate some activity
 			game.mu.Lock()
@@ -51,11 +56,17 @@ func TestNoDeadlock(t *testing.T) {
 	// Concurrently create and access games
 	go func() {
 		for i := 0; i < 5; i++ {
-			game, _ := gm.CreateGame(&gamev1.GameConfig{
+			game, _, err := gm.CreateGame(&gamev1.GameConfig{
 				Width:      10,
 				Height:     10,
 				MaxPlayers: 2,
 			})
+			
+			// Skip if game creation failed (at capacity)
+			if err != nil || game == nil {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
 			
 			// Access game state
 			game.mu.RLock()
@@ -77,8 +88,8 @@ func TestNoDeadlock(t *testing.T) {
 
 // TestConcurrentGameAccess tests that consolidated mutex doesn't cause issues
 func TestConcurrentGameAccess(t *testing.T) {
-	gm := NewGameManager()
-	game, _ := gm.CreateGame(&gamev1.GameConfig{
+	gm := NewGameManager(10)
+	game, _, _ := gm.CreateGame(&gamev1.GameConfig{
 		Width:      10,
 		Height:     10,
 		MaxPlayers: 2,

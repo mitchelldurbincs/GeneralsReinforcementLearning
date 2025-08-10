@@ -58,14 +58,16 @@ type GameManager struct {
 	mu                   sync.RWMutex
 	games                map[string]*gameInstance
 	nextID               int64
+	maxGames             int
 	experienceService    *ExperienceService
 	experienceAggregator *ExperienceAggregator
 }
 
 // NewGameManager creates a new game manager
-func NewGameManager() *GameManager {
+func NewGameManager(maxGames int) *GameManager {
 	gm := &GameManager{
-		games: make(map[string]*gameInstance),
+		games:    make(map[string]*gameInstance),
+		maxGames: maxGames,
 	}
 
 	// Start cleanup goroutine
@@ -75,9 +77,10 @@ func NewGameManager() *GameManager {
 }
 
 // NewGameManagerWithExperience creates a new game manager with experience service
-func NewGameManagerWithExperience(experienceService *ExperienceService) *GameManager {
+func NewGameManagerWithExperience(experienceService *ExperienceService, maxGames int) *GameManager {
 	gm := &GameManager{
 		games:             make(map[string]*gameInstance),
+		maxGames:          maxGames,
 		experienceService: experienceService,
 	}
 
@@ -98,7 +101,21 @@ func NewGameManagerWithExperience(experienceService *ExperienceService) *GameMan
 }
 
 // CreateGame creates a new game instance
-func (gm *GameManager) CreateGame(config *gamev1.GameConfig) (*gameInstance, string) {
+func (gm *GameManager) CreateGame(config *gamev1.GameConfig) (*gameInstance, string, error) {
+	// Check if we're at the max games limit
+	gm.mu.RLock()
+	currentGames := len(gm.games)
+	maxGames := gm.maxGames
+	gm.mu.RUnlock()
+
+	if maxGames > 0 && currentGames >= maxGames {
+		log.Warn().
+			Int("current_games", currentGames).
+			Int("max_games", maxGames).
+			Msg("Rejecting game creation - server at capacity")
+		return nil, "", fmt.Errorf("server at capacity: %d/%d games active", currentGames, maxGames)
+	}
+
 	// Generate game ID
 	gm.mu.Lock()
 	gm.nextID++
@@ -131,9 +148,19 @@ func (gm *GameManager) CreateGame(config *gamev1.GameConfig) (*gameInstance, str
 
 	gm.mu.Lock()
 	gm.games[gameID] = game
+	currentCount := len(gm.games)
 	gm.mu.Unlock()
 
-	return game, gameID
+	log.Info().
+		Str("game_id", gameID).
+		Int("current_games", currentCount).
+		Int("max_games", maxGames).
+		Int32("width", config.Width).
+		Int32("height", config.Height).
+		Int32("max_players", config.MaxPlayers).
+		Msg("Successfully created new game")
+
+	return game, gameID, nil
 }
 
 // GetGame retrieves a game by ID

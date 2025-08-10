@@ -95,7 +95,7 @@ func main() {
 	grpcServer := grpc.NewServer(opts...)
 
 	// Register game service
-	gameService := gameserver.NewServer()
+	gameService := gameserver.NewServer(*maxGames)
 	gamev1.RegisterGameServiceServer(grpcServer, gameService)
 
 	// Register experience service

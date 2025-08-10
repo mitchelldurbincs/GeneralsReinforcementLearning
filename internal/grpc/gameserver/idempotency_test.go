@@ -12,7 +12,7 @@ import (
 )
 
 func TestIdempotencyWithSameKey(t *testing.T) {
-	s := NewServer()
+	s := NewServer(10)
 	ctx := context.Background()
 
 	// Create a game
@@ -96,7 +96,7 @@ func TestIdempotencyWithSameKey(t *testing.T) {
 }
 
 func TestIdempotencyForErrors(t *testing.T) {
-	s := NewServer()
+	s := NewServer(10)
 	ctx := context.Background()
 
 	// Create a game
@@ -147,7 +147,7 @@ func TestIdempotencyForErrors(t *testing.T) {
 }
 
 func TestIdempotencyAcrossPlayers(t *testing.T) {
-	s := NewServer()
+	s := NewServer(10)
 	ctx := context.Background()
 
 	// Create a game
