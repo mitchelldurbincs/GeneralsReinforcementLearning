@@ -2,6 +2,7 @@
 GameClient class for handling game-specific RPC calls.
 Provides a clean interface for interacting with the game server.
 """
+import grpc
 import logging
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
@@ -172,11 +173,11 @@ class GameClient:
         
         try:
             response = stub.SubmitAction(request)
-            if response.accepted:
+            if response.success:
                 self.logger.debug(f"Action accepted: {action}")
             else:
-                self.logger.warning(f"Action rejected: {action} - Reason: {response.rejection_reason}")
-            return response.accepted
+                self.logger.warning(f"Action rejected: {action} - Error: {response.error_message}")
+            return response.success
         except grpc.RpcError as e:
             self.logger.error(f"Failed to submit action: {e.details()}")
             raise

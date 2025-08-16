@@ -56,11 +56,12 @@ class RandomAgent(BaseAgent):
         self.move_count += 1
         
         # Log the move
-        move = action.move
-        move_type = "split" if move.split else "move"
+        move_type = "half" if action.half else "full"
+        from_coord = getattr(action, 'from')
+        to_coord = action.to
         self.logger.info(
-            f"Turn {self.turn_count}: {move_type} from ({move.from_pos.x},{move.from_pos.y}) "
-            f"to ({move.to_pos.x},{move.to_pos.y})"
+            f"Turn {self.turn_count}: {move_type} move from ({from_coord.x},{from_coord.y}) "
+            f"to ({to_coord.x},{to_coord.y})"
         )
         
         return action
