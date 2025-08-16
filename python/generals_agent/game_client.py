@@ -29,9 +29,10 @@ class GameConfig:
     """Configuration for creating a new game."""
     width: int = 20
     height: int = 20
-    fog_of_war_enabled: bool = True
-    min_players: int = 2
+    fog_of_war: bool = True
     max_players: int = 2
+    turn_time_ms: int = 500  # Time per turn in milliseconds (0 = no limit)
+    collect_experiences: bool = False  # Enable experience collection for RL training
 
 
 class GameClient:
@@ -67,9 +68,10 @@ class GameClient:
             config=generals_pb2.GameConfig(
                 width=config.width,
                 height=config.height,
-                fog_of_war_enabled=config.fog_of_war_enabled,
-                min_players=config.min_players,
-                max_players=config.max_players
+                fog_of_war=config.fog_of_war,
+                max_players=config.max_players,
+                turn_time_ms=config.turn_time_ms,
+                collect_experiences=config.collect_experiences
             )
         )
         

@@ -150,7 +150,8 @@ class GameSession:
                 game_state = self.client.get_game_state(self.credentials)
                 
                 # Count active players
-                active_players = sum(1 for p in game_state.players if p.is_active)
+                from generals_pb.common.v1 import common_pb2
+                active_players = sum(1 for p in game_state.players if p.status == common_pb2.PLAYER_STATUS_ACTIVE)
                 
                 if active_players >= min_players:
                     self.logger.info(f"Found {active_players} players, starting game")
@@ -228,11 +229,12 @@ class GameSession:
     
     def _get_game_status(self, game_state: game_pb2.GameState) -> GameStatus:
         """Convert protobuf game status to our enum."""
-        if game_state.status == game_pb2.GameStatus.WAITING:
+        from generals_pb.common.v1 import common_pb2
+        if game_state.status == common_pb2.GAME_STATUS_WAITING:
             return GameStatus.WAITING
-        elif game_state.status == game_pb2.GameStatus.IN_PROGRESS:
+        elif game_state.status == common_pb2.GAME_STATUS_IN_PROGRESS:
             return GameStatus.IN_PROGRESS
-        elif game_state.status == game_pb2.GameStatus.FINISHED:
+        elif game_state.status == common_pb2.GAME_STATUS_FINISHED:
             return GameStatus.FINISHED
         else:
             return GameStatus.CANCELLED

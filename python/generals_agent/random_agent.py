@@ -186,7 +186,7 @@ class RandomAgent(BaseAgent):
         self.logger.error(f"Error in RandomAgent: {error}", exc_info=True)
 
 
-def create_random_agent(name: str = "RandomAgent") -> RandomAgentNew:
+def create_random_agent(name: str = "RandomAgent") -> RandomAgent:
     """
     Factory function to create a random agent.
     
@@ -194,6 +194,6 @@ def create_random_agent(name: str = "RandomAgent") -> RandomAgentNew:
         name: Name for the agent
         
     Returns:
-        A new RandomAgentNew instance
+        A new RandomAgent instance
     """
-    return RandomAgentNew(name)
+    return RandomAgent(name)

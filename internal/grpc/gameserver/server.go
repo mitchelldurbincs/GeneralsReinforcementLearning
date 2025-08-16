@@ -198,9 +198,6 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 			Bool("action_buffer_initialized", game.actionBuffer != nil).
 			Msg("Game state initialized")
 
-		// Start turn timer (even if 0, to process turns automatically)
-		game.startTurnTimer(game.engineCtx, time.Duration(game.config.TurnTimeMs)*time.Millisecond, s)
-
 		log.Info().
 			Str("game_id", req.GameId).
 			Int("players", len(game.players)).
@@ -210,8 +207,17 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 		game.streamManager.BroadcastGameStarted()
 	}
 
+	// Store values needed after unlock
+	shouldStartTimer := len(game.players) == int(game.config.MaxPlayers)
+	turnTimeMs := game.config.TurnTimeMs
+	
 	// Unlock before creating game state to avoid potential deadlock
 	game.mu.Unlock()
+	
+	// Start turn timer after releasing the lock to avoid deadlock
+	if shouldStartTimer {
+		game.startTurnTimer(game.engineCtx, time.Duration(turnTimeMs)*time.Millisecond, s)
+	}
 
 	return &gamev1.JoinGameResponse{
 		PlayerId:     playerID,
