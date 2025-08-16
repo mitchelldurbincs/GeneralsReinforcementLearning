@@ -134,9 +134,9 @@ class RandomAgent(BaseAgent):
         general_pos = find_general_position(initial_state, self.player_id)
         
         if general_pos:
-            self.general_position = Position(general_pos.x, general_pos.y)
+            self.general_position = Position(general_pos[0], general_pos[1])
             self.logger.info(
-                f"Starting position: General at ({general_pos.x},{general_pos.y}), "
+                f"Starting position: General at ({general_pos[0]},{general_pos[1]}), "
                 f"{stats['tiles']} tiles, {stats['armies']} armies"
             )
         else:

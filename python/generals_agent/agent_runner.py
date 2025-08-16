@@ -83,7 +83,8 @@ class AgentEventHandler(BaseGameEventHandler):
         """Check if it's our turn to move."""
         # In Generals.io, all players move simultaneously each turn
         # So we should submit an action every turn while the game is active
-        return (game_state.status == game_pb2.GameStatus.IN_PROGRESS and
+        from generals_pb.common.v1 import common_pb2
+        return (game_state.status == common_pb2.GAME_STATUS_IN_PROGRESS and
                 self.agent.player_id is not None)
 
 
