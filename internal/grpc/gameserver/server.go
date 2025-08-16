@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	gameengine "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
+	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/monitoring"
 	// "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
 	// "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/events"
 	// "github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/states"
@@ -30,6 +31,9 @@ type Server struct {
 
 	// Experience service for collecting and streaming experiences
 	experienceService *ExperienceService
+
+	// Goroutine monitor for tracking goroutine leaks
+	goroutineMonitor *monitoring.GoroutineMonitor
 }
 
 // Server configuration constants
@@ -45,6 +49,10 @@ func NewServer(maxGames int) *Server {
 	// Create experience service with its buffer manager
 	experienceService := NewExperienceService(nil)
 
+	// Create goroutine monitor
+	goroutineMonitor := monitoring.NewGoroutineMonitor()
+	goroutineMonitor.Start()
+
 	// Create game manager with experience service
 	gameManager := NewGameManagerWithExperience(experienceService, maxGames)
 
@@ -52,6 +60,7 @@ func NewServer(maxGames int) *Server {
 		gameManager:       gameManager,
 		validator:         NewActionValidator(gameManager),
 		experienceService: experienceService,
+		goroutineMonitor:  goroutineMonitor,
 	}
 }
 
@@ -164,10 +173,10 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 	// Store values needed after unlock
 	shouldStartTimer := len(game.players) == int(game.config.MaxPlayers)
 	turnTimeMs := game.config.TurnTimeMs
-	
+
 	// Unlock before creating game state to avoid potential deadlock
 	game.mu.Unlock()
-	
+
 	// Start turn timer after releasing the lock to avoid deadlock
 	if shouldStartTimer {
 		game.startTurnTimer(game.engineCtx, time.Duration(turnTimeMs)*time.Millisecond, s)
@@ -367,6 +376,21 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 	// Start goroutine to handle updates
 	errChan := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error().
+					Interface("panic", r).
+					Str("game_id", req.GameId).
+					Int32("player_id", req.PlayerId).
+					Msg("Stream update goroutine panicked")
+				errChan <- fmt.Errorf("stream handler panic: %v", r)
+			}
+		}()
+
+		// Add timeout to prevent goroutine leak
+		timeout := time.NewTimer(30 * time.Minute)
+		defer timeout.Stop()
+
 		for {
 			select {
 			case update := <-client.updateChan:
@@ -374,7 +398,23 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 					errChan <- err
 					return
 				}
+				// Reset timeout on successful send
+				if !timeout.Stop() {
+					<-timeout.C
+				}
+				timeout.Reset(30 * time.Minute)
+			case <-timeout.C:
+				// Connection idle for too long
+				log.Warn().
+					Str("game_id", req.GameId).
+					Int32("player_id", req.PlayerId).
+					Msg("Stream idle timeout - closing connection")
+				errChan <- fmt.Errorf("stream idle timeout")
+				return
 			case <-ctx.Done():
+				return
+			case <-stream.Context().Done():
+				// Stream closed by client
 				return
 			}
 		}
@@ -722,4 +762,15 @@ func (g *gameInstance) createStreamUpdate(server *Server, engineState gameengine
 // GetExperienceService returns the experience service for integration
 func (s *Server) GetExperienceService() *ExperienceService {
 	return s.experienceService
+}
+
+// GetGoroutineMetrics returns current goroutine metrics
+func (s *Server) GetGoroutineMetrics() monitoring.GoroutineMetrics {
+	if s.goroutineMonitor != nil {
+		// Register component-specific counts
+		s.goroutineMonitor.RegisterComponent("active_games", s.GetActiveGames())
+		s.goroutineMonitor.RegisterComponent("game_manager", s.gameManager.GetActiveGoroutineCount())
+		return s.goroutineMonitor.GetMetrics()
+	}
+	return monitoring.GoroutineMetrics{}
 }

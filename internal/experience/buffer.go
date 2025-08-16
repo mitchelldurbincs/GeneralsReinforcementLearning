@@ -7,6 +7,7 @@ import (
 
 	experiencepb "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/experience/v1"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -427,6 +428,14 @@ func (m *StreamMerger) Start() {
 // mergeSource merges a single source into the output
 func (m *StreamMerger) mergeSource(sourceID int, source <-chan *experiencepb.Experience) {
 	defer m.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			m.logger.Error().
+				Interface("panic", r).
+				Int("source_id", sourceID).
+				Msg("StreamMerger source goroutine panicked")
+		}
+	}()
 
 	for {
 		select {
@@ -492,6 +501,15 @@ func (b *TimedBatcher) Start() {
 
 // run is the main batching loop
 func (b *TimedBatcher) run() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().
+				Interface("panic", r).
+				Msg("TimedBatcher goroutine panicked")
+			// Close output channel to signal error
+			close(b.output)
+		}
+	}()
 	batch := make([]*experiencepb.Experience, 0, b.batchSize)
 	timer := time.NewTimer(b.timeout)
 	defer timer.Stop()

@@ -68,12 +68,12 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 		if !game.stateMachine.CurrentPhase().CanReceiveActions() {
 			currentPhase := game.stateMachine.CurrentPhase()
 			errorCode := commonv1.ErrorCode_ERROR_CODE_INVALID_PHASE
-			
+
 			// Special handling for ended phase
 			if currentPhase == states.PhaseEnded {
 				errorCode = commonv1.ErrorCode_ERROR_CODE_GAME_OVER
 			}
-			
+
 			return &ValidationResult{
 				Valid:        false,
 				ErrorCode:    errorCode,

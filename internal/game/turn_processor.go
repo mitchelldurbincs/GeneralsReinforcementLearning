@@ -199,7 +199,7 @@ func (tp *TurnProcessor) collectExperiences(prevState *GameState, actions []core
 			}
 		}
 	}
-	
+
 	tp.logger.Debug().
 		Int("turn", tp.engine.gs.Turn).
 		Int("num_actions", len(actionMap)).

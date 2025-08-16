@@ -19,31 +19,31 @@ func TestNoDeadlock(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			
+
 			// Create a game
 			game, _, err := gm.CreateGame(&gamev1.GameConfig{
 				Width:      10,
 				Height:     10,
 				MaxPlayers: 2,
 			})
-			
+
 			// Skip if game creation failed
 			if err != nil || game == nil {
 				return
 			}
-			
+
 			// Simulate some activity
 			game.mu.Lock()
 			game.lastActivity = time.Now().Add(-2 * abandonedGameTimeout)
 			game.mu.Unlock()
 		}()
 	}
-	
+
 	wg.Wait()
-	
+
 	// Now run cleanup concurrently with game operations
 	done := make(chan bool, 1)
-	
+
 	// Start cleanup in background
 	go func() {
 		for i := 0; i < 5; i++ {
@@ -52,7 +52,7 @@ func TestNoDeadlock(t *testing.T) {
 		}
 		done <- true
 	}()
-	
+
 	// Concurrently create and access games
 	go func() {
 		for i := 0; i < 5; i++ {
@@ -61,22 +61,22 @@ func TestNoDeadlock(t *testing.T) {
 				Height:     10,
 				MaxPlayers: 2,
 			})
-			
+
 			// Skip if game creation failed (at capacity)
 			if err != nil || game == nil {
 				time.Sleep(10 * time.Millisecond)
 				continue
 			}
-			
+
 			// Access game state
 			game.mu.RLock()
 			_ = game.currentPhaseUnlocked()
 			game.mu.RUnlock()
-			
+
 			time.Sleep(10 * time.Millisecond)
 		}
 	}()
-	
+
 	// Wait for cleanup to complete with timeout
 	select {
 	case <-done:
@@ -94,32 +94,32 @@ func TestConcurrentGameAccess(t *testing.T) {
 		Height:     10,
 		MaxPlayers: 2,
 	})
-	
+
 	// Initialize the action buffer
 	game.actionBuffer = make(map[int32]core.Action)
-	
+
 	var wg sync.WaitGroup
-	
+
 	// Simulate concurrent action submissions
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func(playerID int32) {
 			defer wg.Done()
-			
+
 			// Collect action (uses single mutex now)
 			game.collectAction(playerID, nil)
-			
+
 			// Access current phase (uses RLock)
 			_ = game.CurrentPhase()
 		}(int32(i))
 	}
-	
+
 	// Simulate concurrent reads
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			
+
 			// Multiple reads should not block each other
 			game.mu.RLock()
 			_ = game.currentTurn
@@ -127,13 +127,13 @@ func TestConcurrentGameAccess(t *testing.T) {
 			game.mu.RUnlock()
 		}()
 	}
-	
+
 	done := make(chan bool)
 	go func() {
 		wg.Wait()
 		done <- true
 	}()
-	
+
 	select {
 	case <-done:
 		// Success

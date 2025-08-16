@@ -262,6 +262,14 @@ func (ec *EnhancedCollector) handleOverflow() {
 // batchProcessor processes batches of experiences
 func (ec *EnhancedCollector) batchProcessor() {
 	defer ec.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			ec.logger.Error().
+				Interface("panic", r).
+				Str("game_id", ec.gameID).
+				Msg("Batch processor goroutine panicked")
+		}
+	}()
 
 	batch := make([]*experiencepb.Experience, 0, ec.config.BatchSize)
 	flushTimer := time.NewTimer(ec.config.FlushInterval)
@@ -309,6 +317,14 @@ func (ec *EnhancedCollector) batchProcessor() {
 // persistenceWorker handles persistence of experience batches
 func (ec *EnhancedCollector) persistenceWorker() {
 	defer ec.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			ec.logger.Error().
+				Interface("panic", r).
+				Str("game_id", ec.gameID).
+				Msg("Persistence worker goroutine panicked")
+		}
+	}()
 
 	for batch := range ec.batchChan {
 		if len(batch) == 0 {
@@ -351,6 +367,14 @@ func (ec *EnhancedCollector) persistenceWorker() {
 // metricsReporter periodically reports metrics
 func (ec *EnhancedCollector) metricsReporter() {
 	defer ec.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			ec.logger.Error().
+				Interface("panic", r).
+				Str("game_id", ec.gameID).
+				Msg("Metrics reporter goroutine panicked")
+		}
+	}()
 
 	ticker := time.NewTicker(ec.config.MetricsInterval)
 	defer ticker.Stop()
