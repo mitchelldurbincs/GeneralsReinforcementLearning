@@ -1,6 +1,6 @@
 # Next Steps for GeneralsReinforcementLearning
 
-*Last Updated: 2025-08-02*
+*Last Updated: 2025-08-16*
 
 ## Current State Assessment
 
@@ -31,9 +31,15 @@
 
 ### 🚧 Critical Gaps
 
-1. ✅ **StreamGame Method**: ~~Returns "Unimplemented"~~ FIXED - Python agents can now play via streaming
+1. ✅ **StreamGame Method**: ~~Returns "Unimplemented"~~ FULLY FIXED (Aug 16, 2025)
+   - Fixed critical deadlock in JoinGame
+   - Fixed all Python client protobuf references
+   - Agents can now play complete games via streaming
 2. **Experience gRPC Integration**: Not connected to streaming service
-3. ✅ **Python Agent Issues**: ~~Can't complete full games~~ FIXED - Agents work with streaming
+3. ✅ **Python Agent Issues**: ~~Can't complete full games~~ FULLY FIXED (Aug 16, 2025)
+   - Fixed general position handling
+   - Fixed move selection and action submission
+   - Random agents work perfectly with streaming
 4. **Multi-game Support**: No instance manager for parallel execution
 5. **Failing Tests**: Experience package tests failing
 
@@ -43,11 +49,21 @@
 
 **Status**: StreamGame is now fully functional! The implementation was already complete in the Go server.
 
-**What Was Done**:
+**What Was Done (Initial - Aug 2)**:
 - Reviewed existing StreamGame implementation in `/internal/grpc/gameserver/server.go`
 - Fixed Python client code to use correct method names (`StreamGame` not `StreamGameUpdates`)
 - Updated `BaseAgent` class to support streaming mode (default enabled)
 - Successfully tested with random agents playing complete games via streaming
+
+**Critical Fixes (Aug 16, 2025)**:
+- **Fixed Critical Deadlock**: JoinGame was calling startTurnTimer while holding mutex
+- **Fixed Python Client Issues**:
+  - Corrected all protobuf enum references (GameStatus, PlayerStatus in common_pb2)
+  - Added missing grpc import to game_client.py
+  - Fixed general position tuple handling
+  - Fixed action field access (action.half, getattr(action, 'from'))
+  - Fixed SubmitActionResponse field (success not accepted)
+- **Result**: Agents can now play complete games without any errors
 
 **Key Files Updated**:
 - `/python/generals_agent/base_agent.py` - Added `stream_game_updates()` method

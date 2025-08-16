@@ -1,15 +1,20 @@
 # Todo List
 
+*Last Updated: August 16, 2025*
+
+## Recently Completed ✅
+- [x] **StreamGame implementation in gRPC server** (Aug 16, 2025)
+  - [x] Fixed critical deadlock in JoinGame
+  - [x] Server-side streaming works perfectly
+  - [x] Delta compression and fog-of-war filtering implemented
+  - [x] Tested with multiple concurrent streams
+- [x] **Python base agent and random agent implementation** (Aug 16, 2025)
+  - [x] Fixed all protobuf reference issues
+  - [x] Random agent works perfectly
+  - [x] Fixed general position handling
+  - [x] Fixed move selection and action submission
+
 ## High Priority (Do Next)
-- [ ] Complete StreamGame implementation in gRPC server
-  - [ ] Implement server-side streaming for real-time game updates
-  - [ ] Add event types for different game state changes
-  - [ ] Test with multiple concurrent streams
-- [ ] Fix Python base agent and random agent implementation
-  - [ ] Refactor base_agent.py following architecture recommendations
-  - [ ] Implement working random_agent.py
-  - [ ] Create run_random_match.py for testing
-  - [ ] Add move validation helpers
 - [ ] Implement Game Instance Manager for multi-game support
   - [ ] Create instance pool management
   - [ ] Support 100+ concurrent games
