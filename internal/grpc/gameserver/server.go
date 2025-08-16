@@ -135,62 +135,16 @@ func (s *Server) JoinGame(ctx context.Context, req *gamev1.JoinGameRequest) (*ga
 
 	// Start game if we have enough players
 	if len(game.players) == int(game.config.MaxPlayers) {
-		// Engine will be created and will handle state transitions
-		// No need to manually set status anymore
-
-		// Create the game engine
-		engineConfig := gameengine.GameConfig{
-			Width:   int(game.config.Width),
-			Height:  int(game.config.Height),
-			Players: int(game.config.MaxPlayers),
-			Logger:  log.Logger,
-			GameID:  req.GameId,
-		}
-
-		// Attach experience collector if enabled
-		if game.config.CollectExperiences && s.experienceService != nil {
-			engineConfig.ExperienceCollector = s.experienceService.CreateCollector(req.GameId)
-		}
-
-		// Create a background context for the engine that won't be cancelled
+		// Use the game manager's StartEngine method which properly handles experience collection
+		// StartEngine already handles:
+		// - Creating the engine with experience collector if enabled
+		// - Setting up event subscriptions
+		// - Initializing action buffer
 		engineCtx := context.Background()
-		game.engineCtx = engineCtx
-
-		game.engine = gameengine.NewEngine(engineCtx, engineConfig)
-
-		if game.engine == nil {
+		if err := game.StartEngine(engineCtx); err != nil {
 			game.mu.Unlock()
-			return nil, status.Errorf(codes.Internal, "failed to create game engine for game %s: config %dx%d with %d players", req.GameId, game.config.Width, game.config.Height, game.config.MaxPlayers)
+			return nil, status.Errorf(codes.Internal, "failed to start game engine for game %s: %v", req.GameId, err)
 		}
-
-		// Subscribe to state transition events from the engine
-		game.engine.EventBus().SubscribeFunc("state.transition", func(event events.Event) {
-			// Type assert to StateTransitionEvent
-			if stateEvent, ok := event.(*events.StateTransitionEvent); ok {
-				// Convert internal phases to proto phases
-				previousPhase := convertPhaseToProto(states.GamePhase(0)) // We don't have the numeric value, so we'll parse from string
-				newPhase := convertPhaseToProto(states.GamePhase(0))
-
-				// Parse phase names to get the actual phases
-				// This is a bit hacky but works for now
-				for i := 0; i <= int(states.PhaseReset); i++ {
-					phase := states.GamePhase(i)
-					if phase.String() == stateEvent.FromPhase {
-						previousPhase = convertPhaseToProto(phase)
-					}
-					if phase.String() == stateEvent.ToPhase {
-						newPhase = convertPhaseToProto(phase)
-					}
-				}
-
-				// Broadcast the phase change to all stream clients
-				game.streamManager.BroadcastPhaseChanged(previousPhase, newPhase, stateEvent.Reason)
-			}
-		})
-
-		// Initialize action collection
-		game.actionBuffer = make(map[int32]core.Action)
-		game.currentTurn = 0
 
 		log.Info().
 			Str("game_id", req.GameId).

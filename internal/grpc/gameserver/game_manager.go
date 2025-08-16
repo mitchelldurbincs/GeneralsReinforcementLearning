@@ -145,6 +145,12 @@ func (gm *GameManager) CreateGame(config *gamev1.GameConfig) (*gameInstance, str
 		streamManager:      NewStreamManager(),
 		gameManager:        gm,
 	}
+	
+	// Log experience collection configuration
+	log.Info().
+		Str("game_id", gameID).
+		Bool("collect_experiences", config.CollectExperiences).
+		Msg("Created game instance")
 
 	gm.mu.Lock()
 	gm.games[gameID] = game
@@ -348,15 +354,27 @@ func (g *gameInstance) StartEngine(ctx context.Context) error {
 
 	// Create experience collector if experience service is available AND collection is enabled
 	var experienceCollector gameengine.ExperienceCollector
+	
+	log.Debug().
+		Str("game_id", g.id).
+		Bool("collect_experiences", g.config.CollectExperiences).
+		Bool("has_game_manager", g.getGameManager() != nil).
+		Bool("has_experience_service", g.getGameManager() != nil && g.getGameManager().experienceService != nil).
+		Msg("Checking experience collection setup")
+	
 	if gm := g.getGameManager(); gm != nil && gm.experienceService != nil && g.config.CollectExperiences {
 		// Create a simple collector that writes to the experience buffer
 		simpleCollector := experience.NewSimpleCollector(10000, g.id, log.Logger)
 		experienceCollector = simpleCollector
+		
+		log.Info().
+			Str("game_id", g.id).
+			Msg("Created experience collector for game")
 
 		// Register with the centralized aggregator instead of creating a per-game goroutine
 		if gm.experienceAggregator != nil {
 			gm.experienceAggregator.RegisterGame(g.id, simpleCollector)
-			log.Debug().
+			log.Info().
 				Str("game_id", g.id).
 				Msg("Registered game with experience aggregator")
 		} else {
@@ -403,6 +421,12 @@ func (g *gameInstance) StartEngine(ctx context.Context) error {
 		GameID:              g.id,
 		ExperienceCollector: experienceCollector,
 	}
+	
+	log.Info().
+		Str("game_id", g.id).
+		Bool("has_experience_collector", experienceCollector != nil).
+		Msg("Creating game engine with configuration")
+	
 	// Store the engine context for use in turn processing
 	g.engineCtx = ctx
 

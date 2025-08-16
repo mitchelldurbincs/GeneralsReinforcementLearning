@@ -181,6 +181,10 @@ func (tp *TurnProcessor) processEndOfTurnPhase(ctx context.Context, turnLogger z
 // collectExperiences handles experience collection if enabled
 func (tp *TurnProcessor) collectExperiences(prevState *GameState, actions []core.Action) {
 	if tp.engine.experienceCollector == nil || prevState == nil {
+		tp.logger.Debug().
+			Bool("has_collector", tp.engine.experienceCollector != nil).
+			Bool("has_prev_state", prevState != nil).
+			Msg("Skipping experience collection")
 		return
 	}
 
@@ -195,11 +199,19 @@ func (tp *TurnProcessor) collectExperiences(prevState *GameState, actions []core
 			}
 		}
 	}
+	
+	tp.logger.Debug().
+		Int("turn", tp.engine.gs.Turn).
+		Int("num_actions", len(actionMap)).
+		Msg("Collecting experiences for turn")
 
 	tp.engine.experienceCollector.OnStateTransition(prevState, tp.engine.gs, actionMap)
 
 	// If game is over, notify collector
 	if tp.engine.gameOver {
+		tp.logger.Info().
+			Int("final_turn", tp.engine.gs.Turn).
+			Msg("Game ended, notifying experience collector")
 		tp.engine.experienceCollector.OnGameEnd(tp.engine.gs)
 	}
 }
