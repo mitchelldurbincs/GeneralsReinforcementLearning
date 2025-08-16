@@ -24,6 +24,10 @@ type gameInstance struct {
 	engine  *gameengine.Engine
 	mu      sync.RWMutex // Single mutex for all game state (upgraded to RWMutex)
 
+	// State management
+	stateMachine *states.StateMachine // State machine for game lifecycle
+	eventBus     *events.EventBus     // Event bus for state transitions and game events
+
 	// Action collection for turn-based processing
 	actionBuffer map[int32]core.Action // playerID -> action for current turn
 	currentTurn  int32                 // Current turn number
@@ -133,12 +137,23 @@ func (gm *GameManager) CreateGame(config *gamev1.GameConfig) (*gameInstance, str
 		}
 	}
 
+	// Create event bus for this game
+	eventBus := events.NewEventBus()
+	
+	// Create game context for state machine
+	gameContext := states.NewGameContext(gameID, int(config.MaxPlayers), log.Logger)
+	
+	// Create state machine starting in Initializing phase
+	stateMachine := states.NewStateMachine(gameContext, eventBus)
+	
 	// Create new game instance
 	now := time.Now()
 	game := &gameInstance{
 		id:                 gameID,
 		config:             config,
 		players:            make([]playerInfo, 0, config.MaxPlayers),
+		stateMachine:       stateMachine,
+		eventBus:           eventBus,
 		createdAt:          now,
 		lastActivity:       now,
 		idempotencyManager: NewIdempotencyManager(),
@@ -146,11 +161,43 @@ func (gm *GameManager) CreateGame(config *gamev1.GameConfig) (*gameInstance, str
 		gameManager:        gm,
 	}
 	
-	// Log experience collection configuration
+	// Transition from Initializing to Lobby phase
+	if err := stateMachine.TransitionTo(states.PhaseLobby, "Game created and waiting for players"); err != nil {
+		return nil, "", fmt.Errorf("failed to transition to lobby phase: %w", err)
+	}
+	
+	// Subscribe to state transition events to broadcast to stream clients
+	eventBus.SubscribeFunc("state.transition", func(event events.Event) {
+		if e, ok := event.(*events.StateTransitionEvent); ok {
+			// Broadcast phase change to all stream clients
+			log.Debug().
+				Str("game_id", gameID).
+				Str("from_phase", e.FromPhase).
+				Str("to_phase", e.ToPhase).
+				Str("reason", e.Reason).
+				Msg("State transition occurred")
+			
+			// Parse the phase strings to states.GamePhase
+			fromPhase := states.ParsePhase(e.FromPhase)
+			toPhase := states.ParsePhase(e.ToPhase)
+			
+			// Notify stream manager of phase change
+			if game.streamManager != nil {
+				game.streamManager.BroadcastPhaseChanged(
+					convertPhaseToProto(fromPhase),
+					convertPhaseToProto(toPhase),
+					e.Reason,
+				)
+			}
+		}
+	})
+	
+	// Log experience collection configuration and state
 	log.Info().
 		Str("game_id", gameID).
 		Bool("collect_experiences", config.CollectExperiences).
-		Msg("Created game instance")
+		Str("initial_phase", stateMachine.CurrentPhase().String()).
+		Msg("Created game instance with state machine")
 
 	gm.mu.Lock()
 	gm.games[gameID] = game
@@ -320,6 +367,11 @@ func (g *gameInstance) AddPlayer(playerName string) (int32, string, bool) {
 		token: playerToken,
 	})
 
+	// Update state machine's game context with new player count
+	if g.stateMachine != nil && g.stateMachine.GetContext() != nil {
+		g.stateMachine.GetContext().PlayerCount = len(g.players)
+	}
+
 	// Update last activity time
 	g.lastActivity = time.Now()
 
@@ -467,7 +519,14 @@ func (g *gameInstance) StartEngine(ctx context.Context) error {
 	return nil
 }
 
-// CurrentPhase returns the current game phase from the engine's state machine
+// GetStateMachine returns the game's state machine
+func (g *gameInstance) GetStateMachine() *states.StateMachine {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.stateMachine
+}
+
+// CurrentPhase returns the current game phase from the state machine
 func (g *gameInstance) CurrentPhase() commonv1.GamePhase {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
@@ -477,15 +536,18 @@ func (g *gameInstance) CurrentPhase() commonv1.GamePhase {
 
 // currentPhaseUnlocked returns the current game phase without locking (caller must hold lock)
 func (g *gameInstance) currentPhaseUnlocked() commonv1.GamePhase {
-	if g.engine == nil {
-		return commonv1.GamePhase_GAME_PHASE_UNSPECIFIED
+	// Use state machine directly if available
+	if g.stateMachine != nil {
+		return convertPhaseToProto(g.stateMachine.CurrentPhase())
+	}
+	
+	// Fallback to engine for backward compatibility (will be removed)
+	if g.engine != nil {
+		enginePhase := g.engine.CurrentPhase()
+		return convertPhaseToProto(enginePhase)
 	}
 
-	// Get the current phase from the engine
-	enginePhase := g.engine.CurrentPhase()
-
-	// Convert internal phase to proto phase
-	return convertPhaseToProto(enginePhase)
+	return commonv1.GamePhase_GAME_PHASE_UNSPECIFIED
 }
 
 // collectAction stores an action in the buffer and checks if all players have submitted

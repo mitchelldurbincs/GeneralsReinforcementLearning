@@ -111,3 +111,29 @@ func (p GamePhase) CanTransitionTo(target GamePhase) bool {
 	}
 	return false
 }
+
+// ParsePhase converts a string to a GamePhase
+func ParsePhase(s string) GamePhase {
+	switch s {
+	case "Initializing":
+		return PhaseInitializing
+	case "Lobby":
+		return PhaseLobby
+	case "Starting":
+		return PhaseStarting
+	case "Running":
+		return PhaseRunning
+	case "Paused":
+		return PhasePaused
+	case "Ending":
+		return PhaseEnding
+	case "Ended":
+		return PhaseEnded
+	case "Error":
+		return PhaseError
+	case "Reset":
+		return PhaseReset
+	default:
+		return PhaseInitializing // Default to initializing for unknown phases
+	}
+}

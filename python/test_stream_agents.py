@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """Test streaming with two random agents playing"""
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(__file__))
-
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor

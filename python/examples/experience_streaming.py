@@ -9,15 +9,10 @@ This example demonstrates:
 4. Basic statistics tracking
 """
 
-import sys
-import os
 import time
 import argparse
 import numpy as np
 from collections import deque
-
-# Add parent directory to path to import generals modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from generals_agent.experience_consumer import ExperienceConsumer, AsyncExperienceConsumer, experience_to_tensors
 

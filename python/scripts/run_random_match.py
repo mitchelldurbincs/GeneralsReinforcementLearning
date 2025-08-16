@@ -9,12 +9,7 @@ import asyncio
 import time
 from typing import Optional, Dict, List, Tuple
 import json
-import sys
-import os
 from concurrent.futures import ThreadPoolExecutor
-
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generals_agent import (
     RandomAgent, AgentRunner, GameConfig, 

@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "generals-rl"
+version = "0.1.0"
+description = "Python gRPC client and RL agents for Generals Reinforcement Learning"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "GeneralsRL Team"},
+]
+dependencies = [
+    "grpcio>=1.48.0",
+    "protobuf>=3.20.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=22.0.0",
+    "ruff>=0.0.261",
+    "mypy>=1.0.0",
+    "types-protobuf>=4.24.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["generals_agent", "generals_agent.*", "generals_pb", "generals_pb.*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "generals_agent/tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"

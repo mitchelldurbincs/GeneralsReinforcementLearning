@@ -7,10 +7,6 @@ For the recommended way to run agents, see scripts/run_random_match.py
 """
 
 import logging
-import sys
-import os
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from generals_agent import (
     RandomAgent, AgentRunner, GameConfig,

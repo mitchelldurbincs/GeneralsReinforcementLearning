@@ -6,9 +6,6 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Tuple
 
 # Import the generated protobuf types
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'python'))
 from generals_pb.game.v1 import game_pb2
 
 

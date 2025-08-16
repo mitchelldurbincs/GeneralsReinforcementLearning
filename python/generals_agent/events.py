@@ -10,9 +10,6 @@ from .types import AgentState, GameStatus
 from .errors import GameError
 
 # Import protobuf types
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'python'))
 from generals_pb.game.v1 import game_pb2
 
 

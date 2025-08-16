@@ -18,9 +18,6 @@ from .types import AgentState, BoardView, Move
 from .errors import GameError, ActionError
 
 # Import protobuf types
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'python'))
 from generals_pb.game.v1 import game_pb2
 
 

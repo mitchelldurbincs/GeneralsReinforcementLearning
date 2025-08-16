@@ -6,10 +6,6 @@ NOTE: This test has been updated to work with the new agent architecture.
 For the recommended way to run multi-agent matches, see scripts/run_random_match.py
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(__file__))
-
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor

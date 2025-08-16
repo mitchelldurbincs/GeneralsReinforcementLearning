@@ -8,9 +8,6 @@ from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
 # Import the generated gRPC stubs and messages
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'python'))
 from generals_pb.game.v1 import game_pb2 as generals_pb2
 from generals_pb.game.v1 import game_pb2_grpc as generals_pb2_grpc
 

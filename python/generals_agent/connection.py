@@ -9,9 +9,6 @@ from typing import Optional, Callable, TypeVar, Any
 from functools import wraps
 
 # Import the generated gRPC stubs
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'python'))
 from generals_pb.game.v1 import game_pb2_grpc
 
 T = TypeVar('T')

@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """Test general position fix"""
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(__file__))
-
 from generals_agent import RandomAgent, GameConfig, GameConnection, GameClient
 from generals_pb.game.v1 import game_pb2
 from generals_pb.common.v1 import common_pb2

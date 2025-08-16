@@ -4,10 +4,6 @@ Simple interactive client for the Generals game.
 Shows basic game state and allows simple moves.
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(__file__))
-
 import grpc
 import time
 from generals_pb.game.v1 import game_pb2, game_pb2_grpc

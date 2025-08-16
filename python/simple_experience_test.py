@@ -3,13 +3,8 @@
 Simple test to verify experience collection is working.
 """
 
-import sys
-import os
 import time
 import grpc
-
-# Add current directory to path
-sys.path.insert(0, os.path.dirname(__file__))
 
 from generals_pb.game.v1 import game_pb2, game_pb2_grpc
 from generals_pb.experience.v1 import experience_pb2, experience_pb2_grpc

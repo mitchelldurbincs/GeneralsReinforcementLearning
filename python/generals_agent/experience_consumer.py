@@ -8,11 +8,6 @@ import queue
 import time
 from dataclasses import dataclass
 
-import sys
-import os
-# Add parent directory to path to import generals_pb
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 from generals_pb.experience.v1 import experience_pb2, experience_pb2_grpc
 
 

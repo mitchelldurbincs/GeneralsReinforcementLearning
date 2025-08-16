@@ -11,9 +11,6 @@ from .types import BoardView, Move, Position
 from .game_utils import get_valid_moves, count_player_stats, find_general_position
 
 # Import protobuf types
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'python'))
 from generals_pb.game.v1 import game_pb2
 
 

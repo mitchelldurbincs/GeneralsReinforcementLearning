@@ -1,9 +1,6 @@
 """Game utility functions for move validation and game state analysis"""
 
 from typing import List, Tuple, Optional, Set
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generals_pb.game.v1 import game_pb2
 from generals_pb.common.v1 import common_pb2

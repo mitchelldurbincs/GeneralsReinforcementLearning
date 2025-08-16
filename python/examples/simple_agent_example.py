@@ -4,11 +4,6 @@ Simple example demonstrating how to create and run an agent with the new archite
 This shows how much simpler agent development becomes.
 """
 import logging
-import sys
-import os
-
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generals_agent import (
     BaseAgentNew, AgentRunner, GameConfig,

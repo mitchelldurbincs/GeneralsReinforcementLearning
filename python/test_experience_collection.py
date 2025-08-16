@@ -8,15 +8,10 @@ This script:
 4. Verifies experiences are being collected
 """
 
-import sys
-import os
 import time
 import threading
 import logging
 from concurrent.futures import ThreadPoolExecutor
-
-# Add current directory to path
-sys.path.insert(0, os.path.dirname(__file__))
 
 from generals_agent import RandomAgent, AgentRunner, GameConfig, GameConnection, GameClient
 from generals_agent.experience_consumer import ExperienceConsumer

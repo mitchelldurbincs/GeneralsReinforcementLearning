@@ -3,10 +3,6 @@
 Test script to explore gRPC functionality with the Generals game server.
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(__file__))
-
 import grpc
 import time
 import random
