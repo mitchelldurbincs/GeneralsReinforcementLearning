@@ -16,7 +16,6 @@ func TestMaxGamesLimit(t *testing.T) {
 	gm := NewGameManager(maxGames)
 
 	// Create games up to the limit
-	var games []*gameInstance
 	for i := 0; i < maxGames; i++ {
 		game, id, err := gm.CreateGame(&gamev1.GameConfig{
 			Width:      10,
@@ -26,7 +25,6 @@ func TestMaxGamesLimit(t *testing.T) {
 		require.NoError(t, err, "Should be able to create game %d", i+1)
 		require.NotNil(t, game)
 		require.NotEmpty(t, id)
-		games = append(games, game)
 	}
 
 	// Verify we have maxGames active

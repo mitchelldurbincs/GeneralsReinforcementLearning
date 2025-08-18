@@ -536,6 +536,10 @@ func (g *gameInstance) StartEngine(ctx context.Context) error {
 	g.actionBuffer = make(map[int32]core.Action)
 	g.currentTurn = 0
 
+	// Note: We don't need to sync g.stateMachine with the engine's state
+	// because currentPhaseUnlocked() now uses the engine's state machine
+	// as the source of truth when the engine exists
+
 	return nil
 }
 
@@ -556,15 +560,16 @@ func (g *gameInstance) CurrentPhase() commonv1.GamePhase {
 
 // currentPhaseUnlocked returns the current game phase without locking (caller must hold lock)
 func (g *gameInstance) currentPhaseUnlocked() commonv1.GamePhase {
-	// Use state machine directly if available
-	if g.stateMachine != nil {
-		return convertPhaseToProto(g.stateMachine.CurrentPhase())
-	}
-
-	// Fallback to engine for backward compatibility (will be removed)
+	// Always use engine's state machine if engine exists
+	// The engine is the source of truth for game state
 	if g.engine != nil {
 		enginePhase := g.engine.CurrentPhase()
 		return convertPhaseToProto(enginePhase)
+	}
+
+	// Use game's state machine before engine is created
+	if g.stateMachine != nil {
+		return convertPhaseToProto(g.stateMachine.CurrentPhase())
 	}
 
 	return commonv1.GamePhase_GAME_PHASE_UNSPECIFIED

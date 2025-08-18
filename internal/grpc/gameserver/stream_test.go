@@ -95,8 +95,8 @@ func TestStreamGame(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Give time for event to propagate
-	time.Sleep(50 * time.Millisecond)
+	// Give time for game to start and transition to Running phase
+	time.Sleep(100 * time.Millisecond)
 
 	// Verify game started event was sent
 	updates = stream1.getUpdates()
@@ -112,7 +112,7 @@ func TestStreamGame(t *testing.T) {
 	}
 	assert.True(t, foundStartEvent, "Expected to find game started event")
 
-	// Submit actions from both players
+	// Submit actions from both players (now that game is in Running phase)
 	_, err = server.SubmitAction(context.Background(), &gamev1.SubmitActionRequest{
 		GameId:      gameID,
 		PlayerId:    joinResp1.PlayerId,
@@ -129,13 +129,37 @@ func TestStreamGame(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Give time for updates to propagate
-	time.Sleep(50 * time.Millisecond)
+	// Give time for turn processing and updates to propagate
+	// The turn processing happens immediately when both players submit,
+	// but we need to allow time for the goroutine to process and send updates
+	time.Sleep(100 * time.Millisecond)
 
 	// Verify we received a game update (either full state or delta)
 	updates = stream1.getUpdates()
-	lastUpdate := updates[len(updates)-1]
-	assert.True(t, lastUpdate.GetFullState() != nil || lastUpdate.GetDelta() != nil,
+	
+	// Debug: Print what updates we actually got
+	t.Logf("Total updates received: %d", len(updates))
+	for i, update := range updates {
+		if update.GetFullState() != nil {
+			t.Logf("Update %d: Full state (turn %d)", i, update.GetFullState().Turn)
+		} else if update.GetDelta() != nil {
+			t.Logf("Update %d: Delta (turn %d)", i, update.GetDelta().Turn)
+		} else if update.GetEvent() != nil {
+			t.Logf("Update %d: Event", i)
+		}
+	}
+	
+	assert.Greater(t, len(updates), 2, "Expected to receive updates after turn processing")
+	
+	// Check if we got a turn update (could be full state or delta)
+	foundTurnUpdate := false
+	for _, update := range updates[2:] { // Skip initial state and game started event
+		if update.GetFullState() != nil || update.GetDelta() != nil {
+			foundTurnUpdate = true
+			break
+		}
+	}
+	assert.True(t, foundTurnUpdate,
 		"Expected to receive either full state or delta update after turn processing")
 
 	// Cancel stream

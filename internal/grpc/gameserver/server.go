@@ -213,7 +213,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			ErrorMessage: result.ErrorMessage,
 		}
 		if req.IdempotencyKey != "" && game != nil {
-			game.idempotencyManager.Store(req.IdempotencyKey, resp)
+			game.idempotencyManager.Store(req.PlayerId, req.IdempotencyKey, resp)
 		}
 		return resp, nil
 	}
@@ -232,7 +232,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			ErrorMessage: fmt.Sprintf("invalid action for game %s player %d: %v", req.GameId, req.PlayerId, err),
 		}
 		if req.IdempotencyKey != "" {
-			game.idempotencyManager.Store(req.IdempotencyKey, resp)
+			game.idempotencyManager.Store(req.PlayerId, req.IdempotencyKey, resp)
 		}
 		return resp, nil
 	}
@@ -246,7 +246,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 			ErrorMessage: actionResult.ErrorMessage,
 		}
 		if req.IdempotencyKey != "" {
-			game.idempotencyManager.Store(req.IdempotencyKey, resp)
+			game.idempotencyManager.Store(req.PlayerId, req.IdempotencyKey, resp)
 		}
 		return resp, nil
 	}
@@ -269,7 +269,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 				ErrorMessage: fmt.Sprintf("failed to process turn %d for game %s", currentTurn, req.GameId),
 			}
 			if req.IdempotencyKey != "" {
-				game.idempotencyManager.Store(req.IdempotencyKey, resp)
+				game.idempotencyManager.Store(req.PlayerId, req.IdempotencyKey, resp)
 			}
 			return resp, nil
 		}
@@ -288,7 +288,7 @@ func (s *Server) SubmitAction(ctx context.Context, req *gamev1.SubmitActionReque
 		NextTurnNumber: currentTurn + 1,
 	}
 	if req.IdempotencyKey != "" {
-		game.idempotencyManager.Store(req.IdempotencyKey, resp)
+		game.idempotencyManager.Store(req.PlayerId, req.IdempotencyKey, resp)
 	}
 	return resp, nil
 }

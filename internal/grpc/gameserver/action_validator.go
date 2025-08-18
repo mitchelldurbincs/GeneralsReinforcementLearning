@@ -7,7 +7,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/core"
-	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game/states"
 	commonv1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/common/v1"
 	gamev1 "github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/game/v1"
 )
@@ -37,7 +36,6 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 	ctx context.Context,
 	req *gamev1.SubmitActionRequest,
 ) (*ValidationResult, *gameInstance) {
-
 	// 1. Validate game exists
 	game, exists := v.gameManager.GetGame(req.GameId)
 	if !exists {
@@ -50,9 +48,10 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 
 	// 2. Check idempotency
 	if req.IdempotencyKey != "" {
-		if cached := game.idempotencyManager.Check(req.IdempotencyKey); cached != nil {
+		if cached := game.idempotencyManager.Check(req.PlayerId, req.IdempotencyKey); cached != nil {
 			log.Debug().
 				Str("game_id", req.GameId).
+				Int32("player_id", req.PlayerId).
 				Str("idempotency_key", req.IdempotencyKey).
 				Msg("Returning cached response for idempotent request")
 			return &ValidationResult{
@@ -62,39 +61,20 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 		}
 	}
 
-	// 3. Validate game phase using state machine
-	if game.stateMachine != nil {
-		// Use state machine for phase validation
-		if !game.stateMachine.CurrentPhase().CanReceiveActions() {
-			currentPhase := game.stateMachine.CurrentPhase()
-			errorCode := commonv1.ErrorCode_ERROR_CODE_INVALID_PHASE
-
-			// Special handling for ended phase
-			if currentPhase == states.PhaseEnded {
-				errorCode = commonv1.ErrorCode_ERROR_CODE_GAME_OVER
-			}
-
-			return &ValidationResult{
-				Valid:        false,
-				ErrorCode:    errorCode,
-				ErrorMessage: fmt.Sprintf("game %s cannot accept actions in %s phase", req.GameId, currentPhase.String()),
-			}, game
+	// 3. Validate game phase - always use CurrentPhase() method
+	// which properly checks engine state when available
+	currentPhase := game.CurrentPhase()
+		
+	if currentPhase != commonv1.GamePhase_GAME_PHASE_RUNNING {
+		errorCode := commonv1.ErrorCode_ERROR_CODE_INVALID_PHASE
+		if currentPhase == commonv1.GamePhase_GAME_PHASE_ENDED {
+			errorCode = commonv1.ErrorCode_ERROR_CODE_GAME_OVER
 		}
-	} else {
-		// Fallback to old method for backward compatibility
-		currentPhase := game.CurrentPhase()
-		if currentPhase != commonv1.GamePhase_GAME_PHASE_RUNNING {
-			errorCode := commonv1.ErrorCode_ERROR_CODE_INVALID_PHASE
-			if currentPhase == commonv1.GamePhase_GAME_PHASE_ENDED {
-				errorCode = commonv1.ErrorCode_ERROR_CODE_GAME_OVER
-			}
-
-			return &ValidationResult{
-				Valid:        false,
-				ErrorCode:    errorCode,
-				ErrorMessage: fmt.Sprintf("game %s cannot accept actions in %s phase", req.GameId, currentPhase.String()),
-			}, game
-		}
+		return &ValidationResult{
+			Valid:        false,
+			ErrorCode:    errorCode,
+			ErrorMessage: fmt.Sprintf("game %s cannot accept actions in %s phase", req.GameId, currentPhase.String()),
+		}, game
 	}
 
 	// 4. Authenticate player
