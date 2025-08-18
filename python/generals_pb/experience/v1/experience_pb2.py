@@ -26,7 +26,7 @@ from generals_pb.common.v1 import common_pb2 as common_dot_v1_dot_common__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1e\x65xperience/v1/experience.proto\x12\x16generals.experience.v1\x1a\x16\x63ommon/v1/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xac\x03\n\nExperience\x12\x15\n\rexperience_id\x18\x01 \x01(\t\x12\x0f\n\x07game_id\x18\x02 \x01(\t\x12\x11\n\tplayer_id\x18\x03 \x01(\x05\x12\x0c\n\x04turn\x18\x04 \x01(\x05\x12\x32\n\x05state\x18\x05 \x01(\x0b\x32#.generals.experience.v1.TensorState\x12\x0e\n\x06\x61\x63tion\x18\x06 \x01(\x05\x12\x0e\n\x06reward\x18\x07 \x01(\x02\x12\x37\n\nnext_state\x18\x08 \x01(\x0b\x32#.generals.experience.v1.TensorState\x12\x0c\n\x04\x64one\x18\t \x01(\x08\x12\x13\n\x0b\x61\x63tion_mask\x18\n \x03(\x08\x12\x30\n\x0c\x63ollected_at\x18\x0b \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x42\n\x08metadata\x18\x0c \x03(\x0b\x32\x30.generals.experience.v1.Experience.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"*\n\x0bTensorState\x12\r\n\x05shape\x18\x01 \x03(\x05\x12\x0c\n\x04\x64\x61ta\x18\x02 \x03(\x02\"v\n\x18StreamExperiencesRequest\x12\x10\n\x08game_ids\x18\x01 \x03(\t\x12\x12\n\nplayer_ids\x18\x02 \x03(\x05\x12\x10\n\x08min_turn\x18\x03 \x01(\x03\x12\x0e\n\x06\x66ollow\x18\x04 \x01(\x08\x12\x12\n\nbatch_size\x18\x05 \x01(\x05\"S\n\x18SubmitExperiencesRequest\x12\x37\n\x0b\x65xperiences\x18\x01 \x03(\x0b\x32\".generals.experience.v1.Experience\"O\n\x19SubmitExperiencesResponse\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x01 \x01(\x05\x12\x10\n\x08rejected\x18\x02 \x01(\x05\x12\x0e\n\x06\x65rrors\x18\x03 \x03(\t\"-\n\x19GetExperienceStatsRequest\x12\x10\n\x08game_ids\x18\x01 \x03(\t\"\xca\x04\n\x1aGetExperienceStatsResponse\x12\x19\n\x11total_experiences\x18\x01 \x01(\x03\x12\x13\n\x0btotal_games\x18\x02 \x01(\x03\x12h\n\x14\x65xperiences_per_game\x18\x03 \x03(\x0b\x32J.generals.experience.v1.GetExperienceStatsResponse.ExperiencesPerGameEntry\x12l\n\x16\x65xperiences_per_player\x18\x04 \x03(\x0b\x32L.generals.experience.v1.GetExperienceStatsResponse.ExperiencesPerPlayerEntry\x12\x16\n\x0e\x61verage_reward\x18\x05 \x01(\x02\x12\x12\n\nmin_reward\x18\x06 \x01(\x02\x12\x12\n\nmax_reward\x18\x07 \x01(\x02\x12\x35\n\x11oldest_experience\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x35\n\x11newest_experience\x18\t \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x1a\x39\n\x17\x45xperiencesPerGameEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x03:\x02\x38\x01\x1a;\n\x19\x45xperiencesPerPlayerEntry\x12\x0b\n\x03key\x18\x01 \x01(\x05\x12\r\n\x05value\x18\x02 \x01(\x03:\x02\x38\x01\"\xf1\x01\n\x0cRewardConfig\x12\x18\n\x10territory_gained\x18\x01 \x01(\x02\x12\x16\n\x0eterritory_lost\x18\x02 \x01(\x02\x12\x13\n\x0b\x61rmy_gained\x18\x03 \x01(\x02\x12\x11\n\tarmy_lost\x18\x04 \x01(\x02\x12\x1e\n\x16\x65nemy_general_captured\x18\x05 \x01(\x02\x12\x18\n\x10own_general_lost\x18\x06 \x01(\x02\x12\x10\n\x08win_game\x18\x07 \x01(\x02\x12\x11\n\tlose_game\x18\x08 \x01(\x02\x12\x15\n\rcity_captured\x18\t \x01(\x02\x12\x11\n\tcity_lost\x18\n \x01(\x02\x32\xf7\x02\n\x11\x45xperienceService\x12k\n\x11StreamExperiences\x12\x30.generals.experience.v1.StreamExperiencesRequest\x1a\".generals.experience.v1.Experience0\x01\x12x\n\x11SubmitExperiences\x12\x30.generals.experience.v1.SubmitExperiencesRequest\x1a\x31.generals.experience.v1.SubmitExperiencesResponse\x12{\n\x12GetExperienceStats\x12\x31.generals.experience.v1.GetExperienceStatsRequest\x1a\x32.generals.experience.v1.GetExperienceStatsResponseB^Z\\github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/experience/v1;experiencev1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1e\x65xperience/v1/experience.proto\x12\x16generals.experience.v1\x1a\x16\x63ommon/v1/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xac\x03\n\nExperience\x12\x15\n\rexperience_id\x18\x01 \x01(\t\x12\x0f\n\x07game_id\x18\x02 \x01(\t\x12\x11\n\tplayer_id\x18\x03 \x01(\x05\x12\x0c\n\x04turn\x18\x04 \x01(\x05\x12\x32\n\x05state\x18\x05 \x01(\x0b\x32#.generals.experience.v1.TensorState\x12\x0e\n\x06\x61\x63tion\x18\x06 \x01(\x05\x12\x0e\n\x06reward\x18\x07 \x01(\x02\x12\x37\n\nnext_state\x18\x08 \x01(\x0b\x32#.generals.experience.v1.TensorState\x12\x0c\n\x04\x64one\x18\t \x01(\x08\x12\x13\n\x0b\x61\x63tion_mask\x18\n \x03(\x08\x12\x30\n\x0c\x63ollected_at\x18\x0b \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x42\n\x08metadata\x18\x0c \x03(\x0b\x32\x30.generals.experience.v1.Experience.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"*\n\x0bTensorState\x12\r\n\x05shape\x18\x01 \x03(\x05\x12\x0c\n\x04\x64\x61ta\x18\x02 \x03(\x02\"\x99\x02\n\x0f\x45xperienceBatch\x12\x37\n\x0b\x65xperiences\x18\x01 \x03(\x0b\x32\".generals.experience.v1.Experience\x12\x10\n\x08\x62\x61tch_id\x18\x02 \x01(\x05\x12\x11\n\tstream_id\x18\x03 \x01(\t\x12.\n\ncreated_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12G\n\x08metadata\x18\x05 \x03(\x0b\x32\x35.generals.experience.v1.ExperienceBatch.MetadataEntry\x1a/\n\rMetadataEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xad\x01\n\x18StreamExperiencesRequest\x12\x10\n\x08game_ids\x18\x01 \x03(\t\x12\x12\n\nplayer_ids\x18\x02 \x03(\x05\x12\x10\n\x08min_turn\x18\x03 \x01(\x03\x12\x0e\n\x06\x66ollow\x18\x04 \x01(\x08\x12\x12\n\nbatch_size\x18\x05 \x01(\x05\x12\x1a\n\x12\x65nable_compression\x18\x06 \x01(\x08\x12\x19\n\x11max_batch_wait_ms\x18\x07 \x01(\x05\"S\n\x18SubmitExperiencesRequest\x12\x37\n\x0b\x65xperiences\x18\x01 \x03(\x0b\x32\".generals.experience.v1.Experience\"O\n\x19SubmitExperiencesResponse\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x01 \x01(\x05\x12\x10\n\x08rejected\x18\x02 \x01(\x05\x12\x0e\n\x06\x65rrors\x18\x03 \x03(\t\"-\n\x19GetExperienceStatsRequest\x12\x10\n\x08game_ids\x18\x01 \x03(\t\"\xca\x04\n\x1aGetExperienceStatsResponse\x12\x19\n\x11total_experiences\x18\x01 \x01(\x03\x12\x13\n\x0btotal_games\x18\x02 \x01(\x03\x12h\n\x14\x65xperiences_per_game\x18\x03 \x03(\x0b\x32J.generals.experience.v1.GetExperienceStatsResponse.ExperiencesPerGameEntry\x12l\n\x16\x65xperiences_per_player\x18\x04 \x03(\x0b\x32L.generals.experience.v1.GetExperienceStatsResponse.ExperiencesPerPlayerEntry\x12\x16\n\x0e\x61verage_reward\x18\x05 \x01(\x02\x12\x12\n\nmin_reward\x18\x06 \x01(\x02\x12\x12\n\nmax_reward\x18\x07 \x01(\x02\x12\x35\n\x11oldest_experience\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x35\n\x11newest_experience\x18\t \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x1a\x39\n\x17\x45xperiencesPerGameEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x03:\x02\x38\x01\x1a;\n\x19\x45xperiencesPerPlayerEntry\x12\x0b\n\x03key\x18\x01 \x01(\x05\x12\r\n\x05value\x18\x02 \x01(\x03:\x02\x38\x01\"\xf1\x01\n\x0cRewardConfig\x12\x18\n\x10territory_gained\x18\x01 \x01(\x02\x12\x16\n\x0eterritory_lost\x18\x02 \x01(\x02\x12\x13\n\x0b\x61rmy_gained\x18\x03 \x01(\x02\x12\x11\n\tarmy_lost\x18\x04 \x01(\x02\x12\x1e\n\x16\x65nemy_general_captured\x18\x05 \x01(\x02\x12\x18\n\x10own_general_lost\x18\x06 \x01(\x02\x12\x10\n\x08win_game\x18\x07 \x01(\x02\x12\x11\n\tlose_game\x18\x08 \x01(\x02\x12\x15\n\rcity_captured\x18\t \x01(\x02\x12\x11\n\tcity_lost\x18\n \x01(\x02\x32\xef\x03\n\x11\x45xperienceService\x12k\n\x11StreamExperiences\x12\x30.generals.experience.v1.StreamExperiencesRequest\x1a\".generals.experience.v1.Experience0\x01\x12v\n\x17StreamExperienceBatches\x12\x30.generals.experience.v1.StreamExperiencesRequest\x1a\'.generals.experience.v1.ExperienceBatch0\x01\x12x\n\x11SubmitExperiences\x12\x30.generals.experience.v1.SubmitExperiencesRequest\x1a\x31.generals.experience.v1.SubmitExperiencesResponse\x12{\n\x12GetExperienceStats\x12\x31.generals.experience.v1.GetExperienceStatsRequest\x1a\x32.generals.experience.v1.GetExperienceStatsResponseB^Z\\github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/experience/v1;experiencev1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -36,6 +36,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._serialized_options = b'Z\\github.com/mitchelldurbincs/GeneralsReinforcementLearning/pkg/api/experience/v1;experiencev1'
   _globals['_EXPERIENCE_METADATAENTRY']._loaded_options = None
   _globals['_EXPERIENCE_METADATAENTRY']._serialized_options = b'8\001'
+  _globals['_EXPERIENCEBATCH_METADATAENTRY']._loaded_options = None
+  _globals['_EXPERIENCEBATCH_METADATAENTRY']._serialized_options = b'8\001'
   _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERGAMEENTRY']._loaded_options = None
   _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERGAMEENTRY']._serialized_options = b'8\001'
   _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERPLAYERENTRY']._loaded_options = None
@@ -46,22 +48,26 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_EXPERIENCE_METADATAENTRY']._serialized_end=544
   _globals['_TENSORSTATE']._serialized_start=546
   _globals['_TENSORSTATE']._serialized_end=588
-  _globals['_STREAMEXPERIENCESREQUEST']._serialized_start=590
-  _globals['_STREAMEXPERIENCESREQUEST']._serialized_end=708
-  _globals['_SUBMITEXPERIENCESREQUEST']._serialized_start=710
-  _globals['_SUBMITEXPERIENCESREQUEST']._serialized_end=793
-  _globals['_SUBMITEXPERIENCESRESPONSE']._serialized_start=795
-  _globals['_SUBMITEXPERIENCESRESPONSE']._serialized_end=874
-  _globals['_GETEXPERIENCESTATSREQUEST']._serialized_start=876
-  _globals['_GETEXPERIENCESTATSREQUEST']._serialized_end=921
-  _globals['_GETEXPERIENCESTATSRESPONSE']._serialized_start=924
-  _globals['_GETEXPERIENCESTATSRESPONSE']._serialized_end=1510
-  _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERGAMEENTRY']._serialized_start=1392
-  _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERGAMEENTRY']._serialized_end=1449
-  _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERPLAYERENTRY']._serialized_start=1451
-  _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERPLAYERENTRY']._serialized_end=1510
-  _globals['_REWARDCONFIG']._serialized_start=1513
-  _globals['_REWARDCONFIG']._serialized_end=1754
-  _globals['_EXPERIENCESERVICE']._serialized_start=1757
-  _globals['_EXPERIENCESERVICE']._serialized_end=2132
+  _globals['_EXPERIENCEBATCH']._serialized_start=591
+  _globals['_EXPERIENCEBATCH']._serialized_end=872
+  _globals['_EXPERIENCEBATCH_METADATAENTRY']._serialized_start=497
+  _globals['_EXPERIENCEBATCH_METADATAENTRY']._serialized_end=544
+  _globals['_STREAMEXPERIENCESREQUEST']._serialized_start=875
+  _globals['_STREAMEXPERIENCESREQUEST']._serialized_end=1048
+  _globals['_SUBMITEXPERIENCESREQUEST']._serialized_start=1050
+  _globals['_SUBMITEXPERIENCESREQUEST']._serialized_end=1133
+  _globals['_SUBMITEXPERIENCESRESPONSE']._serialized_start=1135
+  _globals['_SUBMITEXPERIENCESRESPONSE']._serialized_end=1214
+  _globals['_GETEXPERIENCESTATSREQUEST']._serialized_start=1216
+  _globals['_GETEXPERIENCESTATSREQUEST']._serialized_end=1261
+  _globals['_GETEXPERIENCESTATSRESPONSE']._serialized_start=1264
+  _globals['_GETEXPERIENCESTATSRESPONSE']._serialized_end=1850
+  _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERGAMEENTRY']._serialized_start=1732
+  _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERGAMEENTRY']._serialized_end=1789
+  _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERPLAYERENTRY']._serialized_start=1791
+  _globals['_GETEXPERIENCESTATSRESPONSE_EXPERIENCESPERPLAYERENTRY']._serialized_end=1850
+  _globals['_REWARDCONFIG']._serialized_start=1853
+  _globals['_REWARDCONFIG']._serialized_end=2094
+  _globals['_EXPERIENCESERVICE']._serialized_start=2097
+  _globals['_EXPERIENCESERVICE']._serialized_end=2592
 # @@protoc_insertion_point(module_scope)

@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from generals_pb.game.v1 import game_pb2 as game_dot_v1_dot_game__pb2
+from game.v1 import game_pb2 as game_dot_v1_dot_game__pb2
 
 GRPC_GENERATED_VERSION = '1.74.0'
 GRPC_VERSION = grpc.__version__

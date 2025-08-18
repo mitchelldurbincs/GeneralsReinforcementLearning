@@ -12,6 +12,9 @@ service ExperienceService {
   // StreamExperiences streams collected experiences to a trainer
   rpc StreamExperiences(StreamExperiencesRequest) returns (stream Experience);
   
+  // StreamExperienceBatches streams batched experiences for efficient training
+  rpc StreamExperienceBatches(StreamExperiencesRequest) returns (stream ExperienceBatch);
+  
   // SubmitExperiences allows batch submission of experiences (for distributed collection)
   rpc SubmitExperiences(SubmitExperiencesRequest) returns (SubmitExperiencesResponse);
   
@@ -68,6 +71,15 @@ message TensorState {
   repeated float data = 2;
 }
 
+// ExperienceBatch represents a batch of experiences for efficient streaming
+message ExperienceBatch {
+  repeated Experience experiences = 1;
+  int32 batch_id = 2;                // Sequential batch ID
+  string stream_id = 3;               // Stream this batch belongs to
+  google.protobuf.Timestamp created_at = 4;
+  map<string, string> metadata = 5;  // Batch metadata (e.g., compression, encoding)
+}
+
 // StreamExperiencesRequest initiates an experience stream
 message StreamExperiencesRequest {
   // Filter criteria
@@ -76,6 +88,8 @@ message StreamExperiencesRequest {
   int64 min_turn = 3;                // Minimum turn number
   bool follow = 4;                   // Keep streaming new experiences
   int32 batch_size = 5;              // Experiences per message (0 = no batching)
+  bool enable_compression = 6;       // Enable compression for batch streaming
+  int32 max_batch_wait_ms = 7;      // Max time to wait for full batch (default: 100ms)
 }
 
 // SubmitExperiencesRequest for batch submission
