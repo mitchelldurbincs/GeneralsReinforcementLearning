@@ -197,7 +197,12 @@ jobs:
         go mod tidy
         if [ -n "$(git status --porcelain)" ]; then
           echo "go mod tidy produced changes. Please run 'go mod tidy' locally and commit."
-          git diff
+          echo "=== Git Status ==="
+          git status
+          echo "=== Git Diff for go.mod ==="
+          git diff go.mod
+          echo "=== Git Diff for go.sum ==="
+          git diff go.sum
           exit 1
         fi
 
