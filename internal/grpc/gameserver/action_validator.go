@@ -64,7 +64,7 @@ func (v *ActionValidator) ValidateSubmitActionRequest(
 	// 3. Validate game phase - always use CurrentPhase() method
 	// which properly checks engine state when available
 	currentPhase := game.CurrentPhase()
-		
+
 	if currentPhase != commonv1.GamePhase_GAME_PHASE_RUNNING {
 		errorCode := commonv1.ErrorCode_ERROR_CODE_INVALID_PHASE
 		if currentPhase == commonv1.GamePhase_GAME_PHASE_ENDED {

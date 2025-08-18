@@ -136,7 +136,7 @@ func TestStreamGame(t *testing.T) {
 
 	// Verify we received a game update (either full state or delta)
 	updates = stream1.getUpdates()
-	
+
 	// Debug: Print what updates we actually got
 	t.Logf("Total updates received: %d", len(updates))
 	for i, update := range updates {
@@ -148,9 +148,9 @@ func TestStreamGame(t *testing.T) {
 			t.Logf("Update %d: Event", i)
 		}
 	}
-	
+
 	assert.Greater(t, len(updates), 2, "Expected to receive updates after turn processing")
-	
+
 	// Check if we got a turn update (could be full state or delta)
 	foundTurnUpdate := false
 	for _, update := range updates[2:] { // Skip initial state and game started event
