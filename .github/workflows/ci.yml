@@ -230,9 +230,12 @@ jobs:
 
     - name: Check for uncommitted changes
       run: |
+        echo "Running git status:"
+        git status
+        echo "Running git diff:"
+        git diff
         if [ -n "$(git status --porcelain)" ]; then
           echo "Proto generation produced changes. Please regenerate protos and commit."
-          git diff
           exit 1
         fi
 
