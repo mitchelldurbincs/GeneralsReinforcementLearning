@@ -193,6 +193,7 @@ jobs:
 
     - name: Run go mod tidy check
       run: |
+        go mod download
         go mod tidy
         if [ -n "$(git status --porcelain)" ]; then
           echo "go mod tidy produced changes. Please run 'go mod tidy' locally and commit."
