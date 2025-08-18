@@ -50,6 +50,7 @@ jobs:
         PROTOC_VERSION=29.5
         curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip
         unzip -q protoc-${PROTOC_VERSION}-linux-x86_64.zip -d $HOME/.local
+        rm protoc-${PROTOC_VERSION}-linux-x86_64.zip
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Install protoc plugins
@@ -134,6 +135,7 @@ jobs:
         PROTOC_VERSION=29.5
         curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip
         unzip -q protoc-${PROTOC_VERSION}-linux-x86_64.zip -d $HOME/.local
+        rm protoc-${PROTOC_VERSION}-linux-x86_64.zip
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Install protoc plugins
@@ -216,6 +218,7 @@ jobs:
         PROTOC_VERSION=29.5
         curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip
         unzip protoc-${PROTOC_VERSION}-linux-x86_64.zip -d $HOME/.local
+        rm protoc-${PROTOC_VERSION}-linux-x86_64.zip
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Install protoc plugins
