@@ -195,10 +195,13 @@ jobs:
       run: |
         go mod download
         go mod tidy
-        if [ -n "$(git status --porcelain)" ]; then
+        # Check specifically for go.mod and go.sum changes, ignoring other files
+        if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
           echo "go mod tidy produced changes. Please run 'go mod tidy' locally and commit."
-          echo "=== Git Status ==="
-          git status
+          echo "=== Git Status (full) ==="
+          git status --porcelain
+          echo "=== Git Status (go.mod and go.sum only) ==="
+          git status --porcelain go.mod go.sum
           echo "=== Git Diff for go.mod ==="
           git diff go.mod
           echo "=== Git Diff for go.sum ==="
