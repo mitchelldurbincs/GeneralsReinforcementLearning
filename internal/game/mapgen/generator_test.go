@@ -248,7 +248,7 @@ func TestPlaceGenerals(t *testing.T) {
 
 			tile := board.T[p.Idx]
 			assert.Equal(t, core.TileGeneral, tile.Type, "Tile type should be General")
-			assert.Equal(t, 1, tile.Army, "General tile army should be 1")
+			assert.Equal(t, 2, tile.Army, "General tile army should be 2")
 			assert.Equal(t, pid, tile.Owner, "General tile owner should be player ID")
 
 			x, y := board.XY(p.Idx)
@@ -407,7 +407,7 @@ func TestGenerateMap_FullIntegration(t *testing.T) {
 		switch tile.Type {
 		case core.TileGeneral:
 			generalCount++
-			assert.Equal(t, 1, tile.Army, "General army should be 1 at (%d,%d)", x, y)
+			assert.Equal(t, 2, tile.Army, "General army should be 2 at (%d,%d)", x, y)
 			require.Less(t, tile.Owner, config.PlayerCount, "General owner ID %d out of range at (%d,%d)", tile.Owner, x, y)
 			require.GreaterOrEqual(t, tile.Owner, 0, "General owner ID %d should be non-negative at (%d,%d)", tile.Owner, x, y)
 			// Store general info for spacing check

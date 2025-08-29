@@ -165,7 +165,7 @@ func (g *Generator) placeGenerals(b *core.Board) ([]GeneralPlacement, error) {
 
 		t := &b.T[placement.Idx]
 		t.Owner = pid
-		t.Army = 1
+		t.Army = 2  // Start with 2 armies so players can move immediately
 		t.Type = core.TileGeneral // This tile becomes a general tile
 
 		placements[pid] = placement

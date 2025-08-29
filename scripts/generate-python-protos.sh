@@ -77,21 +77,31 @@ $PYTHON -m grpc_tools.protoc \
 # Fix imports in generated files (protoc generates absolute imports that need adjustment)
 echo "Fixing Python imports..."
 
-# Fix imports in game.proto generated files
+# Fix imports in generated files
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
-    sed -i '' 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/game/v1/game_pb2.py
-    sed -i '' 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/game/v1/game_pb2_grpc.py 2>/dev/null || true
-    # Fix imports in experience.proto generated files
-    sed -i '' 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/experience/v1/experience_pb2.py
-    sed -i '' 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/experience/v1/experience_pb2_grpc.py 2>/dev/null || true
+    # Fix imports in game_pb2.py
+    sed -i '' 's/^from common\.v1 import/from generals_pb.common.v1 import/' python/generals_pb/game/v1/game_pb2.py
+    # Fix imports in game_pb2_grpc.py  
+    sed -i '' 's/^from common\.v1 import/from generals_pb.common.v1 import/' python/generals_pb/game/v1/game_pb2_grpc.py 2>/dev/null || true
+    sed -i '' 's/^from game\.v1 import/from generals_pb.game.v1 import/' python/generals_pb/game/v1/game_pb2_grpc.py 2>/dev/null || true
+    # Fix imports in experience_pb2.py
+    sed -i '' 's/^from common\.v1 import/from generals_pb.common.v1 import/' python/generals_pb/experience/v1/experience_pb2.py
+    # Fix imports in experience_pb2_grpc.py
+    sed -i '' 's/^from common\.v1 import/from generals_pb.common.v1 import/' python/generals_pb/experience/v1/experience_pb2_grpc.py 2>/dev/null || true
+    sed -i '' 's/^from experience\.v1 import/from generals_pb.experience.v1 import/' python/generals_pb/experience/v1/experience_pb2_grpc.py 2>/dev/null || true
 else
     # Linux
-    sed -i 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/game/v1/game_pb2.py
-    sed -i 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/game/v1/game_pb2_grpc.py 2>/dev/null || true
-    # Fix imports in experience.proto generated files
-    sed -i 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/experience/v1/experience_pb2.py
-    sed -i 's/^import common\.v1/from generals_pb.common.v1 import common_pb2 as common__v1/' python/generals_pb/experience/v1/experience_pb2_grpc.py 2>/dev/null || true
+    # Fix imports in game_pb2.py
+    sed -i 's/^from common\.v1 import/from generals_pb.common.v1 import/' python/generals_pb/game/v1/game_pb2.py
+    # Fix imports in game_pb2_grpc.py
+    sed -i 's/^from common\.v1 import/from generals_pb.common.v1 import/' python/generals_pb/game/v1/game_pb2_grpc.py 2>/dev/null || true
+    sed -i 's/^from game\.v1 import/from generals_pb.game.v1 import/' python/generals_pb/game/v1/game_pb2_grpc.py 2>/dev/null || true
+    # Fix imports in experience_pb2.py
+    sed -i 's/^from common\.v1 import/from generals_pb.common.v1 import/' python/generals_pb/experience/v1/experience_pb2.py
+    # Fix imports in experience_pb2_grpc.py
+    sed -i 's/^from common\.v1 import/from generals_pb.common.v1 import/' python/generals_pb/experience/v1/experience_pb2_grpc.py 2>/dev/null || true
+    sed -i 's/^from experience\.v1 import/from generals_pb.experience.v1 import/' python/generals_pb/experience/v1/experience_pb2_grpc.py 2>/dev/null || true
 fi
 
 # Create a setup.py for the Python package
