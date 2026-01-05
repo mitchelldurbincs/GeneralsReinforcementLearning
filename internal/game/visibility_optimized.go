@@ -57,37 +57,31 @@ func (e *Engine) performIncrementalVisibilityUpdateOptimized() {
 	// Track which tiles need visibility sync
 	tilesToSync := make(map[int]struct{})
 
-	// For each tile that changed ownership
-	for tileIdx := range e.gs.VisibilityChangedTiles {
-		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
-			continue
-		}
-
-		// Clear visibility around this tile
-		e.clearVisibilityAroundOptimized(tileIdx, tilesToSync)
-
-		// If tile has a new owner, grant visibility
-		currentOwner := e.gs.Board.T[tileIdx].Owner
-		if currentOwner >= 0 && currentOwner < len(e.gs.Players) && e.gs.Players[currentOwner].Alive {
-			playerBit := uint32(1 << uint(currentOwner))
-			e.setVisibilityAroundOptimized(tileIdx, currentOwner, playerBit)
-			// Mark affected tiles for sync
-			e.markVisibilityTilesForSync(tileIdx, tilesToSync)
-		}
-	}
-
-	// Re-establish visibility from all owned tiles of affected players
+	// Clear and reuse temporary map for affected players
 	for k := range e.tempAffectedPlayers {
 		delete(e.tempAffectedPlayers, k)
 	}
 
+	// First pass: collect ALL players who might be affected by the visibility changes
+	// A player is affected if they have any tile within 2 steps of a changed tile
+	// (because their 3x3 visibility could overlap with the cleared 3x3 area)
 	for tileIdx := range e.gs.VisibilityChangedTiles {
-		tile := &e.gs.Board.T[tileIdx]
-		if tile.Owner >= 0 {
-			e.tempAffectedPlayers[tile.Owner] = struct{}{}
+		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
+			continue
 		}
+		e.collectAffectedPlayersOptimized(tileIdx)
 	}
 
+	// Clear visibility around all changed tiles
+	for tileIdx := range e.gs.VisibilityChangedTiles {
+		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
+			continue
+		}
+		e.clearVisibilityAroundOptimized(tileIdx, tilesToSync)
+	}
+
+	// Re-establish visibility for ALL affected players from ALL their owned tiles
+	// This ensures no player loses visibility they should still have
 	for pid := range e.tempAffectedPlayers {
 		if !e.gs.Players[pid].Alive {
 			continue
@@ -99,9 +93,26 @@ func (e *Engine) performIncrementalVisibilityUpdateOptimized() {
 		}
 	}
 
-	// No need to sync - using bitfield directly
-
 	e.logger.Debug().Int("changed_tiles", len(e.gs.VisibilityChangedTiles)).Msg("Performed incremental visibility update (optimized)")
+}
+
+// collectAffectedPlayersOptimized finds all players with tiles within 2 steps of the given tile
+func (e *Engine) collectAffectedPlayersOptimized(tileIdx int) {
+	x, y := e.gs.Board.XY(tileIdx)
+
+	// Check 5x5 area (2 steps in each direction)
+	for dx := -2; dx <= 2; dx++ {
+		for dy := -2; dy <= 2; dy++ {
+			nx, ny := x+dx, y+dy
+			if e.gs.Board.InBounds(nx, ny) {
+				checkIdx := e.gs.Board.Idx(nx, ny)
+				owner := e.gs.Board.T[checkIdx].Owner
+				if owner >= 0 && owner < len(e.gs.Players) {
+					e.tempAffectedPlayers[owner] = struct{}{}
+				}
+			}
+		}
+	}
 }
 
 // setVisibilityAroundOptimized sets visibility using bitfield operations

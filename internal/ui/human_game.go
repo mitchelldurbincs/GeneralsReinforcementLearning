@@ -28,6 +28,9 @@ const (
 	PlayerTypeAI
 )
 
+// QueuedMoveColor for UI display (matches renderer color)
+var QueuedMoveColor = color.RGBA{255, 200, 100, 255}
+
 type PlayerConfig struct {
 	Type PlayerType
 	ID   int
@@ -137,6 +140,12 @@ func (g *HumanGame) Update() error {
 	// Update input handler
 	g.inputHandler.Update()
 
+	// Check for queue clear key (Q) - like generals.io
+	if ebiten.IsKeyPressed(ebiten.KeyQ) && len(g.moveQueue) > 0 {
+		g.moveQueue = g.moveQueue[:0]
+		g.showMessage("Move queue cleared", 60)
+	}
+
 	// Update message timer
 	if g.messageTimer > 0 {
 		g.messageTimer--
@@ -152,6 +161,18 @@ func (g *HumanGame) Update() error {
 	} else {
 		g.boardRenderer.SetSelection(0, 0, false)
 	}
+
+	// Update queued moves for rendering
+	queuedMoves := make([]renderer.QueuedMoveInfo, len(g.moveQueue))
+	for i, qm := range g.moveQueue {
+		queuedMoves[i] = renderer.QueuedMoveInfo{
+			FromX: qm.FromX,
+			FromY: qm.FromY,
+			ToX:   qm.ToX,
+			ToY:   qm.ToY,
+		}
+	}
+	g.boardRenderer.SetQueuedMoves(queuedMoves)
 
 	if g.engine.IsGameOver() {
 		return nil
@@ -444,12 +465,13 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 	}
 
 	// Controls help
-	helpY := ScreenHeight() - 95
+	helpY := ScreenHeight() - 110
 	text.Draw(screen, "Controls:", g.defaultFont, 5, helpY, color.White)
 	text.Draw(screen, "Click: Select tile", g.defaultFont, 5, helpY+15, color.Gray{200})
 	text.Draw(screen, "WASD/Arrows: Move army", g.defaultFont, 5, helpY+30, color.Gray{200})
 	text.Draw(screen, "Shift+WASD: Half army", g.defaultFont, 5, helpY+45, color.Gray{200})
 	text.Draw(screen, "ESC: Deselect", g.defaultFont, 5, helpY+60, color.Gray{200})
+	text.Draw(screen, "Q: Clear move queue", g.defaultFont, 5, helpY+75, color.Gray{200})
 
 	// Move mode indicator
 	modeStr := "Move Mode: "
@@ -464,6 +486,12 @@ func (g *HumanGame) drawUI(screen *ebiten.Image, gs *game.GameState) {
 	if selX, selY, hasSel := g.inputHandler.GetSelectedTile(); hasSel {
 		selStr := fmt.Sprintf("Selected: (%d, %d)", selX, selY)
 		text.Draw(screen, selStr, g.defaultFont, ScreenWidth()-150, 25, color.RGBA{255, 255, 0, 255})
+	}
+
+	// Show move queue count
+	if len(g.moveQueue) > 0 {
+		queueStr := fmt.Sprintf("Queued moves: %d", len(g.moveQueue))
+		text.Draw(screen, queueStr, g.defaultFont, ScreenWidth()-150, 45, QueuedMoveColor)
 	}
 
 	// Status message

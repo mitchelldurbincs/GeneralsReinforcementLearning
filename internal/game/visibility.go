@@ -55,40 +55,31 @@ func (e *Engine) performFullVisibilityUpdate() {
 
 // performIncrementalVisibilityUpdate only updates visibility for changed tiles
 func (e *Engine) performIncrementalVisibilityUpdate() {
-	// For each tile that changed ownership, update visibility
-	for tileIdx := range e.gs.VisibilityChangedTiles {
-		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
-			continue
-		}
-
-		// Get the current owner of the tile
-		currentOwner := e.gs.Board.T[tileIdx].Owner
-
-		// Clear visibility for all players around this tile first
-		// This is necessary because we don't track previous owners
-		e.clearVisibilityAround(tileIdx)
-
-		// If tile has a new owner, grant visibility
-		if currentOwner >= 0 && currentOwner < len(e.gs.Players) && e.gs.Players[currentOwner].Alive {
-			e.setVisibilityAround(tileIdx, currentOwner)
-		}
-	}
-
-	// Re-establish visibility from all owned tiles of affected players
-	// This prevents removing visibility that should still exist from other tiles
-
-	// Clear and reuse temporary map
+	// Clear and reuse temporary map for affected players
 	for k := range e.tempAffectedPlayers {
 		delete(e.tempAffectedPlayers, k)
 	}
 
+	// First pass: collect ALL players who might be affected by the visibility changes
+	// A player is affected if they have any tile within 2 steps of a changed tile
+	// (because their 3x3 visibility could overlap with the cleared 3x3 area)
 	for tileIdx := range e.gs.VisibilityChangedTiles {
-		tile := &e.gs.Board.T[tileIdx]
-		if tile.Owner >= 0 {
-			e.tempAffectedPlayers[tile.Owner] = struct{}{}
+		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
+			continue
 		}
+		e.collectAffectedPlayers(tileIdx)
 	}
 
+	// Clear visibility around all changed tiles
+	for tileIdx := range e.gs.VisibilityChangedTiles {
+		if tileIdx < 0 || tileIdx >= len(e.gs.Board.T) {
+			continue
+		}
+		e.clearVisibilityAround(tileIdx)
+	}
+
+	// Re-establish visibility for ALL affected players from ALL their owned tiles
+	// This ensures no player loses visibility they should still have
 	for pid := range e.tempAffectedPlayers {
 		if !e.gs.Players[pid].Alive {
 			continue
@@ -99,6 +90,27 @@ func (e *Engine) performIncrementalVisibilityUpdate() {
 	}
 
 	e.logger.Debug().Int("changed_tiles", len(e.gs.VisibilityChangedTiles)).Msg("Performed incremental visibility update")
+}
+
+// collectAffectedPlayers finds all players with tiles within 2 steps of the given tile
+// These players might have their visibility affected when we clear around this tile
+func (e *Engine) collectAffectedPlayers(tileIdx int) {
+	x, y := e.gs.Board.XY(tileIdx)
+
+	// Check 5x5 area (2 steps in each direction)
+	// Players with tiles here could have visibility overlapping with the 3x3 clear zone
+	for dx := -2; dx <= 2; dx++ {
+		for dy := -2; dy <= 2; dy++ {
+			nx, ny := x+dx, y+dy
+			if nx >= 0 && nx < e.gs.Board.W && ny >= 0 && ny < e.gs.Board.H {
+				checkIdx := e.gs.Board.Idx(nx, ny)
+				owner := e.gs.Board.T[checkIdx].Owner
+				if owner >= 0 && owner < len(e.gs.Players) {
+					e.tempAffectedPlayers[owner] = struct{}{}
+				}
+			}
+		}
+	}
 }
 
 // setVisibilityAround sets visibility for a player in a 3x3 area around a tile

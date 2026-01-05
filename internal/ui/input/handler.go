@@ -173,11 +173,6 @@ func (h *Handler) handleRightClick() {
 }
 
 func (h *Handler) handleKeyboard() {
-	// Q for full army movement mode
-	if inpututil.IsKeyJustPressed(ebiten.KeyQ) {
-		h.moveMode = MoveFull
-	}
-
 	// Escape to deselect
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		h.selectionState = SelectionNone

@@ -1,125 +1,31 @@
-### GameService
-* CreateGame
-	* CreateGameRequest
-	* CreateGameResponse
-* JoinGame
-	* JoinGameRequest
-	* JoinGameResponse
-* SubmitAction
-	* SubmitActionRequest
-		* string game_id
-		* string player_id
-		* Action action
-		* int32 expected_turn_number
-		* optional string idempotency_key = 5;
-	* SubmitActionResponse
-		* GameState next_game_state
-		* float reward 
-		* bool done
-		* optional ActionError action_error
-		* google.protobuf.Timestamp processed_at
-* GetReplay
-	* GetReplayRequest
-		* string game_id
-	* GetReplayResponse
-		* string game_id
-		* GameState initial_state
-* Entities 
-	* GameState
-		* string game_id
-		* int32 turn_count
-		* map<string, PlayerState> player_states
-		* bytes map_data
-		* bool is_terminal
-		* optional string winner_player_id
-		* optional string current_player_turn_id
-		* GameStatus game_status (enum: WAITING FOR PLAYERS, IN PROGRESS, FINISHED, ABORTED)
-	* PlayerState
-		* string player_id
-		* int32 total_army
-		* int32 total_land
-		* int32 general_tile_index
-		* bool is_defeated
-		* bytes visible_map_data
-		* PlayerStatus status (enum: ACTIVE, DEFEATED, SURRENDERED)
-	* Action
-		* int32 from_index
-		* int32 to_index
-		* bool is_half_split
+# Services
 
-### MatchMaker Service
-* FindMatch
-	* FindMatchRequest
-		* string player_id
-		* other tbd
-	* FindMatchResponse
-* FindTournamentMatch
-	* FindTournamentMatchRequest
-	* FindTournamentMatchResponse
+This document reflects the current protobuf definitions under `proto/`.
 
-### Replay Service
-* RecordExperience
-	* RecordExperienceRequest
-		* repeated Experience experiences
-		* optional string idempotency_key = 5;
-	* RecordExperienceResponse
-	* Entity
-		* Experience
-			* bytes state
-			* bytes action_taken
-			* float reward_received
-			* bytes next_state
-			* bool done_flag
-			* string agent_version_id
-			* float initial_td_error_priority
-			* optional string episode_id
-			* optional int32 step_in_episode
-* GetExperienceBatch
-	* GetExperienceBatchRequest
-		* int32 batch_size
-		* optional SamplingStrategy strategy (enum: UNIFORM, PRIORITY_BASED)
-		* optional string learner_id
-	* GetExperienceBatchResponse
-		* repeated Experience experiences
-		* optional bytes batch_metadata (importance sampling weights if using PER)
+## GameService (`proto/game/v1/game.proto`)
 
-### Model Service
-* GetPolicy
-	* GetPolicyRequest
-		* optional string model_id_requested
-		* string requesting_actor_id
-		* optional map<string, string> actor_capabilities (?)
-	* GetPolicyResponse
-		* string model_id (actual id of the model provided)
-		* bytes model_weights (serialized model weights)
-		* ModelMetadata metadata
-			* string architecture_name
-			* int32 observation_shape
-			* int32 actoin_space_size
-			* google.protobuf.Timestamp trained_at
-			* map <string, string> training_hyperparameters
-* PublishPolicy
-	* PublishPolicyRequest
-		* bytes model_weights
-		* ModelMetadata metadata
-		* string publisher_learner_id
-		* optional PerformanceMetrics evaluation_metrics
-	* PublishPolicyResponse
-		* string model_id_assigned
-		* PublishStatus status (enum: ACCEPTED, PENDING VALIDATION, REJECTED)
-		* optional string message
+RPCs:
+- `CreateGame`: optional `GameConfig` (width, height, max_players, fog_of_war, turn_time_ms, collect_experiences)
+- `JoinGame`: `game_id`, `player_name`, optional `player_token`
+- `SubmitAction`: `game_id`, `player_id`, `player_token`, `action`, optional `idempotency_key`
+- `GetGameState`: `game_id`, `player_id`, `player_token` -> `GameState` with fog of war applied
+- `StreamGame`: `game_id`, `player_id`, `player_token` -> stream of `GameUpdate`
 
+Key messages:
+- `GameState`: `turn`, `board`, `players`, `winner_id`, `action_mask`, `current_phase`
+- `GameStateDelta`: incremental tile/player updates
+- `GameUpdate`: one of `full_state`, `delta`, or `event`
+- `GameEvent`: player join/elimination, game start/end, phase changes, disconnect/reconnect
 
-### Elo Service - prob not actually, might be apart of MatchMaker Service
-* RegisterPolicy 
-	* RegisterPolicyRequest
-	* RegisterPolicyResponse
-* GetEloRating
-	* GetEloRatingRequest
-	* GetEloRatingRespones
-* UpdateEloRatings
-	* UpdateEloRatingsRequest
-	* UpdateEloRatingsResponse
-* GetRankedPolicies
-	* GetRankedPoliciesRequest
-	* GetRankedPoliciesResponse
+## ExperienceService (`proto/experience/v1/experience.proto`)
+
+RPCs:
+- `StreamExperiences`: streams `Experience` entries; supports `game_ids`, `player_ids`, `batch_size`, `follow`
+- `StreamExperienceBatches`: streams `ExperienceBatch` (defined in proto; not implemented in the Go server yet)
+- `SubmitExperiences`: submit a batch of experiences
+- `GetExperienceStats`: aggregate stats across buffers
+
+Implementation notes:
+- The Go server currently honors `game_ids`, `player_ids`, `batch_size`, and `follow` in `StreamExperiences`.
+- `min_turn`, `enable_compression`, and `max_batch_wait_ms` are currently ignored by the server.
+- `GetExperienceStats` currently populates `total_experiences` and `total_games` only.

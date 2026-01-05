@@ -4,20 +4,14 @@ This directory contains the Python client library for interacting with the Gener
 
 ## Setup
 
-### 1. Activate the Existing Virtual Environment
-
-**Important**: The virtual environment `generalsrl` is already created in the project root. You must activate it before running any Python code:
+### 1. Create and Activate a Virtual Environment (Recommended)
 
 ```bash
 # From the project root directory
+python -m venv generalsrl
 source generalsrl/bin/activate  # On Linux/Mac
 # or
 generalsrl\Scripts\activate  # On Windows
-```
-
-If the virtual environment doesn't exist, create it first:
-```bash
-python -m venv generalsrl
 ```
 
 ### 2. Install Python Dependencies
@@ -124,17 +118,24 @@ class MyAgent(BaseAgent):
 python/
 ├── README.md              # This file
 ├── requirements.txt       # Python dependencies
-├── setup.py              # Package setup
+├── setup.py             # Package setup
+├── pyproject.toml         # Packaging metadata
 ├── generals_pb/          # Generated protobuf files (after running generation)
 │   ├── common/v1/        # Common types
-│   └── game/v1/          # Game service definitions
-├── generals_agent/       # Agent framework (to be created)
+│   ├── game/v1/          # Game service definitions
+│   └── experience/v1/    # Experience service definitions
+├── generals_agent/       # Agent framework
 │   ├── base_agent.py     # Base agent class
-│   ├── client.py         # gRPC client wrapper
-│   └── utils.py          # Helper functions
+│   ├── random_agent.py   # Simple baseline agent
+│   ├── game_client.py    # gRPC client wrapper
+│   ├── game_session.py   # Game session helpers
+│   ├── agent_runner.py   # Agent execution loop
+│   └── experience_consumer.py # Experience stream consumer
 └── examples/             # Example scripts
-    ├── simple_client.py  # Basic client example
-    └── play_game.py      # Full game example
+    ├── simple_client.py         # Basic client example
+    ├── simple_agent_example.py  # Agent example
+    ├── experience_streaming.py  # Experience stream example
+    └── test_experience_collection.py # Experience collection test
 ```
 
 ## Next Steps
@@ -153,4 +154,4 @@ For reinforcement learning training:
 4. Train your neural network
 5. Repeat!
 
-See `examples/training_loop.py` for a complete training example (coming soon).
+See `examples/experience_streaming.py` for streaming experiences into a trainer.

@@ -5,10 +5,11 @@ package core
 // Army: number of units on that tile.
 // Type - 0 = normal, 1 = general, 2 = city.
 type Tile struct {
-	Owner           int
-	Army            int
-	Type            int
-	VisibleBitfield uint32 // Bit i = 1 if player i can see this tile (supports up to 32 players)
+	Owner              int
+	Army               int
+	Type               int
+	VisibleBitfield    uint32 // Bit i = 1 if player i can see this tile (supports up to 32 players)
+	DiscoveredBitfield uint32 // Bit i = 1 if player i has ever seen this tile (permanent, never cleared)
 }
 
 type Board struct {
@@ -55,9 +56,42 @@ func (t *Tile) SetVisible(playerID int, visible bool) {
 	}
 	if visible {
 		t.VisibleBitfield |= (1 << uint(playerID))
+		// When a tile becomes visible, it's also discovered (permanent)
+		t.DiscoveredBitfield |= (1 << uint(playerID))
 	} else {
 		t.VisibleBitfield &^= (1 << uint(playerID))
 	}
+}
+
+// IsDiscoveredBy returns true if the player has ever seen this tile
+func (t *Tile) IsDiscoveredBy(playerID int) bool {
+	if playerID < 0 || playerID >= 32 {
+		return false
+	}
+	return t.DiscoveredBitfield&(1<<uint(playerID)) != 0
+}
+
+// SetDiscovered marks a tile as discovered by a player (permanent, cannot be undone)
+func (t *Tile) SetDiscovered(playerID int) {
+	if playerID < 0 || playerID >= 32 {
+		return
+	}
+	t.DiscoveredBitfield |= (1 << uint(playerID))
+}
+
+// VisibilityState returns the visibility state for a player:
+// 0 = shroud (never seen), 1 = fog (discovered but not visible), 2 = visible
+func (t *Tile) VisibilityState(playerID int) int {
+	if playerID < 0 {
+		return 2 // Spectator sees everything
+	}
+	if t.IsVisibleTo(playerID) {
+		return 2 // Currently visible
+	}
+	if t.IsDiscoveredBy(playerID) {
+		return 1 // Fog (previously seen)
+	}
+	return 0 // Shroud (never seen)
 }
 
 func NewBoard(w, h int) *Board {

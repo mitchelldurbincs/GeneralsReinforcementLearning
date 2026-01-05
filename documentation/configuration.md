@@ -11,14 +11,16 @@ The system uses [Viper](https://github.com/spf13/viper) for configuration manage
 - Hot-reloading of configuration files
 - Validation of configuration values
 
+Note: The gRPC game server lives in `cmd/game_server`, and the `server.grpc_server` config section applies to it.
+
 ## Configuration Precedence
 
 Configuration values are loaded with the following precedence (highest to lowest):
 
 1. **Command-line flags** - Override all other values
 2. **Environment variables** - Override config file values
-3. **Environment-specific config files** - e.g., `config.prod.yaml`
-4. **Base config file** - `config.yaml`
+3. **Environment-specific config files** - e.g., `config/config.prod.yaml`
+4. **Base config file** - `config/config.yaml`
 5. **Default values** - Hardcoded in the application
 
 ## File Locations
@@ -55,11 +57,11 @@ To use an environment-specific config:
 
 ```bash
 # For development
-./ui_client --config config/config.yaml
+go run cmd/ui_client/main.go --config config/config.yaml
 # The system will automatically load config/config.dev.yaml if present
 
 # For production
-APP_ENV=production ./grpc_server --config config/config.yaml
+APP_ENV=production go run cmd/game_server/main.go --config config/config.yaml
 ```
 
 ## Configuration Categories
@@ -135,46 +137,41 @@ colors:
 
 ## Command-Line Usage
 
+Commands below use `go run`. If you build binaries with `make build`, replace
+`go run cmd/...` with `./bin/...`.
 ### UI Client
 
 ```bash
 # Use default config
-./ui_client
+go run cmd/ui_client/main.go
 
 # Use specific config file
-./ui_client --config config/config.yaml
+go run cmd/ui_client/main.go --config config/config.yaml
 
 # Override specific values
-./ui_client --width 30 --height 20 --players 4
+go run cmd/ui_client/main.go --width 30 --height 20 --players 4
 
 # All AI mode
-./ui_client --ai-only
+go run cmd/ui_client/main.go --ai-only
 ```
 
-### Game Server
+### Game Server (gRPC)
 
 ```bash
 # Use default config
-./game_server
+go run cmd/game_server/main.go
 
 # Use specific config file
-./game_server --config config/config.yaml
-```
-
-### gRPC Server
-
-```bash
-# Use default config
-./grpc_server
+go run cmd/game_server/main.go --config config/config.yaml
 
 # Override port
-./grpc_server --port 8080
+go run cmd/game_server/main.go --port 8080
 
 # Set log level
-./grpc_server --log-level debug
+go run cmd/game_server/main.go --log-level debug
 
 # Production mode with environment config
-APP_ENV=production ./grpc_server
+APP_ENV=production go run cmd/game_server/main.go
 ```
 
 ## Validation
@@ -216,7 +213,7 @@ ls -la config/config.yaml
 pwd
 
 # Test with explicit path
-./ui_client --config $(pwd)/config/config.yaml
+go run cmd/ui_client/main.go --config $(pwd)/config/config.yaml
 ```
 
 ### Environment variables not working
@@ -227,7 +224,7 @@ Ensure proper prefix and format:
 env | grep GRL_
 
 # Debug with explicit setting
-GRL_GAME_MAP_CITY_RATIO=30 ./ui_client
+GRL_GAME_MAP_CITY_RATIO=30 go run cmd/ui_client/main.go
 ```
 
 ### Validation errors
@@ -243,7 +240,7 @@ config validation failed: game.map.city_ratio must be positive
 
 ```bash
 # Load dev config with debug logging
-./grpc_server --config config/config.yaml --log-level debug
+go run cmd/game_server/main.go --config config/config.yaml --log-level debug
 ```
 
 ### Running in Production
@@ -252,12 +249,12 @@ config validation failed: game.map.city_ratio must be positive
 # Use production config with environment overrides
 export GRL_SERVER_GRPC_SERVER_PORT=8080
 export GRL_SERVER_GRPC_SERVER_MAX_GAMES=1000
-APP_ENV=production ./grpc_server
+APP_ENV=production go run cmd/game_server/main.go
 ```
 
 ### Custom Game Settings
 
 ```bash
 # Large map with 4 players
-./ui_client --width 40 --height 30 --players 4 --human 0
+go run cmd/ui_client/main.go --width 40 --height 30 --players 4 --human 0
 ```

@@ -35,21 +35,20 @@ go run cmd/ui_client/main.go -ai-only
 - **Right Click**: Cancel current selection
 
 ### Keyboard Controls
-- **Q**: Switch to full army movement mode (default)
-- **W**: Switch to half army movement mode
-- **Shift** (hold): Temporarily use half army movement
-- **Space**: End your turn
+- **WASD / Arrow Keys**: Move from the selected tile
+- **Shift** (hold): Move half the army (release for full move)
 - **ESC**: Deselect current tile
 
 ## Gameplay
 
 ### How to Play
-1. Wait for your turn (indicated at top of screen)
-2. Click on one of your tiles that has armies (number > 1)
-3. The selected tile will be highlighted in yellow
-4. Valid moves (adjacent tiles) will be highlighted in green
-5. Click on a green tile to move your armies there
-6. Continue making moves or press Space to end your turn
+1. The game advances automatically; you can queue moves at any time
+2. Click one of your tiles that has armies (number > 1)
+3. The selected tile is highlighted in yellow
+4. Adjacent valid moves are highlighted in green
+5. Click an adjacent tile (or use WASD/Arrow keys) to move
+6. The selection follows the destination, so you can chain moves
+7. Right click or press ESC to cancel selection
 
 ### Visual Indicators
 - **Yellow Border**: Currently selected tile

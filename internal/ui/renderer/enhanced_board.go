@@ -28,6 +28,9 @@ type QueuedMoveInfo struct {
 type EnhancedBoardRenderer struct {
 	*BoardRenderer
 
+	// Fog renderer for edge highlighting
+	fogRenderer *FogRenderer
+
 	// Selection state
 	selectedX, selectedY int
 	hasSelection         bool
@@ -49,6 +52,7 @@ type EnhancedBoardRenderer struct {
 func NewEnhancedBoardRenderer(tileSize int, f font.Face) *EnhancedBoardRenderer {
 	return &EnhancedBoardRenderer{
 		BoardRenderer: NewBoardRenderer(tileSize, f),
+		fogRenderer:   NewFogRenderer(tileSize),
 		validMoves:    make(map[struct{ X, Y int }]bool),
 	}
 }
@@ -109,6 +113,14 @@ func (ebr *EnhancedBoardRenderer) Draw(screen *ebiten.Image, board *core.Board, 
 }
 
 func (ebr *EnhancedBoardRenderer) drawOverlays(screen *ebiten.Image, board *core.Board, playerID int) {
+	// Draw visibility edge highlighting first (so it appears under other overlays)
+	ebr.fogRenderer.DrawEdgeHighlights(screen, board, playerID)
+
+	// Draw queued moves (so other overlays appear on top)
+	for i, move := range ebr.queuedMoves {
+		ebr.drawQueuedMove(screen, move, i+1)
+	}
+
 	// Draw valid move indicators
 	if ebr.hasSelection {
 		for move := range ebr.validMoves {
@@ -143,6 +155,55 @@ func (ebr *EnhancedBoardRenderer) drawOverlays(screen *ebiten.Image, board *core
 	// Draw selection highlight
 	if ebr.hasSelection {
 		ebr.drawSelectionBorder(screen, ebr.selectedX, ebr.selectedY)
+	}
+}
+
+// drawQueuedMove draws an arrow indicating a queued move
+func (ebr *EnhancedBoardRenderer) drawQueuedMove(screen *ebiten.Image, move QueuedMoveInfo, moveNumber int) {
+	halfTile := float32(ebr.tileSize) / 2
+
+	// Calculate center positions
+	fromCenterX := float32(move.FromX*ebr.tileSize) + halfTile
+	fromCenterY := float32(move.FromY*ebr.tileSize) + halfTile
+	toCenterX := float32(move.ToX*ebr.tileSize) + halfTile
+	toCenterY := float32(move.ToY*ebr.tileSize) + halfTile
+
+	// Draw a thick line from source to destination
+	lineWidth := float32(4)
+
+	// Calculate direction
+	dx := toCenterX - fromCenterX
+	dy := toCenterY - fromCenterY
+
+	// Shorten the line slightly so it doesn't go edge to edge
+	shortenFactor := float32(0.3)
+	startX := fromCenterX + dx*shortenFactor
+	startY := fromCenterY + dy*shortenFactor
+	endX := toCenterX - dx*shortenFactor
+	endY := toCenterY - dy*shortenFactor
+
+	// Draw the line (as a thin rectangle)
+	vector.StrokeLine(screen, startX, startY, endX, endY, lineWidth, QueuedMoveColor, false)
+
+	// Draw arrowhead at the end
+	arrowSize := float32(8)
+	// Normalize direction
+	length := float32(ebr.tileSize) * (1 - 2*shortenFactor)
+	if length > 0 {
+		ndx := dx / length
+		ndy := dy / length
+
+		// Arrowhead points
+		tipX := endX
+		tipY := endY
+		leftX := tipX - arrowSize*ndx - arrowSize*ndy*0.5
+		leftY := tipY - arrowSize*ndy + arrowSize*ndx*0.5
+		rightX := tipX - arrowSize*ndx + arrowSize*ndy*0.5
+		rightY := tipY - arrowSize*ndy - arrowSize*ndx*0.5
+
+		// Draw arrowhead as three lines
+		vector.StrokeLine(screen, tipX, tipY, leftX, leftY, lineWidth, QueuedMoveColor, false)
+		vector.StrokeLine(screen, tipX, tipY, rightX, rightY, lineWidth, QueuedMoveColor, false)
 	}
 }
 

@@ -9,9 +9,12 @@ proto/
 ├── common/
 │   └── v1/
 │       └── common.proto     # Shared types and enums
-└── game/
+├── game/
+│   └── v1/
+│       └── game.proto        # GameService definition
+└── experience/
     └── v1/
-        └── game.proto        # GameService definition
+        └── experience.proto  # ExperienceService definition
 ```
 
 ## Generating Go Code
@@ -29,6 +32,7 @@ make generate-protos
 The generated code will be placed in:
 - `pkg/api/common/v1/` - Common types
 - `pkg/api/game/v1/` - Game service types and stubs
+- `pkg/api/experience/v1/` - Experience service types and stubs
 
 ## Proto Style Guide
 
