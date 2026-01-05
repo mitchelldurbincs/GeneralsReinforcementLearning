@@ -151,15 +151,32 @@ func (ei *EngineInitializer) createEngine(gs *GameState) *Engine {
 	// Create action processor
 	actionProc := processor.NewActionProcessor(ei.logger)
 
-	// Create event bus
-	eventBus := events.NewEventBus()
+	// Use provided event bus or create new one
+	var eventBus *events.EventBus
+	if ei.config.EventBus != nil {
+		eventBus = ei.config.EventBus
+		ei.logger.Debug().Msg("Using provided event bus")
+	} else {
+		eventBus = events.NewEventBus()
+		ei.logger.Debug().Msg("Created new event bus")
+	}
 
-	// Create game context for state machine
-	gameContext := states.NewGameContext(ei.config.GameID, ei.config.Players, ei.logger)
-	gameContext.PlayerCount = ei.config.Players
-
-	// Create state machine
-	stateMachine := states.NewStateMachine(gameContext, eventBus)
+	// Use provided state machine or create new one
+	var stateMachine *states.StateMachine
+	if ei.config.StateMachine != nil {
+		stateMachine = ei.config.StateMachine
+		// Update the game context with player count
+		stateMachine.GetContext().PlayerCount = ei.config.Players
+		ei.logger.Debug().
+			Str("current_phase", stateMachine.CurrentPhase().String()).
+			Msg("Using provided state machine")
+	} else {
+		// Create game context for state machine
+		gameContext := states.NewGameContext(ei.config.GameID, ei.config.Players, ei.logger)
+		gameContext.PlayerCount = ei.config.Players
+		stateMachine = states.NewStateMachine(gameContext, eventBus)
+		ei.logger.Debug().Msg("Created new state machine")
+	}
 
 	engine := &Engine{
 		gs:                  gs,
@@ -205,25 +222,45 @@ func (ei *EngineInitializer) performInitialSetup(engine *Engine) {
 func (ei *EngineInitializer) initializeStateMachine(engine *Engine) error {
 	stateMachine := engine.stateMachine
 	gameContext := stateMachine.GetContext()
+	currentPhase := stateMachine.CurrentPhase()
 
-	// Transition through initial states
-	// First move to Lobby state
-	if err := stateMachine.TransitionTo(states.PhaseLobby, "Engine initialized"); err != nil {
-		ei.logger.Error().Err(err).Msg("Failed to transition to Lobby state")
-		return err
-	}
+	ei.logger.Debug().
+		Str("current_phase", currentPhase.String()).
+		Msg("Initializing state machine from current phase")
 
-	// Since all players are already added during map generation, transition to Starting
-	if err := stateMachine.TransitionTo(states.PhaseStarting, "All players ready"); err != nil {
-		ei.logger.Error().Err(err).Msg("Failed to transition to Starting state")
-		return err
-	}
+	// Handle state machine transitions based on current phase
+	// If a state machine was provided, it may already be in Lobby phase
+	switch currentPhase {
+	case states.PhaseInitializing:
+		// Fresh state machine - transition through all states
+		if err := stateMachine.TransitionTo(states.PhaseLobby, "Engine initialized"); err != nil {
+			ei.logger.Error().Err(err).Msg("Failed to transition to Lobby state")
+			return err
+		}
+		fallthrough // Continue to next case
 
-	// Map is generated and players are placed, transition to Running
-	gameContext.StartTime = time.Now() // Set start time when transitioning to running
-	if err := stateMachine.TransitionTo(states.PhaseRunning, "Game setup complete"); err != nil {
-		ei.logger.Error().Err(err).Msg("Failed to transition to Running state")
-		return err
+	case states.PhaseLobby:
+		// Already in lobby (e.g., from gRPC layer) - continue from here
+		if err := stateMachine.TransitionTo(states.PhaseStarting, "All players ready"); err != nil {
+			ei.logger.Error().Err(err).Msg("Failed to transition to Starting state")
+			return err
+		}
+		fallthrough // Continue to next case
+
+	case states.PhaseStarting:
+		// Map is generated and players are placed, transition to Running
+		gameContext.StartTime = time.Now()
+		if err := stateMachine.TransitionTo(states.PhaseRunning, "Game setup complete"); err != nil {
+			ei.logger.Error().Err(err).Msg("Failed to transition to Running state")
+			return err
+		}
+
+	case states.PhaseRunning:
+		// Already running - nothing to do
+		ei.logger.Debug().Msg("State machine already in Running phase")
+
+	default:
+		return fmt.Errorf("unexpected initial phase: %s", currentPhase)
 	}
 
 	return nil

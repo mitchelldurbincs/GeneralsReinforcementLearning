@@ -377,6 +377,23 @@ func (s *Server) StreamGame(req *gamev1.StreamGameRequest, stream gamev1.GameSer
 	errChan := make(chan error, 1)
 	go func() {
 		defer func() {
+			// Drain any remaining messages in the update channel to prevent leaks
+			// This runs before the channel is closed by UnregisterClient
+			for {
+				select {
+				case _, ok := <-client.updateChan:
+					if !ok {
+						// Channel was closed
+						goto drained
+					}
+					// Discard the message
+				default:
+					// Channel is empty
+					goto drained
+				}
+			}
+		drained:
+
 			if r := recover(); r != nil {
 				log.Error().
 					Interface("panic", r).

@@ -24,7 +24,9 @@ type gameInstance struct {
 	engine  *gameengine.Engine
 	mu      sync.RWMutex // Single mutex for all game state (upgraded to RWMutex)
 
-	// State management
+	// State management - these are passed to the Engine during StartEngine()
+	// to ensure a single source of truth. After engine creation, these same
+	// instances are used by both gameInstance and the Engine.
 	stateMachine *states.StateMachine // State machine for game lifecycle
 	eventBus     *events.EventBus     // Event bus for state transitions and game events
 
@@ -484,7 +486,8 @@ func (g *gameInstance) StartEngine(ctx context.Context) error {
 		}
 	}
 
-	// Create the game engine
+	// Create the game engine with our existing event bus and state machine
+	// This ensures a single source of truth for game state
 	engineConfig := gameengine.GameConfig{
 		Width:               int(g.config.Width),
 		Height:              int(g.config.Height),
@@ -492,6 +495,8 @@ func (g *gameInstance) StartEngine(ctx context.Context) error {
 		Logger:              log.Logger,
 		GameID:              g.id,
 		ExperienceCollector: experienceCollector,
+		EventBus:            g.eventBus,     // Pass existing event bus to avoid duplication
+		StateMachine:        g.stateMachine, // Pass existing state machine to avoid duplication
 	}
 
 	log.Info().
@@ -508,37 +513,12 @@ func (g *gameInstance) StartEngine(ctx context.Context) error {
 		return fmt.Errorf("failed to create game engine")
 	}
 
-	// Subscribe to state transition events from the engine
-	g.engine.EventBus().SubscribeFunc("state.transition", func(event events.Event) {
-		// Type assert to StateTransitionEvent
-		if stateEvent, ok := event.(*events.StateTransitionEvent); ok {
-			// Convert internal phases to proto phases
-			previousPhase := convertPhaseToProto(states.GamePhase(0))
-			newPhase := convertPhaseToProto(states.GamePhase(0))
-
-			// Parse phase names to get the actual phases
-			for i := 0; i <= int(states.PhaseReset); i++ {
-				phase := states.GamePhase(i)
-				if phase.String() == stateEvent.FromPhase {
-					previousPhase = convertPhaseToProto(phase)
-				}
-				if phase.String() == stateEvent.ToPhase {
-					newPhase = convertPhaseToProto(phase)
-				}
-			}
-
-			// Broadcast the phase change to all stream clients
-			g.streamManager.BroadcastPhaseChanged(previousPhase, newPhase, stateEvent.Reason)
-		}
-	})
+	// Note: State transition events are already subscribed in CreateGame()
+	// Since we pass the same eventBus to the engine, no duplicate subscription needed
 
 	// Initialize action collection
 	g.actionBuffer = make(map[int32]core.Action)
 	g.currentTurn = 0
-
-	// Note: We don't need to sync g.stateMachine with the engine's state
-	// because currentPhaseUnlocked() now uses the engine's state machine
-	// as the source of truth when the engine exists
 
 	return nil
 }
@@ -560,14 +540,9 @@ func (g *gameInstance) CurrentPhase() commonv1.GamePhase {
 
 // currentPhaseUnlocked returns the current game phase without locking (caller must hold lock)
 func (g *gameInstance) currentPhaseUnlocked() commonv1.GamePhase {
-	// Always use engine's state machine if engine exists
-	// The engine is the source of truth for game state
-	if g.engine != nil {
-		enginePhase := g.engine.CurrentPhase()
-		return convertPhaseToProto(enginePhase)
-	}
-
-	// Use game's state machine before engine is created
+	// The gameInstance.stateMachine is passed to the engine during StartEngine(),
+	// so they share the same instance. This method works both before and after
+	// engine creation since they reference the same state machine.
 	if g.stateMachine != nil {
 		return convertPhaseToProto(g.stateMachine.CurrentPhase())
 	}

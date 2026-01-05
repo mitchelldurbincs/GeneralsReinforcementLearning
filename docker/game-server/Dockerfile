@@ -1,8 +1,12 @@
 # Multi-stage build for optimal size
 FROM golang:1.24-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache git make
+# Install build dependencies including protoc
+RUN apk add --no-cache git make protobuf protobuf-dev
+
+# Install Go protoc plugins
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 WORKDIR /build
 
@@ -12,6 +16,9 @@ RUN go mod download
 
 # Copy source code
 COPY . .
+
+# Generate proto files (required for build)
+RUN ./scripts/generate-protos.sh
 
 # Build with optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \

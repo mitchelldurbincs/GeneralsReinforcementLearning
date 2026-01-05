@@ -50,6 +50,11 @@ type GameConfig struct {
 	Logger              zerolog.Logger
 	GameID              string              // Optional game ID, will be generated if not provided
 	ExperienceCollector ExperienceCollector // Optional experience collector
+
+	// Optional: Pass existing instances to avoid duplication (used by gRPC layer)
+	// If nil, new instances will be created
+	EventBus     *events.EventBus     // Optional existing event bus
+	StateMachine *states.StateMachine // Optional existing state machine
 }
 
 // NewEngine creates a new game engine with map generation.

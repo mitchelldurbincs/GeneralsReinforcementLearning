@@ -115,13 +115,21 @@ func (sm *StreamManager) GetClientCount() int {
 	return len(sm.clients)
 }
 
-// ForEachClient executes a function for each connected client
+// ForEachClient executes a function for each connected client.
+// Uses a snapshot pattern to avoid holding the lock during callback execution,
+// which prevents deadlock when callbacks call other StreamManager methods.
 func (sm *StreamManager) ForEachClient(fn func(playerID int32, client *streamClient)) {
+	// Take a snapshot of clients under the lock
 	sm.clientsMu.RLock()
-	defer sm.clientsMu.RUnlock()
+	snapshot := make([]*streamClient, 0, len(sm.clients))
+	for _, client := range sm.clients {
+		snapshot = append(snapshot, client)
+	}
+	sm.clientsMu.RUnlock()
 
-	for playerID, client := range sm.clients {
-		fn(playerID, client)
+	// Execute callbacks outside the lock to prevent deadlock
+	for _, client := range snapshot {
+		fn(client.playerID, client)
 	}
 }
 

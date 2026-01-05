@@ -1,10 +1,17 @@
-.PHONY: all build test clean generate-protos install-tools
+.PHONY: all build test clean generate-protos install-tools ensure-protos
 
 # Default target
 all: build
 
-# Build targets
-build:
+# Ensure protos are generated (only if pkg/api doesn't exist)
+ensure-protos:
+	@if [ ! -d "pkg/api/game/v1" ]; then \
+		echo "Generated protos not found. Running proto generation..."; \
+		$(MAKE) generate-protos; \
+	fi
+
+# Build targets (depends on protos being generated)
+build: ensure-protos
 	go build -o bin/game_server ./cmd/game_server
 	go build -o bin/ui_client ./cmd/ui_client
 

@@ -206,3 +206,57 @@ func TestStreamGameNonExistentGame(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
+
+// TestStreamManagerForEachClientNoDeadlock verifies that calling SendToClient
+// from within a ForEachClient callback doesn't cause a deadlock.
+// This was a bug where ForEachClient held RLock and SendToClient tried to
+// acquire RLock again - Go's RWMutex is not reentrant.
+func TestStreamManagerForEachClientNoDeadlock(t *testing.T) {
+	sm := NewStreamManager()
+
+	// Register multiple mock clients
+	for i := int32(0); i < 5; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		client := &streamClient{
+			playerID:   i,
+			ctx:        ctx,
+			cancelFunc: cancel,
+			updateChan: make(chan *gamev1.GameUpdate, 10),
+		}
+		sm.RegisterClient(client)
+	}
+
+	// This pattern previously caused deadlock:
+	// ForEachClient holds RLock, callback calls SendToClient which tries RLock
+	done := make(chan bool, 1)
+	go func() {
+		sm.ForEachClient(func(playerID int32, client *streamClient) {
+			// This call to SendToClient from within ForEachClient
+			// would deadlock before the snapshot fix
+			sm.SendToClient(playerID, &gamev1.GameUpdate{})
+		})
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		// Success - no deadlock
+	case <-time.After(2 * time.Second):
+		t.Fatal("Deadlock detected - ForEachClient with SendToClient callback didn't complete")
+	}
+
+	// Verify updates were actually sent
+	sm.clientsMu.RLock()
+	for _, client := range sm.clients {
+		select {
+		case <-client.updateChan:
+			// Got the update
+		default:
+			t.Error("Expected update in client channel")
+		}
+	}
+	sm.clientsMu.RUnlock()
+
+	// Cleanup
+	sm.CloseAll()
+}

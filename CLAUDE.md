@@ -65,7 +65,7 @@ go run cmd/ui_client/main.go
 # Run Python agents (MUST activate virtual environment first)
 source generalsrl/bin/activate
 python python/test_grpc_client.py
-python python/generals_agent/random_agent.py
+python python/scripts/run_random_match.py
 
 # Manage Go dependencies
 go mod tidy
@@ -87,11 +87,11 @@ go mod download
 - **demo_helpers.go**: Random action generation for testing and demonstrations
 - **experience_collector.go**: Interface for collecting RL training experiences
 - **core/**: Low-level game mechanics
-  - `board.go`: 2D grid-based game board implementation
+  - `board.go`: 2D grid-based game board implementation (includes tile types: empty, mountain, city, general)
   - `movement.go`: Army movement and combat resolution
-  - `player.go`: Player state and properties
-  - `tile.go`: Tile types (empty, mountain, city, general)
+  - `coordinate.go`: Coordinate type with math operations and serialization
   - `action.go`: Action types and validation
+  - `errors.go`: Domain-specific error types
   - `utils.go`: Core utility functions
 - **mapgen/**: Procedural map generation
   - `generator.go`: Map generation with city and mountain placement
@@ -136,41 +136,73 @@ go mod download
 - **game_server/**: gRPC server for hosting games and managing multiplayer sessions
 - **ui_client/**: Graphical client for human players using Ebiten
 
+### Protocol Buffers (`proto/`)
+- **game/v1/**: Game service protocol definitions
+- **experience/v1/**: Experience collection protocol definitions
+- **common/v1/**: Shared message types
+
 ### Networking (`internal/grpc/`)
 - **gameserver/**: gRPC server implementation
   - `server.go`: Main server logic, game management, player sessions
-  - `stream_manager.go`: Real-time game state streaming (in development)
-- **proto/**: Protocol buffer definitions for client-server communication
-- **client/**: Go client library for connecting to the game server
+  - `stream_manager.go`: Real-time game state streaming
+  - `game_manager.go`: Game lifecycle management
+  - `experience_service.go`: Experience collection service
+  - `experience_aggregator.go`: Aggregates experiences from multiple games
+  - `converters.go`: Proto/internal type conversions
+  - `action_validator.go`: Action validation logic
+
+### Experience Collection (`internal/experience/`)
+- **collector.go**: Base experience collector implementation
+- **collector_optimized.go**: Performance-optimized collector
+- **enhanced_collector.go**: Advanced collector with additional features
+- **buffer.go**: Experience buffer for batching
+- **lockfree_buffer.go**: Lock-free buffer for concurrent access
+- **player_buffer_manager.go**: Per-player buffer management
+- **rewards.go**: Reward calculation utilities
+- **serializer.go**: Experience serialization
+- **persistence.go**: Experience persistence to disk
 
 ### Python Integration (`python/`)
 **Important**: Python code requires activating the virtual environment first:
 ```bash
 source generalsrl/bin/activate
 ```
-- **grpc_client.py**: Python gRPC client for RL agents
-- **random_agent.py**: Basic random agent implementation (in progress)
-- **Environment classes planned**: OpenAI Gym-compatible wrappers
+- **generals_agent/**: Core agent module
+  - `base_agent.py`: Abstract base class for all agents
+  - `random_agent.py`: Random action agent implementation
+  - `game_client.py`: gRPC client wrapper
+  - `game_session.py`: Game session management
+  - `connection.py`: Connection handling
+  - `experience_consumer.py`: Experience streaming consumer
+  - `agent_runner.py`: Agent execution orchestration
+  - `types.py`: Type definitions
+  - `events.py`: Event handling
+- **generals_pb/**: Generated protobuf files
+- **examples/**: Example scripts and usage demonstrations
+- **scripts/**: Utility scripts (e.g., `run_random_match.py`)
 
 ### Key Game Parameters
 - City spawn ratio: 1 per 20 tiles (~5% of map)
 - City starting army: 40 units
 - Production: 1 army/turn for generals and cities
 - Normal tile growth: Every 25 turns
-- Fog of war: Fully implemented with toggle via `FogOfWarEnabled` flag
+- Fog of war: Fully implemented with toggle via config (`fog_of_war.enabled`)
 - Minimum general spacing: 5 (Manhattan distance)
-- Turn time limit: 500ms default (configurable)
+- Turn time limit: 0 (disabled) by default, configurable via `turn_timeout`
 - Map sizes: Small (10x10), Medium (15x15), Large (20x20)
-- Maximum players: 8 (limited by distinct colors)
+- Maximum concurrent games: 100 (configurable via `max_games`)
 
 ### Deployment
 - Docker multi-stage builds for containerization (golang:1.24-alpine → alpine:3.21)
-- Terraform configuration for AWS deployment:
-  - Individual .tf files for each component (compute, ECR, networking, security, etc.)
-  - EC2 instances for game server and RL trainer
-  - ECR for container registry
-  - S3 for storage
-  - VPC and security groups
+  - `deploy/Dockerfile`: Production deployment build
+  - `docker/game-server/Dockerfile`: Alternative game server build
+- Terraform configuration for AWS deployment (`deploy/terraform/`):
+  - `compute_game_server.tf`, `compute_rl_trainer.tf`: EC2 instances
+  - `ecr.tf`: Container registry
+  - `s3.tf`: Storage
+  - `networking.tf`, `security_groups.tf`: VPC and security
+  - `iam.tf`: IAM roles and policies
+  - `monitoring.tf`: CloudWatch configuration
 
 ## Event System Architecture
 
@@ -222,7 +254,7 @@ The game now includes a formal state machine to manage game lifecycle:
 - Initializing → Lobby → Starting → Running
 - Running ↔ Paused (pause/resume)
 - Running → Ending → Ended
-- Any → Error (on unrecoverable error)
+- Most phases → Error (on unrecoverable error)
 - Error/Ended → Reset → Initializing
 
 ### Engine Integration
@@ -267,16 +299,18 @@ The game now includes a formal state machine to manage game lifecycle:
 ### Key Implementation Details
 
 When modifying game mechanics, key files to consider:
-- Game balance: `internal/game/constants.go`
+- Game balance: `internal/game/constants.go` (reads from config)
 - Turn processing: `internal/game/engine.go`
 - Movement logic: `internal/game/core/movement.go`
 - Visual rendering: `internal/ui/renderer/`
 - Fog of war: `internal/game/visibility.go`
 - Performance optimization: Check incremental update patterns in `stats.go` and `visibility.go`
-- gRPC APIs: `internal/grpc/proto/game.proto`
-- Python integration: `python/` directory
+- gRPC APIs: `proto/game/v1/game.proto`
+- Experience APIs: `proto/experience/v1/experience.proto`
+- Python integration: `python/generals_agent/`
 - Event handling: `internal/game/events/`
 - State management: `internal/game/states/`
+- Experience collection: `internal/experience/`
 
 ### Important Architectural Decisions
 
@@ -303,13 +337,13 @@ When modifying game mechanics, key files to consider:
 - gRPC server needs to integrate with state machine for proper game lifecycle management
 - StreamGame method needs completion for real-time updates
 - Python RL agent implementations are in progress
-- Experience collector interface is defined but needs concrete implementations
+- Full RL training loop integration pending
 
 The project uses:
 - **Zerolog** for structured logging throughout the codebase
 - **Ebiten v2.8.8** for game graphics and rendering
-- **gRPC 1.70.0** for client-server communication
+- **gRPC 1.74.2** for client-server communication
 - **Viper** for configuration management
 - **Testify** for testing assertions
-- **Go 1.24.0** as the base language version
+- **Go 1.23.0** (with toolchain 1.24.0) as the base language version
 - **Python 3.8+** for RL agent development
