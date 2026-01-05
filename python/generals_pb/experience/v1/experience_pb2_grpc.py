@@ -40,6 +40,11 @@ class ExperienceServiceStub(object):
                 request_serializer=experience_dot_v1_dot_experience__pb2.StreamExperiencesRequest.SerializeToString,
                 response_deserializer=experience_dot_v1_dot_experience__pb2.Experience.FromString,
                 _registered_method=True)
+        self.StreamExperienceBatches = channel.unary_stream(
+                '/generals.experience.v1.ExperienceService/StreamExperienceBatches',
+                request_serializer=experience_dot_v1_dot_experience__pb2.StreamExperiencesRequest.SerializeToString,
+                response_deserializer=experience_dot_v1_dot_experience__pb2.ExperienceBatch.FromString,
+                _registered_method=True)
         self.SubmitExperiences = channel.unary_unary(
                 '/generals.experience.v1.ExperienceService/SubmitExperiences',
                 request_serializer=experience_dot_v1_dot_experience__pb2.SubmitExperiencesRequest.SerializeToString,
@@ -58,6 +63,13 @@ class ExperienceServiceServicer(object):
 
     def StreamExperiences(self, request, context):
         """StreamExperiences streams collected experiences to a trainer
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StreamExperienceBatches(self, request, context):
+        """StreamExperienceBatches streams batched experiences for efficient training
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -84,6 +96,11 @@ def add_ExperienceServiceServicer_to_server(servicer, server):
                     servicer.StreamExperiences,
                     request_deserializer=experience_dot_v1_dot_experience__pb2.StreamExperiencesRequest.FromString,
                     response_serializer=experience_dot_v1_dot_experience__pb2.Experience.SerializeToString,
+            ),
+            'StreamExperienceBatches': grpc.unary_stream_rpc_method_handler(
+                    servicer.StreamExperienceBatches,
+                    request_deserializer=experience_dot_v1_dot_experience__pb2.StreamExperiencesRequest.FromString,
+                    response_serializer=experience_dot_v1_dot_experience__pb2.ExperienceBatch.SerializeToString,
             ),
             'SubmitExperiences': grpc.unary_unary_rpc_method_handler(
                     servicer.SubmitExperiences,
@@ -124,6 +141,33 @@ class ExperienceService(object):
             '/generals.experience.v1.ExperienceService/StreamExperiences',
             experience_dot_v1_dot_experience__pb2.StreamExperiencesRequest.SerializeToString,
             experience_dot_v1_dot_experience__pb2.Experience.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StreamExperienceBatches(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/generals.experience.v1.ExperienceService/StreamExperienceBatches',
+            experience_dot_v1_dot_experience__pb2.StreamExperiencesRequest.SerializeToString,
+            experience_dot_v1_dot_experience__pb2.ExperienceBatch.FromString,
             options,
             channel_credentials,
             insecure,

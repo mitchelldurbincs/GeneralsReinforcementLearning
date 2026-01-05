@@ -3,6 +3,10 @@
 Simple example client for the Generals game server.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import grpc
 from generals_pb.game.v1 import game_pb2, game_pb2_grpc
 from generals_pb.common.v1 import common_pb2

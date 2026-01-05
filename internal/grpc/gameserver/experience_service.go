@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/experience"
 	"github.com/mitchelldurbincs/GeneralsReinforcementLearning/internal/game"
@@ -107,6 +109,9 @@ type ExperienceService struct {
 	// Buffer manager for experience storage
 	bufferManager *experience.BufferManager
 
+	// Stream aggregator for multi-game streaming
+	streamAggregator *StreamAggregator
+
 	// Active streams
 	mu            sync.RWMutex
 	activeStreams map[string]*experienceStream
@@ -114,6 +119,10 @@ type ExperienceService struct {
 	// Configuration
 	defaultBufferSize int
 	streamTimeout     time.Duration
+
+	// Metrics
+	totalBatchesSent     int64
+	totalExperiencesSent int64
 }
 
 // experienceStream represents an active experience stream
@@ -136,6 +145,7 @@ func NewExperienceService(bufferManager *experience.BufferManager) *ExperienceSe
 
 	return &ExperienceService{
 		bufferManager:     bufferManager,
+		streamAggregator:  NewStreamAggregator(bufferManager),
 		activeStreams:     make(map[string]*experienceStream),
 		defaultBufferSize: 10000,
 		streamTimeout:     30 * time.Minute,
@@ -269,6 +279,100 @@ func (s *ExperienceService) StreamExperiences(
 		case <-time.After(s.streamTimeout):
 			// Stream timeout
 			return status.Error(codes.DeadlineExceeded, "stream timeout")
+		}
+	}
+}
+
+// StreamExperienceBatches streams batched experiences using the StreamAggregator
+func (s *ExperienceService) StreamExperienceBatches(
+	req *experiencepb.StreamExperiencesRequest,
+	stream experiencepb.ExperienceService_StreamExperienceBatchesServer,
+) error {
+	// Validate request
+	if err := s.validateStreamRequest(req); err != nil {
+		return status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
+	}
+
+	// Create aggregated stream
+	batchCh, streamID, err := s.streamAggregator.CreateStream(
+		stream.Context(),
+		req.GameIds,
+		req.PlayerIds,
+		req.BatchSize,
+		req.Follow,
+	)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to create stream: %v", err)
+	}
+	defer s.streamAggregator.CloseStream(streamID)
+
+	log.Info().
+		Str("stream_id", streamID).
+		Int("game_filters", len(req.GameIds)).
+		Int("player_filters", len(req.PlayerIds)).
+		Int32("batch_size", req.BatchSize).
+		Bool("follow", req.Follow).
+		Bool("compression", req.EnableCompression).
+		Msg("Started batched experience stream")
+
+	// Stream batches
+	var batchCounter int32
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+
+		case batch, ok := <-batchCh:
+			if !ok {
+				// Channel closed
+				log.Info().
+					Str("stream_id", streamID).
+					Int32("total_batches", batchCounter).
+					Msg("Stream completed")
+				return nil
+			}
+
+			if len(batch) == 0 {
+				continue
+			}
+
+			// Create batch message
+			batchMsg := &experiencepb.ExperienceBatch{
+				Experiences: batch,
+				BatchId:     atomic.AddInt32(&batchCounter, 1),
+				StreamId:    streamID,
+				CreatedAt:   timestamppb.Now(),
+				Metadata: map[string]string{
+					"batch_size": fmt.Sprintf("%d", len(batch)),
+				},
+			}
+
+			// Apply compression if requested
+			if req.EnableCompression {
+				// TODO: Implement compression
+				batchMsg.Metadata["compression"] = "none"
+			}
+
+			// Send batch
+			if err := stream.Send(batchMsg); err != nil {
+				log.Error().
+					Err(err).
+					Str("stream_id", streamID).
+					Int32("batch_id", batchMsg.BatchId).
+					Msg("Failed to send batch")
+				return err
+			}
+
+			// Update metrics
+			atomic.AddInt64(&s.totalBatchesSent, 1)
+			atomic.AddInt64(&s.totalExperiencesSent, int64(len(batch)))
+
+		case <-time.After(30 * time.Second):
+			// Health check timeout
+			if !req.Follow {
+				// Not in follow mode, timeout
+				return status.Error(codes.DeadlineExceeded, "stream timeout")
+			}
 		}
 	}
 }

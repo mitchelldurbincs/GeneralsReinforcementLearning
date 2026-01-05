@@ -16,7 +16,14 @@ var (
 	ValidMoveColor   = color.RGBA{100, 255, 100, 128} // Semi-transparent green
 	HoverColor       = color.RGBA{255, 255, 255, 64}  // Semi-transparent white
 	InvalidMoveColor = color.RGBA{255, 100, 100, 64}  // Semi-transparent red
+	QueuedMoveColor  = color.RGBA{255, 200, 100, 200} // Orange for queued moves
 )
+
+// QueuedMoveInfo represents a queued move for rendering
+type QueuedMoveInfo struct {
+	FromX, FromY int
+	ToX, ToY     int
+}
 
 type EnhancedBoardRenderer struct {
 	*BoardRenderer
@@ -30,6 +37,9 @@ type EnhancedBoardRenderer struct {
 
 	// Valid moves cache
 	validMoves map[struct{ X, Y int }]bool
+
+	// Queued moves for visualization
+	queuedMoves []QueuedMoveInfo
 
 	// Current board and player for visibility checks
 	board    *core.Board
@@ -59,6 +69,11 @@ func (ebr *EnhancedBoardRenderer) SetSelection(x, y int, hasSelection bool) {
 func (ebr *EnhancedBoardRenderer) SetHover(x, y int) {
 	ebr.hoverX = x
 	ebr.hoverY = y
+}
+
+// SetQueuedMoves sets the list of queued moves to render
+func (ebr *EnhancedBoardRenderer) SetQueuedMoves(moves []QueuedMoveInfo) {
+	ebr.queuedMoves = moves
 }
 
 func (ebr *EnhancedBoardRenderer) updateValidMoves() {

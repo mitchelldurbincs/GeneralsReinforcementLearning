@@ -121,22 +121,48 @@ func (h *Handler) handleLeftClick() {
 			log.Debug().Msg("Deselecting tile - clicked same tile")
 			h.selectionState = SelectionNone
 		} else {
-			// Otherwise, try to move
-			move := PendingMove{
-				FromX:    h.selectedTileX,
-				FromY:    h.selectedTileY,
-				ToX:      tileX,
-				ToY:      tileY,
-				MoveHalf: h.moveMode == MoveHalf,
+			// Check if this is an adjacent tile (valid move destination)
+			dx := tileX - h.selectedTileX
+			dy := tileY - h.selectedTileY
+			isAdjacent := (dx == 0 && (dy == 1 || dy == -1)) || (dy == 0 && (dx == 1 || dx == -1))
+
+			if isAdjacent {
+				// Adjacent click: queue a move and keep selection at destination for chaining
+				move := PendingMove{
+					FromX:    h.selectedTileX,
+					FromY:    h.selectedTileY,
+					ToX:      tileX,
+					ToY:      tileY,
+					MoveHalf: h.moveMode == MoveHalf,
+				}
+				h.pendingMoves = append(h.pendingMoves, move)
+				log.Debug().
+					Int("fromX", move.FromX).Int("fromY", move.FromY).
+					Int("toX", move.ToX).Int("toY", move.ToY).
+					Bool("moveHalf", move.MoveHalf).
+					Int("pendingCount", len(h.pendingMoves)).
+					Msg("Created pending move, moving selection to destination")
+				// Move selection to destination for chaining (like generals.io)
+				h.selectedTileX = tileX
+				h.selectedTileY = tileY
+				// Keep selection active
+			} else {
+				// Non-adjacent click: try to select a new tile
+				if h.tileValidator != nil {
+					if valid, msg := h.tileValidator(tileX, tileY); valid {
+						h.selectedTileX = tileX
+						h.selectedTileY = tileY
+						h.keyboardSelection = false
+						h.lastValidationMessage = ""
+					} else {
+						h.lastValidationMessage = msg
+					}
+				} else {
+					h.selectedTileX = tileX
+					h.selectedTileY = tileY
+					h.keyboardSelection = false
+				}
 			}
-			h.pendingMoves = append(h.pendingMoves, move)
-			log.Debug().
-				Int("fromX", move.FromX).Int("fromY", move.FromY).
-				Int("toX", move.ToX).Int("toY", move.ToY).
-				Bool("moveHalf", move.MoveHalf).
-				Int("pendingCount", len(h.pendingMoves)).
-				Msg("Created pending move")
-			h.selectionState = SelectionNone
 		}
 	}
 }

@@ -33,6 +33,13 @@ type PlayerConfig struct {
 	ID   int
 }
 
+// QueuedMove represents a move that's queued for execution over multiple turns
+type QueuedMove struct {
+	FromX, FromY int
+	ToX, ToY     int
+	MoveHalf     bool
+}
+
 type HumanGame struct {
 	engine        *game.Engine
 	boardRenderer *renderer.EnhancedBoardRenderer
@@ -52,6 +59,9 @@ type HumanGame struct {
 	framesSinceStep    int
 	stepsPerSecond     int                   // How many game steps per second
 	accumulatedActions map[int][]core.Action // Actions accumulated per player
+
+	// Move queue for chaining (persists across turns like generals.io)
+	moveQueue []QueuedMove
 
 	// UI state
 	statusMessage string
@@ -84,6 +94,7 @@ func NewHumanGame(engine *game.Engine, playerConfigs []PlayerConfig) (*HumanGame
 		framesSinceStep:    0,
 		stepsPerSecond:     2, // Two game steps per second for comfortable gameplay
 		accumulatedActions: make(map[int][]core.Action),
+		moveQueue:          make([]QueuedMove, 0),
 	}
 
 	g.boardRenderer = renderer.NewEnhancedBoardRenderer(TileSize(), g.defaultFont)
@@ -166,6 +177,9 @@ func (g *HumanGame) Update() error {
 	if g.framesSinceStep >= framesPerStep {
 		g.framesSinceStep = 0
 
+		// Process one move from the queue (like generals.io - one move per turn)
+		g.processQueuedMove()
+
 		// Collect all accumulated actions
 		allActions := []core.Action{}
 		for playerID, actions := range g.accumulatedActions {
@@ -204,11 +218,17 @@ func (g *HumanGame) handleHumanInput() {
 		g.showMessage(msg, 60)
 	}
 
-	// Check for tile selection and movement
+	// Add new pending moves from input to the queue
 	pendingMoves := g.inputHandler.GetPendingMoves()
 
 	if len(pendingMoves) > 0 {
-		log.Debug().Int("count", len(pendingMoves)).Msg("Processing pending moves")
+		log.Debug().Int("count", len(pendingMoves)).Msg("Adding pending moves to queue")
+	}
+
+	// Build set of tiles we'll own after queued moves (for validation)
+	virtualOwned := make(map[struct{ X, Y int }]bool)
+	for _, qm := range g.moveQueue {
+		virtualOwned[struct{ X, Y int }{qm.ToX, qm.ToY}] = true
 	}
 
 	for _, move := range pendingMoves {
@@ -216,23 +236,7 @@ func (g *HumanGame) handleHumanInput() {
 			Int("fromX", move.FromX).Int("fromY", move.FromY).
 			Int("toX", move.ToX).Int("toY", move.ToY).
 			Bool("moveHalf", move.MoveHalf).
-			Msg("Processing move")
-		// Validate the move
-		fromIdx := gs.Board.Idx(move.FromX, move.FromY)
-		tile := gs.Board.T[fromIdx]
-
-		if tile.Owner != g.humanPlayerID || tile.Army <= 1 {
-			g.showMessage("Invalid source tile", 60)
-			continue
-		}
-
-		// Check if destination is adjacent
-		dx := common.Abs(move.ToX - move.FromX)
-		dy := common.Abs(move.ToY - move.FromY)
-		if dx+dy != 1 {
-			g.showMessage("Can only move to adjacent tiles", 60)
-			continue
-		}
+			Msg("Validating move for queue")
 
 		// Check if destination is in bounds
 		if !gs.Board.InBounds(move.ToX, move.ToY) {
@@ -243,35 +247,102 @@ func (g *HumanGame) handleHumanInput() {
 		toIdx := gs.Board.Idx(move.ToX, move.ToY)
 		toTile := gs.Board.T[toIdx]
 
-		// Check visibility of destination if fog of war is enabled
-		if gs.FogOfWarEnabled && !toTile.IsVisibleTo(g.humanPlayerID) {
-			g.showMessage("Cannot move to unseen tiles", 60)
-			continue
-		}
-
 		if toTile.IsMountain() {
 			g.showMessage("Cannot move to mountains", 60)
 			continue
 		}
 
-		action := &core.MoveAction{
-			PlayerID: g.humanPlayerID,
+		// Check if source is currently owned OR will be owned after previous queued moves
+		fromIdx := gs.Board.Idx(move.FromX, move.FromY)
+		fromTile := gs.Board.T[fromIdx]
+		isCurrentlyOwned := fromTile.Owner == g.humanPlayerID && fromTile.Army > 1
+		isVirtuallyOwned := virtualOwned[struct{ X, Y int }{move.FromX, move.FromY}]
+
+		if !isCurrentlyOwned && !isVirtuallyOwned {
+			// First move in a chain must be from a currently owned tile
+			if len(g.moveQueue) == 0 {
+				g.showMessage("Invalid source tile", 60)
+				continue
+			}
+		}
+
+		// Add to queue
+		g.moveQueue = append(g.moveQueue, QueuedMove{
 			FromX:    move.FromX,
 			FromY:    move.FromY,
 			ToX:      move.ToX,
 			ToY:      move.ToY,
-			MoveAll:  !move.MoveHalf,
-		}
+			MoveHalf: move.MoveHalf,
+		})
+		// Update virtual owned for next move in chain
+		virtualOwned[struct{ X, Y int }{move.ToX, move.ToY}] = true
 
-		// Add to accumulated actions
-		g.accumulatedActions[g.humanPlayerID] = append(g.accumulatedActions[g.humanPlayerID], action)
 		log.Debug().
-			Int("playerID", g.humanPlayerID).
-			Int("totalActions", len(g.accumulatedActions[g.humanPlayerID])).
-			Msg("Added move action to accumulated actions")
+			Int("queueSize", len(g.moveQueue)).
+			Msg("Move added to queue")
 	}
 
 	g.inputHandler.ClearPendingMoves()
+}
+
+// processQueuedMove processes the first move from the queue if valid
+func (g *HumanGame) processQueuedMove() {
+	if len(g.moveQueue) == 0 {
+		return
+	}
+
+	gs := g.engine.GameState()
+	move := g.moveQueue[0]
+
+	// Validate the move against current game state
+	fromIdx := gs.Board.Idx(move.FromX, move.FromY)
+	fromTile := gs.Board.T[fromIdx]
+
+	// Check if we own the source tile with enough army
+	if fromTile.Owner != g.humanPlayerID || fromTile.Army <= 1 {
+		// Move is no longer valid, remove it from queue
+		log.Debug().
+			Int("fromX", move.FromX).Int("fromY", move.FromY).
+			Msg("Queued move invalid: source tile not owned or insufficient army")
+		g.moveQueue = g.moveQueue[1:]
+		return
+	}
+
+	// Check if destination is still valid
+	if !gs.Board.InBounds(move.ToX, move.ToY) {
+		g.moveQueue = g.moveQueue[1:]
+		return
+	}
+
+	toIdx := gs.Board.Idx(move.ToX, move.ToY)
+	toTile := gs.Board.T[toIdx]
+
+	if toTile.IsMountain() {
+		g.moveQueue = g.moveQueue[1:]
+		return
+	}
+
+	// Create the action
+	action := &core.MoveAction{
+		PlayerID: g.humanPlayerID,
+		FromX:    move.FromX,
+		FromY:    move.FromY,
+		ToX:      move.ToX,
+		ToY:      move.ToY,
+		MoveAll:  !move.MoveHalf,
+	}
+
+	// Add to accumulated actions for this step
+	g.accumulatedActions[g.humanPlayerID] = append(g.accumulatedActions[g.humanPlayerID], action)
+
+	// Remove from queue
+	g.moveQueue = g.moveQueue[1:]
+
+	log.Debug().
+		Int("fromX", move.FromX).Int("fromY", move.FromY).
+		Int("toX", move.ToX).Int("toY", move.ToY).
+		Int("remainingQueue", len(g.moveQueue)).
+		Msg("Processed queued move")
 }
 
 func (g *HumanGame) handleAIPlayers() {

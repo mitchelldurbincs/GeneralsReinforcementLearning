@@ -125,12 +125,18 @@ func (ei *EngineInitializer) initializeGameState(board *core.Board) *GameState {
 func (ei *EngineInitializer) initializePlayers(gs *GameState, board *core.Board) {
 	for i := 0; i < ei.config.Players; i++ {
 		generalIdx := ei.findPlayerGeneral(board, i)
+		
+		// Get the actual army count from the general tile
+		armyCount := 1  // Default if general not found
+		if generalIdx >= 0 && generalIdx < len(board.T) {
+			armyCount = board.T[generalIdx].Army
+		}
 
 		gs.Players[i] = Player{
 			ID:         i,
 			Alive:      true,
 			GeneralIdx: generalIdx,
-			ArmyCount:  1,
+			ArmyCount:  armyCount,
 			OwnedTiles: make([]int, 0, 50), // Pre-allocate some capacity
 		}
 	}
