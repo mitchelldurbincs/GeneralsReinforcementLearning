@@ -168,8 +168,14 @@ class RobustDQNTrainer:
         current_q = self.q_network(states).gather(1, actions.unsqueeze(1))
         next_q = self.target_network(next_states).max(1)[0].detach()
         target_q = rewards + self.config['gamma'] * next_q * (1 - dones)
-        
-        loss = F.mse_loss(current_q.squeeze(), target_q)
+
+        # Huber loss instead of MSE: with max-bootstrapping over a 500-action
+        # space and unscaled shaping rewards, MSE diverged (avg loss reached
+        # ~5e7 within 120 episodes in the Day 3 run). Huber bounds the
+        # gradient of large TD errors and is the standard DQN choice.
+        # TODO: divergence likely also needs reward scaling/clipping and/or
+        # Double DQN — revisit during the parallel-training milestone.
+        loss = F.smooth_l1_loss(current_q.squeeze(), target_q)
         
         self.optimizer.zero_grad()
         loss.backward()
