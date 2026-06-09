@@ -216,8 +216,11 @@ func TestEnhancedCollector_OverflowPersist(t *testing.T) {
 		collector.OnStateTransition(state, state, actions)
 	}
 
-	// Wait for persistence
-	time.Sleep(200 * time.Millisecond)
+	// Wait for persistence (workers are async, so poll instead of a fixed sleep)
+	require.Eventually(t, func() bool {
+		m := collector.GetMetrics()
+		return m.ExperiencesPersisted > 0 && m.BatchesFlushed > 0
+	}, 5*time.Second, 50*time.Millisecond)
 
 	// Check metrics
 	metrics := collector.GetMetrics()

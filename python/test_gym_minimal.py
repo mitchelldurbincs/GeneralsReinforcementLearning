@@ -2,7 +2,8 @@
 """Minimal test of the Gym environment to isolate issues."""
 
 import sys
-sys.path.insert(0, '/home/aspect/source/GeneralsReinforcementLearning/python')
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from generals_gym import GeneralsEnv
 import numpy as np

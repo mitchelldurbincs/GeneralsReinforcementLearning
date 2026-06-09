@@ -17,7 +17,7 @@ import time
 import json
 from datetime import datetime
 
-sys.path.insert(0, '/home/aspect/source/GeneralsReinforcementLearning/python')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from generals_gym import GeneralsEnv
 
 

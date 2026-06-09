@@ -123,13 +123,16 @@ setup(
 )
 EOF
 
-# Create requirements.txt for Python dependencies
-cat > python/requirements.txt << 'EOF'
+# Create requirements.txt for Python dependencies (only if missing, to avoid
+# clobbering the maintained dependency list)
+if [ ! -f python/requirements.txt ]; then
+    cat > python/requirements.txt << 'EOF'
 grpcio>=1.48.0
 grpcio-tools>=1.48.0
 protobuf>=3.20.0
 numpy>=1.21.0
 EOF
+fi
 
 # Create a simple example client
 mkdir -p python/examples
