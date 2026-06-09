@@ -105,6 +105,7 @@ ENV/
 # Machine Learning / RL
 models/
 checkpoints/
+dqn_checkpoints/
 runs/
 tensorboard/
 *.h5
