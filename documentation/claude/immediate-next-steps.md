@@ -96,18 +96,61 @@ human-vs-trained-agent play are explicitly out of scope here (see
 
 ## Day 3 — Stabilize and pick the next milestone
 
-- [ ] Longer run with `python/train_dqn_robust.py` (a few hundred episodes).
-      Note any failure modes — stream reconnection and buffer cleanup on game
-      end are known weak spots (see CLAUDE.md TODOs).
-- [ ] Update CLAUDE.md "Development Status" to match reality: Gym env is done,
+- [x] Longer run with `python/train_dqn_robust.py` (a few hundred episodes).
+      Done: 300 episodes on a 10x10 board, 200-turn cap. Findings:
+      - **Failure mode confirmed — server game-lifecycle gap.** The first
+        300-episode attempt died at episode 94 with `CreateGame` failing
+        ("server at capacity: 100/100"). Cause: the Gym env truncates
+        episodes client-side, but there is no `DeleteGame`/`LeaveGame` RPC
+        and no `max_turns` in `GameConfig`, so every truncated game sits in
+        `PhaseRunning` until the server's 30-minute `abandonedGameTimeout` —
+        at ~4 games/min that crosses `max_games=100` mid-run. Client-side
+        fixes applied: `GeneralsEnv._connect_to_server` no longer creates a
+        leaked probe game (uses `channel_ready_future`), and the trainer's
+        `reset_environment` now backs off exponentially (~10 min total)
+        instead of dying after 3×2 s. Server-side fix (the real one) is the
+        first task of the next milestone. Rerun with the server started as
+        `--max-games 0`: **300/300 episodes, 60k steps, 74.4 min, zero
+        errors/warnings, zero capacity rejections.**
+      - **Buffer cleanup (CLAUDE.md weak spot):** no memory problem observed
+        — server RSS stayed ~23-25 MB across 300 created games while the
+        cleanup ticker reaped 180 of them mid-run. The issue is reaping
+        *latency* (30 min for abandoned games) against the game-count cap,
+        not a leak. Note the Gym path never sets `collect_experiences`, so
+        the experience-buffer side of this TODO is still unexercised.
+      - **Stream reconnection (CLAUDE.md weak spot):** not exercised — the
+        Gym training path uses CreateGame/JoinGame/SubmitAction/GetGameState
+        only, no experience streaming. Still an open TODO.
+      - **DQN loss divergence:** with MSE loss, average loss exploded
+        monotonically (0.0125 at ep 10 → 5.8e3 at ep 50 → 8.4e14 at ep 300)
+        while reward stayed flat (~1.2/episode) — classic Q-overestimation
+        with max-bootstrapping over 500 actions and unscaled shaping
+        rewards. Switched to Huber (`smooth_l1`) loss; a 30-episode
+        validation run keeps loss in single digits (1.86 at ep 30 vs ~1e3+
+        for MSE at that point), though it still trends up — reward
+        scaling/clipping and Double DQN are TODO for the next milestone.
+      - **Play strength:** every one of the 300 episodes hit the 200-step
+        cap; no wins/losses ever occurred, so reward is pure shaping noise.
+        Throughput ~4 episodes/min (10x10, 200 steps; gRPC + the env's
+        50 ms/step sleep dominate). Real learning signal needs decisive
+        games (server-side `max_turns` with a tile-count winner) and more
+        throughput (parallel envs) — both in the next milestone.
+- [x] Update CLAUDE.md "Development Status" to match reality: Gym env is done,
       proto scripts work (if Day 1 confirms), DQN loop status, and remove
-      fixed items from "TODO/Known Issues".
-- [ ] Decide the next milestone and start a plan doc for it:
+      fixed items from "TODO/Known Issues". Done: Gym env, proto generation,
+      and single-env DQN loop moved to Completed; stale proto-import TODO
+      removed; game-lifecycle gap added as a Known Issue.
+- [x] Decide the next milestone and start a plan doc for it:
       - **Option A:** Multi-game parallel experience collection (Phase 1 of
         `training-next-steps.md`) — faster training.
       - **Option B:** Wire `cmd/ui_client` to the gRPC server so a human can
         play against Python agents / trained models — currently the UI only
         supports a local random AI and has zero gRPC integration (~500+ LOC).
+      **Chose Option A** — see `documentation/claude/next-milestone.md`.
+      Training works end-to-end but is throughput-bound (~4 eps/min) and the
+      Day 3 run showed the server-side lifecycle work A requires is needed
+      for *any* long run. B is the natural follow-up once there's a trained
+      agent worth playing against.
 
 ## Baseline Metrics
 
