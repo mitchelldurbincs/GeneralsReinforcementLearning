@@ -4,6 +4,7 @@ Simplified DQN training for Generals.io - focusing on getting it working first.
 """
 
 import sys
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,7 +14,7 @@ from collections import deque
 import random
 import logging
 
-sys.path.insert(0, '/home/aspect/source/GeneralsReinforcementLearning/python')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from generals_gym import GeneralsEnv
 
 

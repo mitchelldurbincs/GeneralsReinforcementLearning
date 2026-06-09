@@ -278,6 +278,17 @@ func (ec *EnhancedCollector) batchProcessor() {
 	for {
 		select {
 		case <-ec.ctx.Done():
+			// Drain experiences still in the stream channel so they aren't
+			// lost when the collector shuts down
+			draining := true
+			for draining {
+				select {
+				case exp := <-ec.buffer.StreamChannel():
+					batch = append(batch, exp)
+				default:
+					draining = false
+				}
+			}
 			// Flush remaining batch
 			if len(batch) > 0 {
 				ec.batchChan <- batch

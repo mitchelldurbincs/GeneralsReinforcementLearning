@@ -19,8 +19,8 @@ import random
 from typing import Tuple, List
 import gymnasium as gym
 
-# Add parent directory to path for imports
-sys.path.insert(0, '/home/aspect/source/GeneralsReinforcementLearning/python')
+# Add this script's directory to the path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from generals_gym import GeneralsEnv
 
