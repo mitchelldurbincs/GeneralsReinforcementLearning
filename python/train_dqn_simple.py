@@ -100,6 +100,7 @@ def train_simple_dqn(episodes=10):
         state, info = env.reset()
         episode_reward = 0
         episode_length = 0
+        episode_losses = []
         
         while episode_length < 100:  # Max steps per episode
             # Select action
@@ -155,6 +156,7 @@ def train_simple_dqn(episodes=10):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                episode_losses.append(loss.item())
             
             if done:
                 break
@@ -171,8 +173,10 @@ def train_simple_dqn(episodes=10):
         all_lengths.append(episode_length)
         
         # Print progress
+        avg_loss = np.mean(episode_losses) if episode_losses else float('nan')
         print(f"Episode {episode + 1:3d} | Reward: {episode_reward:6.2f} | "
-              f"Length: {episode_length:3d} | Epsilon: {epsilon:.3f}")
+              f"Length: {episode_length:3d} | Loss: {avg_loss:8.4f} | "
+              f"Epsilon: {epsilon:.3f}")
     
     print("-" * 60)
     print(f"\n✓ Training complete!")

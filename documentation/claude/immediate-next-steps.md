@@ -66,16 +66,33 @@ human-vs-trained-agent play are explicitly out of scope here (see
 
 ## Day 2 — Verify training end-to-end
 
-- [ ] Run `python/train_dqn_simple.py` for a handful of episodes on a small
+- [x] Run `python/train_dqn_simple.py` for a handful of episodes on a small
       board. Success = no crashes, loss values printed, episodes complete.
-- [ ] Verify checkpoint save/load round-trips (`train_dqn_agent.py` has
-      `save_model()`/`load_model()`).
-- [ ] Triage the ~15 stale `python/test_*.py` debug scripts from past
+      Done: 20/20 episodes complete on a 5x5 board, loss decreasing
+      (0.015 → 0.003). Two issues fixed along the way:
+      - **Map generation failed randomly on small boards**: with the default
+        `MinGeneralSpacing` of 5, a first general placed near the center of a
+        5x5 board leaves no tile ≥5 Manhattan away, so `CreateGame`
+        intermittently returned Internal errors (hit on episode 14 of the
+        first run). `DefaultMapConfig` now clamps spacing to `w/2 + h/2`
+        (test added in `mapgen/generator_test.go`).
+      - `train_dqn_simple.py` never printed loss values despite that being
+        the success criterion — it now prints per-episode average loss.
+- [x] Verify checkpoint save/load round-trips (`train_dqn_agent.py` has
+      `save_model()`/`load_model()`). Verified with a one-off script: trained
+      a `DQNAgent` for 2 episodes, saved, loaded into a freshly-initialized
+      agent, and confirmed q/target network weights, Adam optimizer state,
+      epsilon, and step/episode counters are all bit-identical, plus an
+      identical forward pass on a fixed input.
+- [x] Triage the ~15 stale `python/test_*.py` debug scripts from past
       iterations: delete or move the dead ones so the directory stays
       navigable. Keep `test_gym_env.py`, `test_gym_minimal.py`,
-      `test_grpc_client.py`.
-- [ ] Record a baseline here: average episode reward of the untrained/early
+      `test_grpc_client.py`. Deleted 17 one-off debug scripts (streaming
+      experiments, board-state dumps, import checks); none were referenced
+      by docs, Makefile, CI, or other code.
+- [x] Record a baseline here: average episode reward of the untrained/early
       agent vs the random opponent, episode length, episodes/minute.
+      See Baseline Metrics table below.
 
 ## Day 3 — Stabilize and pick the next milestone
 
@@ -94,11 +111,17 @@ human-vs-trained-agent play are explicitly out of scope here (see
 
 ## Baseline Metrics
 
-(Fill in on Day 2/3.)
+Measured 2026-06-09 with `train_dqn_simple.py` (20 episodes, 5x5 board, no
+fog, vs the env's built-in random opponent, CPU-only torch 2.12, epsilon
+0.82–1.0 so the agent is still mostly random).
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| Avg episode reward (early agent vs random) | | |
-| Avg episode length (turns) | | |
-| Training throughput (episodes/min) | | |
-| Crash-free episodes in long run | | |
+| Avg episode reward (early agent vs random) | 1.11 | Nearly constant across episodes — dominated by per-step shaping; no wins/losses observed |
+| Avg episode length (turns) | 100.0 | Every episode hit the script's 100-step cap; no game reached a decisive end on 5x5 in 100 steps |
+| Training throughput (episodes/min) | ~9.9 | 20 episodes in 2m02s, single env, CPU; step latency is gRPC round-trip bound, not compute bound |
+| Crash-free episodes in long run | 42/42 | 2×20-episode runs + 2 episodes for the checkpoint test, zero crashes (after the mapgen spacing fix) |
+
+Caveat: with every episode truncated at the step cap, reward/length say
+little about play strength yet — the Day 3 longer run on a bigger board
+with a higher cap will give a more meaningful baseline.

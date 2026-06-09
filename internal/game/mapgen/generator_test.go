@@ -32,6 +32,21 @@ func TestDefaultMapConfig(t *testing.T) {
 	assert.Equal(t, w/4, config.MaxVeinLength, "Default MaxVeinLength is unexpected")
 }
 
+func TestDefaultMapConfigClampsSpacingOnSmallBoards(t *testing.T) {
+	// On a 5x5 board the farthest tile from the center is only 4 away, so the
+	// default spacing of 5 must be clamped or general placement can fail.
+	config := DefaultMapConfig(5, 5, 2)
+	assert.Equal(t, 4, config.MinGeneralSpacing, "Spacing should be clamped to w/2 + h/2 on small boards")
+
+	// Placement must now succeed regardless of RNG seed.
+	for seed := int64(0); seed < 50; seed++ {
+		rng := rand.New(rand.NewSource(seed))
+		generator := NewGenerator(config, rng)
+		_, err := generator.GenerateMap()
+		assert.NoError(t, err, "GenerateMap should not fail on a 5x5 board (seed %d)", seed)
+	}
+}
+
 func TestNewGenerator(t *testing.T) {
 	config := DefaultMapConfig(10, 10, 1)
 	rng := newTestRNG()
