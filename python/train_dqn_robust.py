@@ -99,13 +99,20 @@ class RobustDQNTrainer:
         os.makedirs(self.checkpoint_dir, exist_ok=True)
     
     def reset_environment(self):
-        """Reset or create environment with error handling."""
-        max_retries = 3
+        """Reset or create environment with error handling.
+
+        Uses exponential backoff up to ~10 minutes total: the most common
+        failure is the server's max_games cap ("server at capacity"), which
+        only clears when the server's periodic cleanup (every 5 min) reaps
+        old games, so short fixed retries are not enough.
+        """
+        max_retries = 10
+        delay = 2
         for attempt in range(max_retries):
             try:
                 if self.env:
                     self.env.close()
-                
+
                 self.env = GeneralsEnv(
                     server_address=self.config['server_address'],
                     board_width=self.config['board_width'],
@@ -114,14 +121,18 @@ class RobustDQNTrainer:
                     fog_of_war=self.config.get('fog_of_war', True),
                     max_turns=self.config.get('max_turns', 200)
                 )
-                
+
                 self.logger.info("Environment (re)created successfully")
                 return
-                
+
             except Exception as e:
-                self.logger.warning(f"Environment creation attempt {attempt + 1} failed: {e}")
-                time.sleep(2)
-        
+                self.logger.warning(
+                    f"Environment creation attempt {attempt + 1}/{max_retries} "
+                    f"failed (retrying in {delay}s): {e}"
+                )
+                time.sleep(delay)
+                delay = min(delay * 2, 120)
+
         raise RuntimeError("Failed to create environment after multiple attempts")
     
     def select_action(self, state, valid_mask):
@@ -337,15 +348,21 @@ class RobustDQNTrainer:
 
 def main():
     """Main training function."""
-    
+    import argparse
+    parser = argparse.ArgumentParser(description="Robust DQN training for Generals.io")
+    parser.add_argument('--episodes', type=int, default=50, help='Number of episodes to train')
+    parser.add_argument('--board-size', type=int, default=10, help='Board width/height')
+    parser.add_argument('--max-turns', type=int, default=200, help='Max turns per game')
+    args = parser.parse_args()
+
     # Training configuration
     config = {
         'server_address': 'localhost:50051',
-        'board_width': 10,
-        'board_height': 10,
+        'board_width': args.board_size,
+        'board_height': args.board_size,
         'fog_of_war': True,
-        'max_turns': 200,
-        'max_steps_per_episode': 200,
+        'max_turns': args.max_turns,
+        'max_steps_per_episode': args.max_turns,
         
         'learning_rate': 0.0005,
         'gamma': 0.99,
@@ -371,28 +388,25 @@ def main():
     trainer = RobustDQNTrainer(config)
     
     # Train
-    trainer.train(num_episodes=50)
+    trainer.train(num_episodes=args.episodes)
     
     print("\n✓ Training complete!")
 
 
 if __name__ == "__main__":
     import grpc
-    from generals_pb.game.v1 import game_pb2, game_pb2_grpc
-    
-    # Check server
+
+    # Check server (channel readiness only — creating a probe game would
+    # leak it against the server's max_games limit)
     try:
         channel = grpc.insecure_channel('localhost:50051')
-        stub = game_pb2_grpc.GameServiceStub(channel)
-        stub.CreateGame(game_pb2.CreateGameRequest(
-            config=game_pb2.GameConfig(width=5, height=5, max_players=2)
-        ))
+        grpc.channel_ready_future(channel).result(timeout=5)
         channel.close()
-        
+
         print("✓ Game server is running\n")
         main()
-        
-    except grpc.RpcError as e:
+
+    except (grpc.RpcError, grpc.FutureTimeoutError) as e:
         print(f"\n✗ Error: Game server is not running!")
         print(f"  Details: {e}")
         print("  Please start the server with: go run cmd/game_server/main.go")

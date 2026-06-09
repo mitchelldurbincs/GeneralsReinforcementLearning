@@ -285,19 +285,25 @@ The game now includes a formal state machine to manage game lifecycle:
   - Backpressure handling and rate limiting
   - Experience buffer management with streaming channels
   - Integration tests for streaming functionality
+- **OpenAI Gym environment wrapper** (`python/generals_gym/`, registered as
+  `Generals-v0`): reset/step/reward/action-masking/close all verified against
+  a live server
+- **Python proto generation** (`scripts/generate-python-protos.sh`): import
+  paths are correct; generated files committed under `python/generals_pb/`
+- **Single-environment DQN training loop** verified end-to-end
+  (`train_dqn_simple.py`, `train_dqn_robust.py`): episodes complete, loss
+  decreases, checkpoints save/load bit-identically. Long runs are currently
+  throttled by server game-lifecycle gaps — see TODO/Known Issues.
 
 ### 🚧 In Progress
 - Random agent implementation (Python)
 - StreamGame gRPC method for real-time updates
 - Multi-agent game orchestration
 - **State machine gRPC integration**
-- **Python RL training pipeline**
-  - Basic client library completed (`experience_stream_client.py`)
-  - DQN training example provided (`rl_training_example.py`)
-  - Import path fixes needed in generated Python proto files
 
 ### 📋 Planned
-- Full RL training infrastructure with OpenAI Gym wrapper
+- **Multi-game parallel experience collection** (next milestone — see
+  `documentation/claude/next-milestone.md` for the plan)
 - Self-play mechanics
 - Distributed training on AWS
 - Model serving via gRPC
@@ -393,23 +399,28 @@ When modifying game mechanics, key files to consider:
 ### TODO/Known Issues
 
 - gRPC server needs to integrate with state machine for proper game lifecycle management
-- StreamGame method needs completion for real-time updates  
-- Python RL agent implementations are in progress
-- Full RL training loop integration pending
-- **Python proto import paths**: Generated Python files need import path fixes (script needs updating)
+- StreamGame method needs completion for real-time updates
+- **Game lifecycle for training runs**: there is no `DeleteGame`/`LeaveGame`
+  RPC and `GameConfig` has no `max_turns`, so games truncated client-side by
+  the Gym env stay in `PhaseRunning` until the 30-minute
+  `abandonedGameTimeout`. Long training runs accumulate games and hit the
+  `max_games` cap (`CreateGame` fails with "server at capacity"). Verified in
+  the Day 3 300-episode run; plan in `documentation/claude/next-milestone.md`.
 - **Experience streaming edge cases**: Need to handle stream reconnection and error recovery
 - **Memory management**: Buffer cleanup when games end needs verification
+  (note: the Gym training path doesn't set `collect_experiences`, so the
+  experience-buffer side is still unexercised by training runs)
 - **Compression**: zstd compression for experience batches not yet implemented
 
 ### Next Steps for RL Training
 
-1. **Fix Python proto generation script** to correctly set import paths
-2. **Create OpenAI Gym environment wrapper** for standard RL library compatibility
-3. **Implement self-play orchestration** for automated training
-4. **Add experience replay buffer** with prioritization
-5. **Set up distributed training** across multiple machines
-6. **Implement model checkpointing** and versioning
-7. **Create evaluation framework** for agent performance metrics
+1. **Multi-game parallel experience collection** (see
+   `documentation/claude/next-milestone.md`): server-side `max_turns` +
+   `DeleteGame`, vectorized Gym env, batched DQN loop
+2. **Implement self-play orchestration** for automated training
+3. **Add experience replay buffer** with prioritization
+4. **Set up distributed training** across multiple machines
+5. **Create evaluation framework** for agent performance metrics
 
 The project uses:
 - **Zerolog** for structured logging throughout the codebase

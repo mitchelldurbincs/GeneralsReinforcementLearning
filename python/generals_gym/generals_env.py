@@ -124,16 +124,14 @@ class GeneralsEnv(gym.Env):
         try:
             self.channel = grpc.insecure_channel(self.server_address)
             self.stub = game_pb2_grpc.GameServiceStub(self.channel)
-            
-            # Test connection with valid config
-            test_response = self.stub.CreateGame(game_pb2.CreateGameRequest(
-                config=game_pb2.GameConfig(width=5, height=5, max_players=2)
-            ))
-            # Clean up test game
-            # Note: In production, we might want to implement a DeleteGame method
-            
+
+            # Wait for the channel to be ready instead of creating a probe
+            # game: probe games were never joined or deleted, so they counted
+            # against the server's max_games limit for 30 minutes each.
+            grpc.channel_ready_future(self.channel).result(timeout=5)
+
             self.logger.info(f"Connected to game server at {self.server_address}")
-        except grpc.RpcError as e:
+        except (grpc.RpcError, grpc.FutureTimeoutError) as e:
             raise ConnectionError(f"Failed to connect to game server: {e}")
     
     def reset(self, seed=None, options=None) -> Tuple[np.ndarray, Dict[str, Any]]:
@@ -148,7 +146,13 @@ class GeneralsEnv(gym.Env):
         
         # Clean up previous game if exists
         if self.game_id:
-            # TODO: Add cleanup/leave game logic if needed
+            # TODO: The server has no DeleteGame/LeaveGame RPC, so a game
+            # abandoned here mid-episode (e.g. after client-side truncation at
+            # max_turns) stays in PhaseRunning until the server's 30-minute
+            # abandonedGameTimeout. Long training runs therefore accumulate
+            # games and hit the max_games cap ("server at capacity"). Fix is
+            # server-side: add max_turns to GameConfig and/or a DeleteGame RPC
+            # (see documentation/claude/next-milestone.md).
             pass
         
         # Create new game
