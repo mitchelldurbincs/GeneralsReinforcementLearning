@@ -24,13 +24,22 @@ type MapConfig struct {
 // DefaultMapConfig returns a sensible default configuration
 func DefaultMapConfig(w, h, players int) MapConfig {
 	cfg := config.Get()
+
+	// Clamp general spacing so placement is always feasible on small boards.
+	// Worst case for an existing general is the board center, where the
+	// farthest tile is only ceil((w-1)/2) + ceil((h-1)/2) away (== w/2 + h/2).
+	spacing := cfg.Game.Map.MinGeneralSpacing
+	if maxFeasible := w/2 + h/2; spacing > maxFeasible {
+		spacing = maxFeasible
+	}
+
 	return MapConfig{
 		Width:             w,
 		Height:            h,
 		PlayerCount:       players,
 		CityRatio:         cfg.Game.Map.CityRatio,
 		CityStartArmy:     cfg.Game.Map.CityStartArmy,
-		MinGeneralSpacing: cfg.Game.Map.MinGeneralSpacing,
+		MinGeneralSpacing: spacing,
 		NumMountainVeins:  (w * h) / 50, // Example: 1 vein per 100 tiles
 		MinVeinLength:     3,
 		MaxVeinLength:     w / 4, // Example: Max vein length is a quarter of the width
