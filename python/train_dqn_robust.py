@@ -158,7 +158,9 @@ class RobustDQNTrainer:
         next_q = self.target_network(next_states).max(1)[0].detach()
         target_q = rewards + self.config['gamma'] * next_q * (1 - dones)
         
-        loss = F.mse_loss(current_q.squeeze(), target_q)
+        # Huber loss: unclipped MSE diverged in long runs (Q-values inflated
+        # past 1e9 by episode 100 with frequent target syncs)
+        loss = F.smooth_l1_loss(current_q.squeeze(), target_q)
         
         self.optimizer.zero_grad()
         loss.backward()
@@ -368,7 +370,7 @@ def main():
         'epsilon_decay': 0.995,
         'buffer_size': 5000,
         'batch_size': 32,
-        'target_update_freq': 100,
+        'target_update_freq': 2000,
 
         'checkpoint_dir': args.checkpoint_dir
     }
