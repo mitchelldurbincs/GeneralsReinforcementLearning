@@ -57,6 +57,7 @@ class GeneralsEnv(gym.Env):
         opponent_agent: Optional[Any] = None,
         max_turns: int = 500,
         turn_time_ms: int = 500,
+        collect_experiences: bool = False,
     ):
         """
         Initialize the Generals Gym environment.
@@ -72,6 +73,7 @@ class GeneralsEnv(gym.Env):
             opponent_agent: Opponent agent for training (if not self-play)
             max_turns: Maximum number of turns before episode ends
             turn_time_ms: Time limit per turn in milliseconds
+            collect_experiences: Enable server-side experience collection
         """
         super().__init__()
         
@@ -86,6 +88,7 @@ class GeneralsEnv(gym.Env):
         self.opponent_agent = opponent_agent
         self.max_turns = max_turns
         self.turn_time_ms = turn_time_ms
+        self.collect_experiences = collect_experiences
         
         # Setup logging
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -158,7 +161,8 @@ class GeneralsEnv(gym.Env):
                 height=self.board_height,
                 max_players=self.max_players,
                 fog_of_war=self.fog_of_war,
-                turn_time_ms=self.turn_time_ms
+                turn_time_ms=self.turn_time_ms,
+                collect_experiences=self.collect_experiences
             )
         ))
         self.game_id = create_response.game_id

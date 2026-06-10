@@ -315,20 +315,6 @@ class AsyncExperienceConsumer:
 
 # Utility functions for common use cases
 
-def create_replay_buffer(capacity: int = 100000) -> 'PrioritizedReplayBuffer':
-    """Create a prioritized replay buffer for experience replay.
-    
-    Args:
-        capacity: Maximum number of experiences to store
-        
-    Returns:
-        PrioritizedReplayBuffer instance
-    """
-    # This would be implemented with a proper replay buffer
-    # For now, just a placeholder
-    raise NotImplementedError("Replay buffer implementation needed")
-
-
 def experience_to_tensors(
     experiences: List[Experience]
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

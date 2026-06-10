@@ -179,6 +179,11 @@ source generalsrl/bin/activate
 - **generals_gym/**: Gymnasium environment wrapper (`generals_env.py`, registered as `Generals-v0`)
   - 9-channel observation tensors, discrete action space with valid-action masking
   - Connects to the gRPC game server; supports a built-in random opponent
+  - `replay_buffer.py`: thread-safe ReplayBuffer (lock-protected ring buffer)
+  - `vector_env.py`: `ParallelEnvPool` — N envs in worker threads feeding a shared buffer
+- **train_dqn_parallel.py**: parallel DQN training (N collector envs + single learner;
+  `--num-envs`, `--train-ratio`, `--collect-experiences`; run the server with
+  `--max-games 5000` to outpace the 10-minute finished-game reaper)
 - **train_dqn_simple.py / train_dqn_agent.py / train_dqn_robust.py**: DQN training scripts
   - `train_dqn_robust.py` has checkpoint/resume, error recovery, and CLI flags
     (`--episodes`, `--board-size`, `--max-turns`, `--max-steps`, `--resume`)
@@ -400,11 +405,21 @@ When modifying game mechanics, key files to consider:
   flat server memory with collection *off*; rerun with
   `collect_experiences: true` to stress the collector-buffer cleanup path
 - **Compression**: zstd compression for experience batches not yet implemented
-- **Replay buffer stub**: `create_replay_buffer()` in
-  `python/generals_agent/experience_consumer.py` raises NotImplementedError
-  (a working ReplayBuffer exists in `train_dqn_agent.py`)
 - **Elimination tracking**: PlayerEliminated events don't record which player
   did the eliminating (`game_manager.go`)
+- **RL games are never ended server-side, only abandoned**: `GameConfig` has
+  no `max_turns` field, so `GeneralsEnv` truncates episodes client-side and
+  walks away mid-Running. Consequences (measured 2026-06-10 during parallel
+  stress testing): the 10-minute `finishedGameTTL` cleanup path never fires
+  for RL traffic; abandoned games keep self-advancing turns via the
+  `turn_time_ms` timer (~12% CPU for ~700 zombies) and, with
+  `collect_experiences`, keep filling their 10k-cap experience buffers;
+  games are only reaped 30 minutes after the last client action
+  (`abandonedGameTimeout`, `internal/grpc/gameserver/server.go:42-44`).
+  Parallel training (~40+ games/min) exhausts the default `max_games=100`
+  within minutes — work around with `game_server --max-games 5000`; proper
+  fix is `max_turns` in GameConfig and/or a DeleteGame RPC called from
+  `GeneralsEnv.reset()`. No unbounded leak: cleanup does reclaim memory.
 
 ### Next Steps for RL Training
 
