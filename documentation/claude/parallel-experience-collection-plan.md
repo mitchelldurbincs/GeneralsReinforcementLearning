@@ -69,10 +69,16 @@ runs the training loop.
       → Same checkpoint keys plus `learner_steps`; resume round-trip
       verified (episodes/env-steps continue, pacing doesn't inherit the
       previous run's deficit).
-- [ ] Benchmark: steps/s and episodes/min at N = 1, 4, 8, 16 on a 10x10 board.
+- [x] Benchmark: steps/s and episodes/min at N = 1, 4, 8, 16 on a 10x10 board.
       Record the scaling curve here. Investigate if scaling is sublinear
       before N=8 (likely suspects: server lock contention in game_manager,
       GIL pressure from tensor conversion).
+      → Collection scales near-linearly to N=16 (see table). The component
+      that degrades is the **learner**: gradient steps/s fall from 22 (N=4)
+      to 13 (N=16) as worker threads steal the GIL during observation
+      building, so the achieved train ratio collapses (0.32 → 0.05). On CPU,
+      N=4–8 is the sweet spot for actual training; N=16 is only worth it for
+      pure collection or with a GPU learner.
 - [ ] Stress the known weak spot: run N=8+ with
       `collect_experiences: true` for 100+ games and watch server RSS —
       the Day 3 run only verified flat memory with collection off.
@@ -96,8 +102,33 @@ runs the training loop.
 
 ## Benchmark results
 
-(to be filled in as tasks complete)
+2026-06-10, 10x10 board, 300-step cap (games end at the 200-turn server
+cap), ~110s steady-state per run, CPU-only host. "ratio" is achieved
+learner-gradient-steps per env step (`--train-ratio 1.0` requested).
 
-| N envs | steps/s | eps/min | server RSS | notes |
-|--------|---------|---------|------------|-------|
-| 1 (baseline, Day 3) | ~12 | ~2.4 | ~22 MB | 10x10, 300-step cap |
+| N envs | steps/s | eps/min | learner steps/s (ratio) | steps/s, train-ratio 0 | notes |
+|--------|---------|---------|-------------------------|------------------------|-------|
+| 1 (baseline, Day 3) | ~12 | ~2.4 | ~12 (1.00) | — | single-env `train_dqn_robust.py` |
+| 1  | 18.4  | 6.0  | 18.4 (1.00) | 18.3  | parallel harness, learner keeps up |
+| 4  | 69.8  | 17.9 | 22.1 (0.32) | 72.1  | 5.8x baseline |
+| 8  | 138.3 | 47.9 | 19.3 (0.14) | 140.5 | 11.5x baseline |
+| 16 | 250.8 | 83.7 | 13.2 (0.05) | 273.2 | 20.9x baseline; 96 eps/min at ratio 0 |
+
+Server RSS grew from ~21 MB to ~47 MB across the whole sweep (~470 games
+created, collection off) — that growth is finished games awaiting the
+10-minute reaper, not a leak; it flattens once the cleanup tick catches up.
+
+Takeaways:
+
+- **Target met**: 11.5–21x throughput vs the Day 3 baseline; collection
+  scaling is near-linear to N=16, so the server is not the bottleneck.
+- **The learner is the new bottleneck on CPU**: worker GIL pressure cuts
+  gradient throughput as N rises. For training (not just collection) use
+  N=4–8, or lower `--train-ratio`, or move the learner to GPU.
+- **Server-side blocker found and worked around**: there is no DeleteGame
+  RPC and finished games are reaped only 10 min after last activity on a
+  5-min tick (`internal/grpc/gameserver/server.go:42-43`), so parallel
+  rates exhaust the default `max_games=100` within minutes. Run the server
+  with `--max-games 5000` for now; proper fix (configurable TTL or a
+  DeleteGame RPC called from `GeneralsEnv.reset()`) is noted in CLAUDE.md
+  known issues.
