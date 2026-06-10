@@ -127,12 +127,6 @@ func (c *SimpleCollector) Clear() {
 	c.buffer.Clear()
 }
 
-// GetLatestExperiences returns the n most recent experiences
-func (c *SimpleCollector) GetLatestExperiences(n int) []*experiencepb.Experience {
-	// Use GetLatest to get the most recent experiences
-	return c.buffer.GetLatest(n)
-}
-
 // GetCount returns the current number of experiences (without allocation)
 func (c *SimpleCollector) GetCount() int {
 	return c.buffer.Size()
