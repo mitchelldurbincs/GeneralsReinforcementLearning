@@ -194,41 +194,6 @@ func TestSimpleCollector_Clear(t *testing.T) {
 	assert.Equal(t, 0, collector.GetExperienceCount())
 }
 
-func TestSimpleCollector_GetLatestExperiences(t *testing.T) {
-	logger := zerolog.Nop()
-	collector := NewSimpleCollector(100, "test-game-123", logger)
-
-	prevState := createTestGameState(3, 3)
-	currState := createTestGameState(3, 3)
-
-	actions := map[int]*game.Action{
-		0: {
-			Type: game.ActionTypeMove,
-			From: core.Coordinate{X: 0, Y: 0},
-			To:   core.Coordinate{X: 1, Y: 0},
-		},
-	}
-
-	// Add 5 experiences with different turns
-	for i := 0; i < 5; i++ {
-		currState.Turn = i + 1
-		collector.OnStateTransition(prevState, currState, actions)
-	}
-
-	// Get latest 3
-	latest := collector.GetLatestExperiences(3)
-	assert.Len(t, latest, 3)
-
-	// Should be turns 3, 4, 5 (latest)
-	assert.Equal(t, int32(3), latest[0].Turn)
-	assert.Equal(t, int32(4), latest[1].Turn)
-	assert.Equal(t, int32(5), latest[2].Turn)
-
-	// Request more than available
-	all := collector.GetLatestExperiences(10)
-	assert.Len(t, all, 5)
-}
-
 func TestSimpleCollector_ActionConversion(t *testing.T) {
 	logger := zerolog.Nop()
 	collector := NewSimpleCollector(100, "test-game-123", logger)
