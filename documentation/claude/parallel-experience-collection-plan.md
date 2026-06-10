@@ -1,7 +1,7 @@
 # Parallel Experience Collection Plan
 
 **Created:** 2026-06-10
-**Status:** Not started
+**Status:** Phase 1 complete (2026-06-10); Phase 2 in progress
 **Decision record:** This is the milestone chosen at the end of
 `immediate-next-steps.md` Day 3 (Option A). Option B (wiring `cmd/ui_client`
 to the gRPC server for human-vs-agent play) is deferred; nothing in this plan
