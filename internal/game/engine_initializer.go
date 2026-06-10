@@ -188,6 +188,8 @@ func (ei *EngineInitializer) createEngine(gs *GameState) *Engine {
 		gs:                  gs,
 		rng:                 ei.config.Rng,
 		gameOver:            false,
+		maxTurns:            ei.config.MaxTurns,
+		winnerID:            -1,
 		logger:              ei.logger,
 		actionProcessor:     actionProc,
 		winCondition:        rules.NewWinConditionChecker(ei.logger, ei.config.Players),

@@ -301,3 +301,49 @@ func TestEngine_Step_ActionFromDeadPlayer(t *testing.T) {
 	assert.True(t, engine.gs.Players[player0ID].Alive, "Player 0 should be alive")
 	assert.False(t, engine.gs.Players[player1ID].Alive, "Player 1 should remain dead")
 }
+
+func TestEngine_MaxTurnsEndsGameInDraw(t *testing.T) {
+	ctx := context.Background()
+	config := GameConfig{
+		Width:    8,
+		Height:   8,
+		Players:  2,
+		MaxTurns: 3,
+		Rng:      newTestRNG(),
+		Logger:   testLogger(),
+	}
+	engine := NewEngine(ctx, config)
+	require.NotNil(t, engine, "Engine should not be nil")
+
+	for i := 0; i < 2; i++ {
+		require.NoError(t, engine.Step(ctx, nil))
+		assert.False(t, engine.IsGameOver(), "Game should not be over before max turns (turn %d)", engine.gs.Turn)
+	}
+
+	require.NoError(t, engine.Step(ctx, nil))
+	assert.True(t, engine.IsGameOver(), "Game should be over once max turns is reached")
+	assert.Equal(t, 3, engine.gs.Turn, "Game should end exactly at the turn cap")
+	assert.Equal(t, -1, engine.GetWinner(), "Turn-cap end should be a draw (no winner)")
+	assert.Equal(t, "Ended", engine.CurrentPhase().String(), "Engine should transition to Ended phase")
+
+	err := engine.Step(ctx, nil)
+	assert.Error(t, err, "Stepping past the cap should fail")
+}
+
+func TestEngine_MaxTurnsZeroMeansUnlimited(t *testing.T) {
+	ctx := context.Background()
+	config := GameConfig{
+		Width:   8,
+		Height:  8,
+		Players: 2,
+		Rng:     newTestRNG(),
+		Logger:  testLogger(),
+	}
+	engine := NewEngine(ctx, config)
+	require.NotNil(t, engine, "Engine should not be nil")
+
+	for i := 0; i < 10; i++ {
+		require.NoError(t, engine.Step(ctx, nil))
+	}
+	assert.False(t, engine.IsGameOver(), "Game with MaxTurns=0 should never end on turn count")
+}

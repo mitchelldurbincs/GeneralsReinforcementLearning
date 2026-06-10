@@ -107,10 +107,27 @@ runs the training loop.
 
 ### Phase 2: make the runs meaningful
 
-- [ ] Decisive games: with throughput fixed, raise caps (e.g. 1000 turns) so
+- [x] Decisive games: with throughput fixed, raise caps (e.g. 1000 turns) so
       win/loss rewards actually appear; verify the terminal reward shows up
       in collected transitions. If random-vs-random still never terminates,
       consider shrinking to 8x8 or seeding asymmetric starts for training.
+      → Root cause of "no decisive games ever" found and fixed (2026-06-10):
+      `GeneralsEnv` never set `player_id` or `action.turn_number` in its
+      RPCs, so the opponent's GetGameState/SubmitAction always failed
+      credential validation (**the random opponent never moved in any prior
+      run**) and the agent's own actions were rejected after turn 0 for turn
+      mismatch (episode reward ~1.2 was pure army-production drip; turns
+      only advanced via the 500ms timer, hence "server turn 6 at client
+      step 30"). With the env fixed, client steps and server turns run in
+      lockstep (each step triggers synchronous turn processing) and games
+      end by general capture: random-vs-random is 4/6 decisive on 8x8 and
+      2/6 on 10x10 at cap 1000, 8/8 on 6x6 at cap 800. Server-side
+      `GameConfig.max_turns` (new) ends cap games in a draw
+      (Ended/FINISHED, winner -1), which `GeneralsEnv` reports as
+      `truncated` with no ±100 bonus — terminal semantics unchanged for
+      truncations. Terminal transitions verified in the shared
+      ReplayBuffer: `python/test_decisive_games.py` asserts every ±100
+      transition has done=True (8/8 episodes, 2 wins / 6 losses).
 - [ ] Re-baseline: win rate vs random opponent after a multi-thousand-episode
       run; record metrics table here (reward, episode length, win rate,
       eps/min, server RSS).

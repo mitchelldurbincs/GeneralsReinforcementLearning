@@ -5,7 +5,7 @@ import warnings
 
 from generals_pb.game.v1 import game_pb2 as game_dot_v1_dot_game__pb2
 
-GRPC_GENERATED_VERSION = '1.74.0'
+GRPC_GENERATED_VERSION = '1.81.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,14 +18,14 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in game/v1/game_pb2_grpc.py depends on'
+        + ' but the generated code in game/v1/game_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class GameServiceStub(object):
+class GameServiceStub:
     """GameService provides the gRPC API for the Generals.io game
     """
 
@@ -62,7 +62,7 @@ class GameServiceStub(object):
                 _registered_method=True)
 
 
-class GameServiceServicer(object):
+class GameServiceServicer:
     """GameService provides the gRPC API for the Generals.io game
     """
 
@@ -137,7 +137,7 @@ def add_GameServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class GameService(object):
+class GameService:
     """GameService provides the gRPC API for the Generals.io game
     """
 

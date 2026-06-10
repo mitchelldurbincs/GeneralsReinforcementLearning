@@ -124,8 +124,10 @@ def test_parallel_env_pool():
     # Episode results drained correctly
     results = pool.pop_episode_results()
     assert len(results) >= target_episodes, f"Expected >= {target_episodes} results, got {len(results)}"
-    worker_ids = {wid for _, _, wid in results}
-    print(f"  ✓ {len(results)} episode results from workers {sorted(worker_ids)}")
+    worker_ids = {wid for _, _, wid, _ in results}
+    outcomes = {outcome for _, _, _, outcome in results}
+    assert outcomes <= {"win", "loss", "draw"}, f"Unexpected outcomes: {outcomes}"
+    print(f"  ✓ {len(results)} episode results from workers {sorted(worker_ids)}, outcomes {sorted(outcomes)}")
     assert pool.pop_episode_results() == [], "Results not drained"
 
     return True

@@ -162,7 +162,8 @@ class GeneralsEnv(gym.Env):
                 max_players=self.max_players,
                 fog_of_war=self.fog_of_war,
                 turn_time_ms=self.turn_time_ms,
-                collect_experiences=self.collect_experiences
+                collect_experiences=self.collect_experiences,
+                max_turns=self.max_turns
             )
         ))
         self.game_id = create_response.game_id
@@ -189,6 +190,7 @@ class GeneralsEnv(gym.Env):
         # Get initial state
         state_response = self.stub.GetGameState(game_pb2.GetGameStateRequest(
             game_id=self.game_id,
+            player_id=self.player_id,
             player_token=self.player_token
         ))
         self.current_state = state_response.state
@@ -233,6 +235,7 @@ class GeneralsEnv(gym.Env):
         try:
             self.stub.SubmitAction(game_pb2.SubmitActionRequest(
                 game_id=self.game_id,
+                player_id=self.player_id,
                 player_token=self.player_token,
                 action=game_action
             ))
@@ -248,6 +251,7 @@ class GeneralsEnv(gym.Env):
             if opponent_action:
                 self.stub.SubmitAction(game_pb2.SubmitActionRequest(
                     game_id=self.game_id,
+                    player_id=self.opponent_id,
                     player_token=self.opponent_token,
                     action=opponent_action
                 ))
@@ -261,6 +265,7 @@ class GeneralsEnv(gym.Env):
         # Get new state
         state_response = self.stub.GetGameState(game_pb2.GetGameStateRequest(
             game_id=self.game_id,
+            player_id=self.player_id,
             player_token=self.player_token
         ))
         
@@ -271,9 +276,11 @@ class GeneralsEnv(gym.Env):
         # Calculate reward
         reward = self._calculate_reward(prev_state, self.current_state)
         
-        # Check if game ended
-        terminated = self.current_state.status != common_pb2.GAME_STATUS_IN_PROGRESS
-        truncated = self.turn_count >= self.max_turns
+        # Check if game ended. The server ends the game at max_turns with
+        # winner_id == -1 (draw); that is a truncation, not a true terminal.
+        game_ended = self.current_state.status != common_pb2.GAME_STATUS_IN_PROGRESS
+        terminated = game_ended and self.current_state.winner_id >= 0
+        truncated = (game_ended and not terminated) or self.turn_count >= self.max_turns
         
         # Get new observation
         obs = self._get_observation()
@@ -283,7 +290,7 @@ class GeneralsEnv(gym.Env):
             "turn": self.turn_count,
             "valid_actions_mask": self.valid_actions_mask,
             "game_status": common_pb2.GameStatus.Name(self.current_state.status),
-            "winner": self.current_state.winner_id if terminated else None
+            "winner": self.current_state.winner_id if game_ended else None
         }
         
         return obs, reward, terminated, truncated, info
@@ -429,6 +436,9 @@ class GeneralsEnv(gym.Env):
         action = game_pb2.Action()
         action.type = common_pb2.ACTION_TYPE_MOVE
         action.half = is_half
+        # The server rejects actions whose turn_number doesn't match its
+        # current turn, so stamp the action with the latest known turn.
+        action.turn_number = self.current_state.turn if self.current_state else 0
         
         # Note: 'from' is a reserved keyword in Python, so we use getattr
         from_coord = common_pb2.Coordinate(x=from_x, y=from_y)
@@ -450,6 +460,7 @@ class GeneralsEnv(gym.Env):
         try:
             state_response = self.stub.GetGameState(game_pb2.GetGameStateRequest(
                 game_id=self.game_id,
+                player_id=self.opponent_id,
                 player_token=self.opponent_token
             ))
             
@@ -476,6 +487,7 @@ class GeneralsEnv(gym.Env):
                                 action = game_pb2.Action()
                                 action.type = common_pb2.ACTION_TYPE_MOVE
                                 action.half = False
+                                action.turn_number = state_response.state.turn
                                 
                                 from_coord = common_pb2.Coordinate(x=x, y=y)
                                 to_coord = common_pb2.Coordinate(x=nx, y=ny)
@@ -489,6 +501,7 @@ class GeneralsEnv(gym.Env):
                 selected_action = random.choice(valid_moves)
                 self.stub.SubmitAction(game_pb2.SubmitActionRequest(
                     game_id=self.game_id,
+                    player_id=self.opponent_id,
                     player_token=self.opponent_token,
                     action=selected_action
                 ))
@@ -520,11 +533,13 @@ class GeneralsEnv(gym.Env):
         """
         reward = 0.0
         
-        # Check for game end
+        # Check for game end. A turn-limit end (winner_id == -1, server-side
+        # max_turns) is a draw/truncation: no terminal bonus, fall through to
+        # the shaped reward like any other step.
         if curr_state.status != common_pb2.GAME_STATUS_IN_PROGRESS:
             if curr_state.winner_id == self.player_id:
                 return 100.0  # Win
-            else:
+            elif curr_state.winner_id >= 0:
                 return -100.0  # Loss
         
         # Find our player stats

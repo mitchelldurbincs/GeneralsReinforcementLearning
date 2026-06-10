@@ -198,6 +198,8 @@ source generalsrl/bin/activate
 - Fog of war: Fully implemented with toggle via config (`fog_of_war.enabled`)
 - Minimum general spacing: 5 (Manhattan distance)
 - Turn time limit: 0 (disabled) by default, configurable via `turn_timeout`
+- Max turns: 0 (unlimited) by default, configurable per game via
+  `GameConfig.max_turns` — the game ends in a draw (`winner_id` -1) at the cap
 - Map sizes: Small (10x10), Medium (15x15), Large (20x20)
 - Maximum concurrent games: 100 (configurable via `max_games`)
 
@@ -299,6 +301,13 @@ The gRPC server integrates with the state machine: `CreateGame` builds the machi
   crash-free, server memory flat (~20–23 MB), with Huber loss + slow target sync
   after the original MSE setup diverged. See
   `documentation/claude/immediate-next-steps.md` for baseline metrics.
+- **Win/loss reward signal verified end-to-end** (2026-06-10, Phase 2): fixed
+  `GeneralsEnv` silently dropping all actions (missing `player_id` and
+  `turn_number` in RPCs meant the opponent never moved and agent moves were
+  rejected after turn 0); games now end by general capture and the ±100
+  terminal transition lands in the replay buffer with `done=True`
+  (`python/test_decisive_games.py`). Server-side `GameConfig.max_turns` makes
+  truncation authoritative (draw, `winner_id` -1).
 
 ### 🚧 In Progress
 - Multi-game parallel experience collection (next milestone — see
@@ -306,8 +315,6 @@ The gRPC server integrates with the state machine: `CreateGame` builds the machi
 
 ### 📋 Planned
 - Self-play mechanics (agent vs frozen checkpoints instead of random opponent)
-- Win/loss reward signal verification (current runs all truncate at the step cap;
-  no decisive games observed yet)
 - Distributed training on AWS
 - Model serving via gRPC
 - Tournament/matchmaking and evaluation framework
@@ -407,19 +414,16 @@ When modifying game mechanics, key files to consider:
 - **Compression**: zstd compression for experience batches not yet implemented
 - **Elimination tracking**: PlayerEliminated events don't record which player
   did the eliminating (`game_manager.go`)
-- **RL games are never ended server-side, only abandoned**: `GameConfig` has
-  no `max_turns` field, so `GeneralsEnv` truncates episodes client-side and
-  walks away mid-Running. Consequences (measured 2026-06-10 during parallel
-  stress testing): the 10-minute `finishedGameTTL` cleanup path never fires
-  for RL traffic; abandoned games keep self-advancing turns via the
-  `turn_time_ms` timer (~12% CPU for ~700 zombies) and, with
-  `collect_experiences`, keep filling their 10k-cap experience buffers;
-  games are only reaped 30 minutes after the last client action
-  (`abandonedGameTimeout`, `internal/grpc/gameserver/server.go:42-44`).
-  Parallel training (~40+ games/min) exhausts the default `max_games=100`
-  within minutes — work around with `game_server --max-games 5000`; proper
-  fix is `max_turns` in GameConfig and/or a DeleteGame RPC called from
-  `GeneralsEnv.reset()`. No unbounded leak: cleanup does reclaim memory.
+- **Server-side turn cap (fixed 2026-06-10)**: `GameConfig.max_turns` now ends
+  games in a draw at the cap (engine transitions to Ended, `winner_id` -1), so
+  RL truncation is server-authoritative, abandoned games stop ticking at the
+  cap, and the 10-minute `finishedGameTTL` cleanup path fires for RL traffic.
+  `GeneralsEnv` passes its `max_turns` through and reports a cap end as
+  `truncated` (no ±100 terminal reward). Remaining gaps: finished games still
+  occupy game slots until `finishedGameTTL` + the 5-minute cleanup tick, so
+  parallel training (~40+ games/min) still needs `game_server
+  --max-games 5000`; a DeleteGame RPC called from `GeneralsEnv.reset()` would
+  remove that too.
 
 ### Next Steps for RL Training
 

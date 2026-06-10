@@ -32,6 +32,9 @@ type GameContext struct {
 	// Winner is the player ID of the winner (if game ended)
 	Winner int
 
+	// Draw is true if the game ended without a winner (e.g. max turns reached)
+	Draw bool
+
 	// Error holds any error that caused transition to PhaseError
 	Error error
 

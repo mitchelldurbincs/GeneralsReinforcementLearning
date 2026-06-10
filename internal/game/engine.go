@@ -18,6 +18,8 @@ type Engine struct {
 	gs       *GameState
 	rng      *rand.Rand
 	gameOver bool
+	maxTurns int // Maximum turns before the game ends in a draw (0 = unlimited)
+	winnerID int // Winner determined when the game ends (-1 = none/draw)
 	logger   zerolog.Logger
 
 	// Extracted components
@@ -46,6 +48,7 @@ type GameConfig struct {
 	Width               int
 	Height              int
 	Players             int
+	MaxTurns            int // Maximum turns before the game ends in a draw (0 = unlimited)
 	Rng                 *rand.Rand
 	Logger              zerolog.Logger
 	GameID              string              // Optional game ID, will be generated if not provided
@@ -166,13 +169,23 @@ func (e *Engine) checkGameOver(l zerolog.Logger) {
 
 	wasGameOver := e.gameOver
 	gameOver, winnerID := e.winCondition.CheckGameOver(players)
+
+	// Enforce the turn cap: the game ends in a draw once maxTurns is reached
+	if !gameOver && e.maxTurns > 0 && e.gs.Turn >= e.maxTurns {
+		gameOver = true
+		winnerID = -1
+		l.Info().Int("max_turns", e.maxTurns).Msg("Maximum turns reached, ending game in a draw")
+	}
+
 	e.gameOver = gameOver
 
 	if !wasGameOver && e.gameOver {
+		e.winnerID = winnerID
 		l.Info().Msg("Game over condition met")
 
-		// Update game context with winner
+		// Update game context with winner (a game over without a winner is a draw)
 		e.stateMachine.GetContext().Winner = winnerID
+		e.stateMachine.GetContext().Draw = winnerID < 0
 
 		// Transition to Ending state
 		if err := e.stateMachine.TransitionTo(states.PhaseEnding, "Game over condition met"); err != nil {
@@ -252,14 +265,7 @@ func (e *Engine) GetWinner() int {
 		return -1
 	}
 
-	// Create a slice of Player interfaces for the win condition checker
-	players := make([]rules.Player, len(e.gs.Players))
-	for i := range e.gs.Players {
-		players[i] = &e.gs.Players[i]
-	}
-
-	_, winnerID := e.winCondition.CheckGameOver(players)
-	return winnerID
+	return e.winnerID
 }
 
 // GetLegalActionMask returns a flattened boolean mask indicating which actions are legal for the given player.

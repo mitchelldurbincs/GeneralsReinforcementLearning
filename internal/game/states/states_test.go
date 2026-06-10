@@ -120,10 +120,10 @@ func TestStateImplementations(t *testing.T) {
 
 		assert.Equal(t, PhaseEnding, state.Phase())
 
-		// Test validation - needs winner or error
+		// Test validation - needs winner, draw, or error
 		err := state.Validate(ctx)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "requires either a winner or an error")
+		assert.Contains(t, err.Error(), "requires a winner, a draw, or an error")
 
 		// With winner
 		ctx.Winner = 1
@@ -131,8 +131,13 @@ func TestStateImplementations(t *testing.T) {
 		assert.NoError(t, state.Enter(ctx))
 		assert.NoError(t, state.Exit(ctx))
 
-		// With error
+		// With draw (e.g. max turns reached)
 		ctx.Winner = -1
+		ctx.Draw = true
+		assert.NoError(t, state.Validate(ctx))
+		ctx.Draw = false
+
+		// With error
 		ctx.Error = errors.New("test error")
 		assert.NoError(t, state.Validate(ctx))
 	})

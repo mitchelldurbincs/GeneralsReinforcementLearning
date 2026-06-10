@@ -185,8 +185,8 @@ func (s *EndingState) Exit(ctx *GameContext) error {
 }
 
 func (s *EndingState) Validate(ctx *GameContext) error {
-	if ctx.Winner < 0 && ctx.Error == nil {
-		return fmt.Errorf("ending state requires either a winner or an error")
+	if ctx.Winner < 0 && !ctx.Draw && ctx.Error == nil {
+		return fmt.Errorf("ending state requires a winner, a draw, or an error")
 	}
 	return nil
 }
@@ -270,6 +270,7 @@ func (s *ResetState) Enter(ctx *GameContext) error {
 	ctx.PauseTime = time.Time{}
 	ctx.TotalPauseDuration = 0
 	ctx.Winner = -1
+	ctx.Draw = false
 	ctx.Error = nil
 	ctx.PlayerCount = 0
 

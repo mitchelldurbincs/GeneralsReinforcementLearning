@@ -56,8 +56,9 @@ class ParallelEnvPool:
         self._stats_lock = threading.Lock()
         self._total_episodes = 0
         self._alive_workers = 0
-        # (episode_reward, episode_length, worker_id), drained by the trainer
-        self._episode_results: List[Tuple[float, int, int]] = []
+        # (episode_reward, episode_length, worker_id, outcome), drained by the
+        # trainer; outcome is "win"/"loss" (decisive) or "draw" (truncated)
+        self._episode_results: List[Tuple[float, int, int, str]] = []
 
     def start(self) -> None:
         """Spawn one daemon thread per environment."""
@@ -104,7 +105,7 @@ class ParallelEnvPool:
         with self._stats_lock:
             return self._alive_workers
 
-    def pop_episode_results(self) -> List[Tuple[float, int, int]]:
+    def pop_episode_results(self) -> List[Tuple[float, int, int, str]]:
         """Drain and return finished-episode results since the last call."""
         with self._stats_lock:
             results = self._episode_results
@@ -168,6 +169,7 @@ class ParallelEnvPool:
 
         episode_reward = 0.0
         episode_length = 0
+        outcome = "draw"  # episodes that hit a step/turn cap count as draws
 
         while episode_length < self.max_steps_per_episode:
             if self._stop_event.is_set():
@@ -185,8 +187,11 @@ class ParallelEnvPool:
             episode_length += 1
 
             if done:
+                if terminated:
+                    winner = next_info.get("winner")
+                    outcome = "win" if winner == getattr(env, "player_id", 0) else "loss"
                 break
 
         with self._stats_lock:
             self._total_episodes += 1
-            self._episode_results.append((episode_reward, episode_length, worker_id))
+            self._episode_results.append((episode_reward, episode_length, worker_id, outcome))

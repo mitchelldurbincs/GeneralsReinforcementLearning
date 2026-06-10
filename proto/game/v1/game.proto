@@ -45,6 +45,7 @@ message GameConfig {
   bool fog_of_war = 4;     // Enable fog of war (default: true)
   int32 turn_time_ms = 5;  // Time per turn in milliseconds (0 = no limit)
   bool collect_experiences = 6;  // Enable experience collection for RL training
+  int32 max_turns = 7;     // Maximum turns before the game ends in a draw (0 = unlimited)
 }
 
 // JoinGameRequest is sent when a player wants to join a game

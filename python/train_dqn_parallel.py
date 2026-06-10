@@ -65,6 +65,7 @@ class ParallelDQNTrainer:
         # Metrics
         self.episode_rewards = []
         self.episode_lengths = []
+        self.episode_outcomes = []  # "win" / "loss" / "draw" per episode
         self.losses = []
 
         # Probe env to get observation/action shapes, then close it
@@ -180,11 +181,19 @@ class ParallelDQNTrainer:
         self.logger.info(f"Checkpoint saved to {filepath}")
 
         metrics_file = os.path.join(self.checkpoint_dir, 'training_metrics.json')
+        recent_outcomes = self.episode_outcomes[-100:]
         metrics = {
             'episode_rewards': self.episode_rewards[-100:],
             'episode_lengths': self.episode_lengths[-100:],
             'avg_reward': float(np.mean(self.episode_rewards[-20:])) if self.episode_rewards else 0,
             'avg_length': float(np.mean(self.episode_lengths[-20:])) if self.episode_lengths else 0,
+            'outcome_totals': {
+                'win': self.episode_outcomes.count('win'),
+                'loss': self.episode_outcomes.count('loss'),
+                'draw': self.episode_outcomes.count('draw'),
+            },
+            'win_rate_last_100': (recent_outcomes.count('win') / len(recent_outcomes)
+                                  if recent_outcomes else 0),
         }
         with open(metrics_file, 'w') as f:
             json.dump(metrics, f, indent=2)
@@ -253,9 +262,10 @@ class ParallelDQNTrainer:
 
                 now = time.time()
                 if now - last_log >= config['log_interval']:
-                    for reward, length, _worker_id in self.pool.pop_episode_results():
+                    for reward, length, _worker_id, outcome in self.pool.pop_episode_results():
                         self.episode_rewards.append(reward)
                         self.episode_lengths.append(length)
+                        self.episode_outcomes.append(outcome)
 
                     env_steps = self.total_env_steps
                     episodes = self.pool.total_episodes
@@ -267,6 +277,9 @@ class ParallelDQNTrainer:
                     avg_reward = np.mean(self.episode_rewards[-20:]) if self.episode_rewards else 0
                     avg_length = np.mean(self.episode_lengths[-20:]) if self.episode_lengths else 0
                     avg_loss = np.mean(self.losses[-100:]) if self.losses else 0
+                    recent = self.episode_outcomes[-100:]
+                    win_rate = recent.count('win') / len(recent) if recent else 0
+                    draw_rate = recent.count('draw') / len(recent) if recent else 0
 
                     self.logger.info(
                         f"Episodes: {episodes}/{config['episodes']} | "
@@ -276,6 +289,7 @@ class ParallelDQNTrainer:
                         f"Buffer: {len(self.buffer)} | "
                         f"Workers: {self.pool.alive_workers}/{config['num_envs']} | "
                         f"Reward: {avg_reward:.2f} | Length: {avg_length:.1f} | "
+                        f"Win/Draw(100): {win_rate:.2f}/{draw_rate:.2f} | "
                         f"Loss: {avg_loss:.4f}"
                     )
 
@@ -298,9 +312,10 @@ class ParallelDQNTrainer:
         finally:
             self.pool.stop()
             # Fold in any episodes that finished after the last log
-            for reward, length, _worker_id in self.pool.pop_episode_results():
+            for reward, length, _worker_id, outcome in self.pool.pop_episode_results():
                 self.episode_rewards.append(reward)
                 self.episode_lengths.append(length)
+                self.episode_outcomes.append(outcome)
 
         self.save_checkpoint('final_model.pth')
 

@@ -492,6 +492,7 @@ func (g *gameInstance) StartEngine(ctx context.Context) error {
 		Width:               int(g.config.Width),
 		Height:              int(g.config.Height),
 		Players:             int(g.config.MaxPlayers),
+		MaxTurns:            int(g.config.MaxTurns),
 		Logger:              log.Logger,
 		GameID:              g.id,
 		ExperienceCollector: experienceCollector,
@@ -614,33 +615,23 @@ func (g *gameInstance) processTurn(ctx context.Context) error {
 
 	// Check for player eliminations and game ending
 	state := g.engine.GameState()
-	aliveCount := 0
-	var winnerId int = -1
 
 	for _, player := range state.Players {
-		if player.Alive {
-			aliveCount++
-			winnerId = player.ID
-		} else if prevAliveStatus[player.ID] && !player.Alive {
+		if prevAliveStatus[player.ID] && !player.Alive {
 			// Player was just eliminated
 			g.streamManager.BroadcastPlayerEliminated(int32(player.ID), -1) // TODO: track who eliminated the player
 		}
 	}
 
-	// Game ends when only one player remains
-	// The engine will handle the state transition to Ending/Ended
-	if aliveCount <= 1 && g.engine != nil {
-		currentPhase := g.CurrentPhase()
-		if currentPhase == commonv1.GamePhase_GAME_PHASE_RUNNING {
-			// The engine's checkGameOver will transition to Ending/Ended
-			// We just need to cancel the turn timer
-			if g.turnTimer != nil {
-				g.turnTimer.Stop()
-			}
+	// The engine handles the state transition to Ending/Ended (one player
+	// remaining or the max_turns cap reached, in which case the winner is -1)
+	if g.engine.IsGameOver() {
+		if g.turnTimer != nil {
+			g.turnTimer.Stop()
 		}
 
 		// Broadcast game ended event
-		g.streamManager.BroadcastGameEnded(int32(winnerId))
+		g.streamManager.BroadcastGameEnded(int32(g.engine.GetWinner()))
 	}
 
 	return nil
