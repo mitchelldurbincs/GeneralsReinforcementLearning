@@ -120,15 +120,24 @@ human-vs-trained-agent play are explicitly out of scope here (see
       - **Throughput is the bottleneck**: ~12 steps/s ≈ 2.4 episodes/min,
         gRPC round-trip bound (run took 2h06m). Reinforces Option A
         (parallel envs) as the next milestone.
-- [ ] Update CLAUDE.md "Development Status" to match reality: Gym env is done,
+- [x] Update CLAUDE.md "Development Status" to match reality: Gym env is done,
       proto scripts work (if Day 1 confirms), DQN loop status, and remove
       fixed items from "TODO/Known Issues".
-- [ ] Decide the next milestone and start a plan doc for it:
+      Done 2026-06-10: rewrote Completed/In Progress/Planned and
+      TODO/Known Issues; also fixed the stale `internal/experience` file
+      list, documented `generals_gym` and the training scripts, noted the
+      state machine IS integrated with gRPC, and added the
+      `make generate-protos` fresh-clone step to the build docs.
+- [x] Decide the next milestone and start a plan doc for it:
       - **Option A:** Multi-game parallel experience collection (Phase 1 of
         `training-next-steps.md`) — faster training.
       - **Option B:** Wire `cmd/ui_client` to the gRPC server so a human can
         play against Python agents / trained models — currently the UI only
         supports a local random AI and has zero gRPC integration (~500+ LOC).
+      Decided 2026-06-10: **Option A** — the long run showed training is
+      gRPC round-trip bound (~12 steps/s single-env), so parallel collection
+      is the highest-leverage next step. Plan doc:
+      `parallel-experience-collection-plan.md`. Option B deferred, not dropped.
 
 ## Baseline Metrics
 
