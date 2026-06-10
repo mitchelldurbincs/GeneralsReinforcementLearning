@@ -43,22 +43,32 @@ runs the training loop.
 
 ### Phase 1: parallel collection, single learner
 
-- [ ] Add `python/generals_gym/vector_env.py`: a `ParallelEnvPool` that owns N
+- [x] Add `python/generals_gym/vector_env.py`: a `ParallelEnvPool` that owns N
       `GeneralsEnv` instances, each stepped from its own worker thread running
       a full episode loop (reset → step* → done). Workers push
       `(state, action, reward, next_state, done)` into a shared queue/buffer.
       Handle per-env failures by recreating that env without killing the pool
       (reuse the retry pattern from `train_dqn_robust.py:reset_environment`).
-- [ ] Add a thread-safe `ReplayBuffer` (promote the one in
+- [x] Add a thread-safe `ReplayBuffer` (promote the one in
       `train_dqn_agent.py`, add a lock; also closes the
       `create_replay_buffer()` NotImplementedError stub in
       `experience_consumer.py` or deletes it).
-- [ ] Add `python/train_dqn_parallel.py` (or a `--num-envs N` flag on
+      → `python/generals_gym/replay_buffer.py` (list-based ring buffer +
+      lock; `total_pushed` doubles as the global env-step counter); the
+      stub was deleted. Smoke-tested via `python/test_parallel_env.py`.
+- [x] Add `python/train_dqn_parallel.py` (or a `--num-envs N` flag on
       `train_dqn_robust.py`): main thread trains from the shared buffer at a
       fixed train-steps-per-env-step ratio; workers use the latest network for
       action selection with per-worker epsilon.
-- [ ] Checkpointing parity: keep `train_dqn_robust.py`'s save/resume behavior
+      → New script (robust stays as the N=1 baseline). Workers run their own
+      `torch.no_grad()` forward passes on the shared network; fixed Ape-X
+      style per-worker epsilons (0.4^(1+7·i/(N−1))); `--train-ratio` paces
+      the learner on run-local counters (0 = pure-collection benchmark).
+- [x] Checkpointing parity: keep `train_dqn_robust.py`'s save/resume behavior
       (network, optimizer, epsilon, counters) in the parallel trainer.
+      → Same checkpoint keys plus `learner_steps`; resume round-trip
+      verified (episodes/env-steps continue, pacing doesn't inherit the
+      previous run's deficit).
 - [ ] Benchmark: steps/s and episodes/min at N = 1, 4, 8, 16 on a 10x10 board.
       Record the scaling curve here. Investigate if scaling is sublinear
       before N=8 (likely suspects: server lock contention in game_manager,

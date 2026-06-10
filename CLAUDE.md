@@ -179,6 +179,11 @@ source generalsrl/bin/activate
 - **generals_gym/**: Gymnasium environment wrapper (`generals_env.py`, registered as `Generals-v0`)
   - 9-channel observation tensors, discrete action space with valid-action masking
   - Connects to the gRPC game server; supports a built-in random opponent
+  - `replay_buffer.py`: thread-safe ReplayBuffer (lock-protected ring buffer)
+  - `vector_env.py`: `ParallelEnvPool` — N envs in worker threads feeding a shared buffer
+- **train_dqn_parallel.py**: parallel DQN training (N collector envs + single learner;
+  `--num-envs`, `--train-ratio`, `--collect-experiences`; run the server with
+  `--max-games 5000` to outpace the 10-minute finished-game reaper)
 - **train_dqn_simple.py / train_dqn_agent.py / train_dqn_robust.py**: DQN training scripts
   - `train_dqn_robust.py` has checkpoint/resume, error recovery, and CLI flags
     (`--episodes`, `--board-size`, `--max-turns`, `--max-steps`, `--resume`)
@@ -400,11 +405,14 @@ When modifying game mechanics, key files to consider:
   flat server memory with collection *off*; rerun with
   `collect_experiences: true` to stress the collector-buffer cleanup path
 - **Compression**: zstd compression for experience batches not yet implemented
-- **Replay buffer stub**: `create_replay_buffer()` in
-  `python/generals_agent/experience_consumer.py` raises NotImplementedError
-  (a working ReplayBuffer exists in `train_dqn_agent.py`)
 - **Elimination tracking**: PlayerEliminated events don't record which player
   did the eliminating (`game_manager.go`)
+- **No game deletion RPC + slow finished-game reaping**: clients can't delete
+  games, and the server only reaps finished games 10 minutes after last
+  activity on a 5-minute tick (`internal/grpc/gameserver/server.go:42-43`).
+  Parallel training (~50+ games/min) hits `max_games` within minutes —
+  work around with `game_server --max-games 5000`; proper fix is a
+  configurable TTL or a DeleteGame RPC called from `GeneralsEnv.reset()`
 
 ### Next Steps for RL Training
 
