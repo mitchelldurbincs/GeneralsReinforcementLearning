@@ -96,18 +96,48 @@ human-vs-trained-agent play are explicitly out of scope here (see
 
 ## Day 3 — Stabilize and pick the next milestone
 
-- [ ] Longer run with `python/train_dqn_robust.py` (a few hundred episodes).
+- [x] Longer run with `python/train_dqn_robust.py` (a few hundred episodes).
       Note any failure modes — stream reconnection and buffer cleanup on game
       end are known weak spots (see CLAUDE.md TODOs).
-- [ ] Update CLAUDE.md "Development Status" to match reality: Gym env is done,
+      Done 2026-06-10: 300 episodes, 10x10 board, fog on, 300-turn/step cap
+      (script now takes `--episodes/--board-size/--max-turns/--max-steps`).
+      Findings:
+      - **DQN divergence (fixed)**: the original unclipped MSE loss with
+        target sync every 100 steps diverged — avg loss 830 by ep 50,
+        2.9e9 by ep 100, reward flat. Switched to Huber (smooth_l1) loss
+        and target sync every 2000 steps; rerun from scratch kept loss in
+        0.004–0.09 across all 300 episodes.
+      - **Infrastructure held up**: 0 errors/warnings in the log, no env
+        recreations or stream reconnects needed, 400/400 crash-free
+        episodes across both runs. Server RSS 19.7→22.8 MB over ~2h45m and
+        ~410 created games — no sign of the feared buffer-cleanup leak
+        (collection was off; rerun with `collect_experiences: true` to
+        stress that path specifically).
+      - **No decisive games**: every episode hit the step cap even at 300
+        steps on 10x10; last-100 avg reward 1.53 (shaping only, no
+        win/loss terms observed). A mostly-random 1-tile-per-turn policy
+        simply doesn't conquer a 10x10 fog map in 300 turns.
+      - **Throughput is the bottleneck**: ~12 steps/s ≈ 2.4 episodes/min,
+        gRPC round-trip bound (run took 2h06m). Reinforces Option A
+        (parallel envs) as the next milestone.
+- [x] Update CLAUDE.md "Development Status" to match reality: Gym env is done,
       proto scripts work (if Day 1 confirms), DQN loop status, and remove
       fixed items from "TODO/Known Issues".
-- [ ] Decide the next milestone and start a plan doc for it:
+      Done 2026-06-10: rewrote Completed/In Progress/Planned and
+      TODO/Known Issues; also fixed the stale `internal/experience` file
+      list, documented `generals_gym` and the training scripts, noted the
+      state machine IS integrated with gRPC, and added the
+      `make generate-protos` fresh-clone step to the build docs.
+- [x] Decide the next milestone and start a plan doc for it:
       - **Option A:** Multi-game parallel experience collection (Phase 1 of
         `training-next-steps.md`) — faster training.
       - **Option B:** Wire `cmd/ui_client` to the gRPC server so a human can
         play against Python agents / trained models — currently the UI only
         supports a local random AI and has zero gRPC integration (~500+ LOC).
+      Decided 2026-06-10: **Option A** — the long run showed training is
+      gRPC round-trip bound (~12 steps/s single-env), so parallel collection
+      is the highest-leverage next step. Plan doc:
+      `parallel-experience-collection-plan.md`. Option B deferred, not dropped.
 
 ## Baseline Metrics
 

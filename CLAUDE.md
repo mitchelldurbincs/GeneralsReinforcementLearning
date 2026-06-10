@@ -29,10 +29,13 @@ The project prioritizes RL training efficiency over production multiplayer featu
 
 ### Building
 ```bash
+# On a fresh clone, generate the Go protobuf code first (gitignored, requires protoc):
+make generate-protos   # outputs to pkg/api/
+
 # Build the game server (headless)
 go build -o game_server ./cmd/game_server
 
-# Build the UI client (with graphics)
+# Build the UI client (with graphics; requires X11 dev headers)
 go build -o ui_client ./cmd/ui_client
 
 # Build for Docker deployment (Note: cmd/game doesn't exist, use game_server)
@@ -152,15 +155,10 @@ go mod download
   - `action_validator.go`: Action validation logic
 
 ### Experience Collection (`internal/experience/`)
-- **collector.go**: Base experience collector implementation
-- **collector_optimized.go**: Performance-optimized collector
-- **enhanced_collector.go**: Advanced collector with additional features
-- **buffer.go**: Experience buffer for batching
-- **lockfree_buffer.go**: Lock-free buffer for concurrent access
-- **player_buffer_manager.go**: Per-player buffer management
+- **collector.go**: SimpleCollector — per-game experience capture (state tensors, rewards, action masks)
+- **buffer.go**: Experience buffer for batching (note: sampling is sequential, not random — shuffle client-side)
 - **rewards.go**: Reward calculation utilities
 - **serializer.go**: Experience serialization
-- **persistence.go**: Experience persistence to disk
 
 ### Python Integration (`python/`)
 **Important**: Python code requires activating the virtual environment first:
@@ -177,7 +175,13 @@ source generalsrl/bin/activate
   - `agent_runner.py`: Agent execution orchestration
   - `types.py`: Type definitions
   - `events.py`: Event handling
-- **generals_pb/**: Generated protobuf files
+- **generals_pb/**: Generated protobuf files (committed to git; imports are correct)
+- **generals_gym/**: Gymnasium environment wrapper (`generals_env.py`, registered as `Generals-v0`)
+  - 9-channel observation tensors, discrete action space with valid-action masking
+  - Connects to the gRPC game server; supports a built-in random opponent
+- **train_dqn_simple.py / train_dqn_agent.py / train_dqn_robust.py**: DQN training scripts
+  - `train_dqn_robust.py` has checkpoint/resume, error recovery, and CLI flags
+    (`--episodes`, `--board-size`, `--max-turns`, `--max-steps`, `--resume`)
 - **examples/**: Example scripts and usage demonstrations
 - **scripts/**: Utility scripts (e.g., `run_random_match.py`)
 
@@ -263,47 +267,45 @@ The game now includes a formal state machine to manage game lifecycle:
 - Pause/Resume methods available on Engine
 - Single-player games supported (for RL training)
 
-**Note**: gRPC endpoints still need to be updated to respect state machine
+The gRPC server integrates with the state machine: `CreateGame` builds the machine, engines transition through phases, and state transitions are published as events and broadcast to stream clients.
 
 ## Development Status
 
 ### ✅ Completed
 - Core game engine with all mechanics
-- gRPC server for multiplayer games
+- gRPC server: all 9 RPCs implemented, including `StreamGame` (real-time updates
+  with delta/full state broadcasts) — no stubs
+- State machine integrated into the gRPC server and engine
 - Fog of war implementation
 - Map generation system
-- Basic Python client infrastructure
 - Docker containerization
 - Unit tests for core components
 - **Event-driven architecture (Phase 1)**
-- **State machine framework (Phase 2 - partial)**
 - **Experience collection and streaming infrastructure**
+  - SimpleCollector wired into the engine's turn processor
   - StreamAggregator for multi-game experience aggregation
   - BatchProcessor for efficient experience batching (32x network efficiency)
-  - Enhanced proto definitions with `ExperienceBatch` message type
   - Production-ready `StreamExperienceBatches` gRPC endpoint
   - Backpressure handling and rate limiting
-  - Experience buffer management with streaming channels
   - Integration tests for streaming functionality
+- **Python agent infrastructure** (base agent, random agent, gRPC client, runner)
+- **Gymnasium environment wrapper** (`python/generals_gym/`, registered as `Generals-v0`)
+- **DQN training verified end-to-end** (2026-06-10): 300-episode run on 10x10,
+  crash-free, server memory flat (~20–23 MB), with Huber loss + slow target sync
+  after the original MSE setup diverged. See
+  `documentation/claude/immediate-next-steps.md` for baseline metrics.
 
 ### 🚧 In Progress
-- Random agent implementation (Python)
-- StreamGame gRPC method for real-time updates
-- Multi-agent game orchestration
-- **State machine gRPC integration**
-- **Python RL training pipeline**
-  - Basic client library completed (`experience_stream_client.py`)
-  - DQN training example provided (`rl_training_example.py`)
-  - Import path fixes needed in generated Python proto files
+- Multi-game parallel experience collection (next milestone — see
+  `documentation/claude/parallel-experience-collection-plan.md`)
 
 ### 📋 Planned
-- Full RL training infrastructure with OpenAI Gym wrapper
-- Self-play mechanics
+- Self-play mechanics (agent vs frozen checkpoints instead of random opponent)
+- Win/loss reward signal verification (current runs all truncate at the step cap;
+  no decisive games observed yet)
 - Distributed training on AWS
 - Model serving via gRPC
-- Tournament/matchmaking system
-- Performance optimizations for large-scale training
-- **Remaining architecture phases (3-6)**
+- Tournament/matchmaking and evaluation framework
 - **Experience streaming enhancements**:
   - Compression support (zstd for 3-5x bandwidth reduction)
   - Prometheus metrics integration
@@ -392,24 +394,29 @@ When modifying game mechanics, key files to consider:
 
 ### TODO/Known Issues
 
-- gRPC server needs to integrate with state machine for proper game lifecycle management
-- StreamGame method needs completion for real-time updates  
-- Python RL agent implementations are in progress
-- Full RL training loop integration pending
-- **Python proto import paths**: Generated Python files need import path fixes (script needs updating)
-- **Experience streaming edge cases**: Need to handle stream reconnection and error recovery
-- **Memory management**: Buffer cleanup when games end needs verification
+- **Sequential buffer sampling**: `internal/experience/buffer.go` returns
+  sequential, not random, samples — trainers should shuffle client-side
+- **Experience-collection memory under load**: the 2026-06-10 long run showed
+  flat server memory with collection *off*; rerun with
+  `collect_experiences: true` to stress the collector-buffer cleanup path
 - **Compression**: zstd compression for experience batches not yet implemented
+- **Replay buffer stub**: `create_replay_buffer()` in
+  `python/generals_agent/experience_consumer.py` raises NotImplementedError
+  (a working ReplayBuffer exists in `train_dqn_agent.py`)
+- **Elimination tracking**: PlayerEliminated events don't record which player
+  did the eliminating (`game_manager.go`)
 
 ### Next Steps for RL Training
 
-1. **Fix Python proto generation script** to correctly set import paths
-2. **Create OpenAI Gym environment wrapper** for standard RL library compatibility
-3. **Implement self-play orchestration** for automated training
+1. **Multi-game parallel experience collection** — training is gRPC round-trip
+   bound (~12 steps/s, ~2.4 episodes/min single-env); run N envs in parallel
+   feeding one learner (see `documentation/claude/parallel-experience-collection-plan.md`)
+2. **Get decisive games** — verify win/loss rewards actually flow (longer caps,
+   smarter opponents, or smaller maps)
+3. **Implement self-play orchestration** (agent vs frozen checkpoints)
 4. **Add experience replay buffer** with prioritization
 5. **Set up distributed training** across multiple machines
-6. **Implement model checkpointing** and versioning
-7. **Create evaluation framework** for agent performance metrics
+6. **Create evaluation framework** for agent performance metrics
 
 The project uses:
 - **Zerolog** for structured logging throughout the codebase

@@ -158,7 +158,9 @@ class RobustDQNTrainer:
         next_q = self.target_network(next_states).max(1)[0].detach()
         target_q = rewards + self.config['gamma'] * next_q * (1 - dones)
         
-        loss = F.mse_loss(current_q.squeeze(), target_q)
+        # Huber loss: unclipped MSE diverged in long runs (Q-values inflated
+        # past 1e9 by episode 100 with frequent target syncs)
+        loss = F.smooth_l1_loss(current_q.squeeze(), target_q)
         
         self.optimizer.zero_grad()
         loss.backward()
@@ -335,18 +337,32 @@ class RobustDQNTrainer:
             self.env.close()
 
 
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(description='Robust DQN training for Generals.io')
+    parser.add_argument('--episodes', type=int, default=50, help='Number of episodes to train')
+    parser.add_argument('--board-size', type=int, default=10, help='Board width and height')
+    parser.add_argument('--max-turns', type=int, default=200, help='Max turns per game')
+    parser.add_argument('--max-steps', type=int, default=200, help='Max steps per episode')
+    parser.add_argument('--server', type=str, default='localhost:50051', help='Game server address')
+    parser.add_argument('--checkpoint-dir', type=str, default='dqn_checkpoints', help='Checkpoint directory')
+    parser.add_argument('--resume', type=str, default=None, help='Checkpoint file to resume from')
+    return parser.parse_args()
+
+
 def main():
     """Main training function."""
-    
+    args = parse_args()
+
     # Training configuration
     config = {
-        'server_address': 'localhost:50051',
-        'board_width': 10,
-        'board_height': 10,
+        'server_address': args.server,
+        'board_width': args.board_size,
+        'board_height': args.board_size,
         'fog_of_war': True,
-        'max_turns': 200,
-        'max_steps_per_episode': 200,
-        
+        'max_turns': args.max_turns,
+        'max_steps_per_episode': args.max_steps,
+
         'learning_rate': 0.0005,
         'gamma': 0.99,
         'epsilon_start': 1.0,
@@ -354,11 +370,11 @@ def main():
         'epsilon_decay': 0.995,
         'buffer_size': 5000,
         'batch_size': 32,
-        'target_update_freq': 100,
-        
-        'checkpoint_dir': 'dqn_checkpoints'
+        'target_update_freq': 2000,
+
+        'checkpoint_dir': args.checkpoint_dir
     }
-    
+
     print("=" * 60)
     print("Robust DQN Training for Generals.io")
     print("=" * 60)
@@ -369,10 +385,12 @@ def main():
     
     # Create trainer
     trainer = RobustDQNTrainer(config)
-    
+    if args.resume:
+        trainer.load_checkpoint(args.resume)
+
     # Train
-    trainer.train(num_episodes=50)
-    
+    trainer.train(num_episodes=args.episodes)
+
     print("\n✓ Training complete!")
 
 
