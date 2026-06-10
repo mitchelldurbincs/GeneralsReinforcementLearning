@@ -96,8 +96,9 @@ runs the training loop.
         (10k cap) long after the client left.
       - The abandoned-game path does reap them: `lastActivity` only updates
         on JoinGame/SubmitAction, so 30 min after the last client action the
-        5-min cleanup tick removes them (observed: `cleaned=117
-        remaining=649` at the first eligible tick).
+        5-min cleanup tick removes them (observed: two consecutive ticks
+        reaped 117 + 229 games and RSS turned around, ~99.6 → 90.5 MB and
+        falling, with Go releasing pages lazily).
       - Steady-state cost of continuous N=8 training is therefore ~30 min ×
         ~40 games/min ≈ 1,200 zombie games. Workable for now; the real fix
         is server-side and shared with the max_games issue below: add
