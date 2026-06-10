@@ -407,12 +407,19 @@ When modifying game mechanics, key files to consider:
 - **Compression**: zstd compression for experience batches not yet implemented
 - **Elimination tracking**: PlayerEliminated events don't record which player
   did the eliminating (`game_manager.go`)
-- **No game deletion RPC + slow finished-game reaping**: clients can't delete
-  games, and the server only reaps finished games 10 minutes after last
-  activity on a 5-minute tick (`internal/grpc/gameserver/server.go:42-43`).
-  Parallel training (~50+ games/min) hits `max_games` within minutes —
-  work around with `game_server --max-games 5000`; proper fix is a
-  configurable TTL or a DeleteGame RPC called from `GeneralsEnv.reset()`
+- **RL games are never ended server-side, only abandoned**: `GameConfig` has
+  no `max_turns` field, so `GeneralsEnv` truncates episodes client-side and
+  walks away mid-Running. Consequences (measured 2026-06-10 during parallel
+  stress testing): the 10-minute `finishedGameTTL` cleanup path never fires
+  for RL traffic; abandoned games keep self-advancing turns via the
+  `turn_time_ms` timer (~12% CPU for ~700 zombies) and, with
+  `collect_experiences`, keep filling their 10k-cap experience buffers;
+  games are only reaped 30 minutes after the last client action
+  (`abandonedGameTimeout`, `internal/grpc/gameserver/server.go:42-44`).
+  Parallel training (~40+ games/min) exhausts the default `max_games=100`
+  within minutes — work around with `game_server --max-games 5000`; proper
+  fix is `max_turns` in GameConfig and/or a DeleteGame RPC called from
+  `GeneralsEnv.reset()`. No unbounded leak: cleanup does reclaim memory.
 
 ### Next Steps for RL Training
 

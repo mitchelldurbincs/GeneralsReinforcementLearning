@@ -79,9 +79,30 @@ runs the training loop.
       building, so the achieved train ratio collapses (0.32 → 0.05). On CPU,
       N=4–8 is the sweet spot for actual training; N=16 is only worth it for
       pure collection or with a GPU learner.
-- [ ] Stress the known weak spot: run N=8+ with
+- [x] Stress the known weak spot: run N=8+ with
       `collect_experiences: true` for 100+ games and watch server RSS —
       the Day 3 run only verified flat memory with collection off.
+      → N=8, 110 collected games, full throughput maintained (135 steps/s,
+      no penalty vs 138 without collection). RSS grew 51 → 86 MB during the
+      run (~320 KB/game) and kept growing (~100 MB) after the client
+      disconnected. Root cause characterized, **no unbounded leak**:
+      - Server games **never reach ENDED**: the proto's `GameConfig` has no
+        `max_turns`, so the env truncates client-side and abandons the game
+        mid-Running. The `finishedGameTTL` cleanup path is dead code for RL
+        traffic.
+      - Abandoned games keep self-advancing turns (`turn_time_ms=500` arms
+        server turn timers), burning ~12% CPU for ~700 zombie games and —
+        with collection on — filling their per-game experience buffers
+        (10k cap) long after the client left.
+      - The abandoned-game path does reap them: `lastActivity` only updates
+        on JoinGame/SubmitAction, so 30 min after the last client action the
+        5-min cleanup tick removes them (observed: `cleaned=117
+        remaining=649` at the first eligible tick).
+      - Steady-state cost of continuous N=8 training is therefore ~30 min ×
+        ~40 games/min ≈ 1,200 zombie games. Workable for now; the real fix
+        is server-side and shared with the max_games issue below: add
+        `max_turns` to GameConfig (games actually finish) and/or a
+        DeleteGame RPC called from `GeneralsEnv.reset()`.
 
 ### Phase 2: make the runs meaningful
 
@@ -115,8 +136,9 @@ learner-gradient-steps per env step (`--train-ratio 1.0` requested).
 | 16 | 250.8 | 83.7 | 13.2 (0.05) | 273.2 | 20.9x baseline; 96 eps/min at ratio 0 |
 
 Server RSS grew from ~21 MB to ~47 MB across the whole sweep (~470 games
-created, collection off) — that growth is finished games awaiting the
-10-minute reaper, not a leak; it flattens once the cleanup tick catches up.
+created, collection off) — that growth is abandoned games awaiting the
+30-minute reaper (see the stress-test findings above: server games never
+reach ENDED, so the abandoned path is the one that fires), not a leak.
 
 Takeaways:
 
@@ -126,9 +148,10 @@ Takeaways:
   gradient throughput as N rises. For training (not just collection) use
   N=4–8, or lower `--train-ratio`, or move the learner to GPU.
 - **Server-side blocker found and worked around**: there is no DeleteGame
-  RPC and finished games are reaped only 10 min after last activity on a
-  5-min tick (`internal/grpc/gameserver/server.go:42-43`), so parallel
-  rates exhaust the default `max_games=100` within minutes. Run the server
-  with `--max-games 5000` for now; proper fix (configurable TTL or a
+  RPC and RL games are only reaped as *abandoned* 30 min after the last
+  client action (`internal/grpc/gameserver/server.go:42-44`; games never
+  reach ENDED because GameConfig has no max_turns), so parallel rates
+  exhaust the default `max_games=100` within minutes. Run the server with
+  `--max-games 5000` for now; proper fix (max_turns in GameConfig and/or a
   DeleteGame RPC called from `GeneralsEnv.reset()`) is noted in CLAUDE.md
   known issues.
